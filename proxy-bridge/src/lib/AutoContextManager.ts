@@ -12,7 +12,7 @@ export class AutoContextManager {
 
   constructor(socket: Socket) {
     this.socket = socket;
-    this.watcher = new FileWatcher(); // FileWatcher does not take socket anymore
+    this.watcher = new FileWatcher(socket);
     this.scraper = new ContextScraper();
     this.setupFileWatcherListener();
   }
