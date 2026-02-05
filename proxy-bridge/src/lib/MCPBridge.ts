@@ -5,7 +5,8 @@ import axios from 'axios';
  * MCPBridge: Standardized gateway for Model Context Protocol servers.
  */
 export class MCPBridge {
-  private configPath = '/home/fish/clawd/projects/codex-clone/architecture/MCP_CONFIG.json';
+      import path from 'path';
+    private configPath = path.join(process.cwd(), '../architecture/MCP_CONFIG.json');
 
   async callTool(serverName: string, toolName: string, args: any) {
     console.log(`[MCP] Calling ${serverName}/${toolName}`);

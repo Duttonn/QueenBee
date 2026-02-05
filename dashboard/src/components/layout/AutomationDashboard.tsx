@@ -10,6 +10,7 @@ import {
   X,
   ChevronDown
 } from 'lucide-react';
+import { useAppStore } from '../../store/useAppStore';
 
 // Recipe Card Component
 const AutomationCard = ({ icon, title, description, onClick }: {
@@ -20,7 +21,7 @@ const AutomationCard = ({ icon, title, description, onClick }: {
 }) => (
   <button
     onClick={onClick}
-    className="bg-white border border-gray-100 rounded-2xl p-5 text-left hover:shadow-lg hover:border-gray-200 transition-all duration-200 group"
+    className="bg-white border border-gray-100 rounded-2xl p-5 text-left hover:shadow-lg hover:border-gray-200 transition-all duration-200 group w-full"
   >
     <div className="mb-3 text-2xl">{icon}</div>
     <h3 className="text-base font-semibold text-gray-900 mb-1 group-hover:text-gray-800">{title}</h3>
@@ -29,8 +30,25 @@ const AutomationCard = ({ icon, title, description, onClick }: {
 );
 
 // Create Automation Modal
-const CreateAutomationModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+const CreateAutomationModal = ({ isOpen, onClose, onCreate }: { isOpen: boolean; onClose: () => void; onCreate: (data: any) => void }) => {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('09:30');
+
   if (!isOpen) return null;
+
+  const handleSubmit = () => {
+    if (!title) return;
+    onCreate({
+      title,
+      description,
+      schedule: scheduleTime,
+    });
+    onClose();
+    // Reset form
+    setTitle('');
+    setDescription('');
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -60,7 +78,21 @@ const CreateAutomationModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
             <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
             <input
               type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g., Daily code review"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+            />
+          </div>
+
+          {/* Description Input */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What does it do?"
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
             />
           </div>
@@ -79,13 +111,11 @@ const CreateAutomationModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
             <label className="block text-sm font-medium text-gray-700 mb-2">Schedule</label>
             <div className="flex gap-3">
               <input
-                type="text"
-                defaultValue="09:30"
+                type="time"
+                value={scheduleTime}
+                onChange={(e) => setScheduleTime(e.target.value)}
                 className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               />
-              <button className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 hover:border-gray-300 transition-colors">
-                AM
-              </button>
             </div>
           </div>
         </div>
@@ -98,7 +128,10 @@ const CreateAutomationModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
           >
             Cancel
           </button>
-          <button className="px-5 py-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium rounded-lg transition-colors">
+          <button
+            onClick={handleSubmit}
+            className="px-5 py-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium rounded-lg transition-colors"
+          >
             Create Automation
           </button>
         </div>
@@ -109,74 +142,58 @@ const CreateAutomationModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
 
 const AutomationDashboard = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const { automations, addAutomation } = useAppStore();
 
-  const automations = [
-    {
-      icon: <Cloud className="text-blue-500" size={24} />,
-      title: 'Sync to cloud',
-      description: 'Automatically back up your work to the cloud every hour.'
-    },
-    {
-      icon: <Pencil className="text-orange-500" size={24} />,
-      title: 'Code review comments',
-      description: 'Review PR comments and suggest improvements.'
-    },
-    {
-      icon: <BookOpen className="text-purple-500" size={24} />,
-      title: 'Generate docs',
-      description: 'Keep documentation up to date with code changes.'
-    },
-    {
-      icon: <MessageSquare className="text-green-500" size={24} />,
-      title: 'Summarize threads',
-      description: 'Get a daily digest of your development threads.'
-    },
-    {
-      icon: <GitPullRequest className="text-pink-500" size={24} />,
-      title: 'PR automation',
-      description: 'Automatically create and manage pull requests.'
-    },
-    {
-      icon: <Clock className="text-cyan-500" size={24} />,
-      title: 'Scheduled tasks',
-      description: 'Run custom scripts on a schedule.'
-    },
-  ];
+  const getIcon = (title: string) => {
+    const lower = title.toLowerCase();
+    if (lower.includes('cloud')) return <Cloud className="text-blue-500" size={24} />;
+    if (lower.includes('review')) return <Pencil className="text-orange-500" size={24} />;
+    if (lower.includes('doc')) return <BookOpen className="text-purple-500" size={24} />;
+    if (lower.includes('summary') || lower.includes('summarize')) return <MessageSquare className="text-green-500" size={24} />;
+    if (lower.includes('pr ')) return <GitPullRequest className="text-pink-500" size={24} />;
+    return <Clock className="text-cyan-500" size={24} />;
+  };
 
   return (
     <div className="flex-1 bg-white overflow-y-auto min-h-0">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
 
         {/* Header */}
-        <div className="text-center mb-8 sm:mb-10">
-          <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 bg-gray-100 rounded-2xl mb-4">
-            <Cloud size={24} className="text-gray-600 sm:hidden" />
-            <Cloud size={28} className="text-gray-600 hidden sm:block" />
+        <div className="mb-10 flex items-end justify-between">
+          <div>
+            <h1 className="text-3xl sm:text-4xl font-semibold text-gray-900 mb-3">Automations</h1>
+            <p className="text-gray-500 text-lg">Create agents that run in the background.</p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-semibold text-gray-900 mb-2">Let's automate</h1>
-          <p className="text-gray-500 text-sm sm:text-base">Automate work by setting up scheduled tasks</p>
-        </div>
-
-        {/* Create Button */}
-        <div className="flex justify-center mb-6 sm:mb-8">
           <button
             onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium rounded-xl shadow-sm transition-colors"
+            className="hidden sm:flex items-center gap-2 px-4 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-xl transition-all shadow-sm hover:shadow-md"
           >
-            <Plus size={16} />
-            <span className="hidden sm:inline">Create Automation</span>
-            <span className="sm:hidden">Create</span>
+            <Plus size={18} />
+            <span>New Automation</span>
           </button>
         </div>
 
-        {/* Grid of Automation Cards - Responsive */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          {automations.map((auto, idx) => (
+        {/* Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {automations.map((recipe, index) => (
             <AutomationCard
-              key={idx}
-              icon={auto.icon}
-              title={auto.title}
-              description={auto.description}
+              key={recipe.id || index}
+              icon={getIcon(recipe.title)}
+              title={recipe.title}
+              description={recipe.description}
+              onClick={async () => {
+                if (confirm(`Run automation "${recipe.title}"?`)) {
+                  // Logic to run
+                  if (recipe.script) {
+                    try {
+                      const res = await useAppStore.getState().runAutomation(recipe.script);
+                      alert(`Result: ${res.stdout}`);
+                    } catch (e) { alert('Error running automation'); }
+                  } else {
+                    alert('No script defined for this automation.');
+                  }
+                }
+              }}
             />
           ))}
         </div>
@@ -187,6 +204,7 @@ const AutomationDashboard = () => {
       <CreateAutomationModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
+        onCreate={addAutomation}
       />
     </div>
   );

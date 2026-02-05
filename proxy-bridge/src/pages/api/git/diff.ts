@@ -11,7 +11,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     // We call our Python extractor for the heavy lifting of parsing
-    const scriptPath = '/home/fish/clawd/projects/codex-clone/proxy-bridge/src/lib/git_diff_extractor.py';
+    import path from 'path';
+    const scriptPath = path.join(process.cwd(), 'src/lib/git_diff_extractor.py');
     const output = execSync(`python3 ${scriptPath} ${projectPath} ${filePath || ''}`).toString();
     
     const diffData = JSON.parse(output);
