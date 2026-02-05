@@ -27,7 +27,8 @@ import Sidebar from './Sidebar';
 import AutomationDashboard from './AutomationDashboard';
 import SkillsManager from './SkillsManager';
 import AgenticWorkbench from './AgenticWorkbench';
-import { sendChatMessage, getGitDiff, type Message } from '../../services/api';
+import XtermTerminal from './XtermTerminal';
+import { sendChatMessage, sendChatMessageStream, getGitDiff, type Message } from '../../services/api';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useAppStore } from '../../store/useAppStore';
 import { useHiveStore } from '../../store/useHiveStore';
@@ -232,7 +233,7 @@ const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange,
                               key={m}
                               onClick={() => { onModelSelect(m); setIsModelMenuOpen(false); }}
                               className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition-colors ${m === selectedModel
-                                ? 'bg-zinc-900 text-white shadow-lg'
+                                ? 'bg-[#0F172A] text-white shadow-lg'
                                 : 'text-zinc-600 hover:bg-zinc-50'
                                 }`}
                             >
@@ -260,7 +261,7 @@ const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange,
               disabled={!value.trim() || isLoading}
               className={`p-2 rounded-xl transition-all shadow-md ${!value.trim() || isLoading
                 ? 'bg-gray-100 text-gray-300'
-                : 'bg-zinc-900 text-white hover:bg-zinc-800 scale-105 active:scale-95'
+                : 'bg-[#0F172A] text-white hover:bg-[#1E293B] scale-105 active:scale-95'
                 }`}
             >
               {isLoading ? <Loader2 size={18} className="animate-spin" /> : <ArrowUp size={18} strokeWidth={2.5} />}
@@ -271,33 +272,6 @@ const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange,
     </div>
   );
 };
-
-// Terminal Drawer (Light Mode)
-const TerminalDrawer = ({ onClose }: { onClose: () => void }) => (
-  <motion.div
-    initial={{ y: '100%' }}
-    animate={{ y: 0 }}
-    exit={{ y: '100%' }}
-    transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-    className="absolute bottom-0 left-0 right-0 h-64 sm:h-72 bg-white border-t border-gray-200 shadow-2xl z-50 flex flex-col"
-  >
-    <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100 flex-shrink-0">
-      <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-        <Terminal size={14} />
-        <span>TERMINAL - Local</span>
-      </div>
-      <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
-        <X size={14} />
-      </button>
-    </div>
-    <div className="flex-1 p-4 font-mono text-xs sm:text-sm text-slate-700 bg-slate-50 overflow-auto">
-      <div><span className="text-green-600">➜</span> <span className="text-blue-600">~/projects/astroscope</span> git status</div>
-      <div className="text-slate-500">On branch main</div>
-      <div className="text-slate-500">Your branch is up to date with 'origin/main'.</div>
-      <div className="mt-2"><span className="text-green-600">➜</span> <span className="text-blue-600">~/projects/astroscope</span> <span className="animate-pulse">_</span></div>
-    </div>
-  </motion.div>
-);
 
 // Command Palette / Search Modal
 const CommandPalette = ({ onClose }: { onClose: () => void }) => (
@@ -646,7 +620,15 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         {/* Terminal Drawer */}
         <AnimatePresence>
           {isTerminalOpen && (
-            <TerminalDrawer onClose={() => setIsTerminalOpen(false)} />
+            <div className="absolute bottom-0 left-0 right-0 h-72 z-50">
+              <XtermTerminal />
+              <button 
+                onClick={() => setIsTerminalOpen(false)}
+                className="absolute top-2 right-4 text-slate-500 hover:text-white z-[60]"
+              >
+                <X size={14} />
+              </button>
+            </div>
           )}
         </AnimatePresence>
       </div>

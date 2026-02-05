@@ -3,7 +3,7 @@ import React from 'react';
 const DiffLine = ({ type, content, lineNo }: any) => {
   const bgColor = type === 'add' ? 'bg-green-500/20' : type === 'del' ? 'bg-red-500/20' : '';
   const prefix = type === 'add' ? '+' : type === 'del' ? '-' : ' ';
-  const prefixColor = type === 'add' ? 'text-green-400' : type === 'del' ? 'text-red-400' : 'text-slate-500';
+  const prefixColor = type === 'add' ? 'text-[#22C55E]' : type === 'del' ? 'text-red-400' : 'text-slate-500';
 
   return (
     <div className={`flex font-mono text-xs py-0.5 ${bgColor} border-l-4 ${type === 'add' ? 'border-green-500' : type === 'del' ? 'border-red-500' : 'border-transparent'}`}>
@@ -24,9 +24,9 @@ const DiffViewer = () => {
 
   return (
     <div className="bg-slate-950 rounded-2xl border border-slate-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 w-full max-w-4xl">
-      <div className="bg-slate-900 px-4 py-2 flex justify-between items-center border-b border-slate-800">
+      <div className="bg-[#0F172A] px-4 py-2 flex justify-between items-center border-b border-slate-800">
         <div className="flex items-center gap-2">
-          <span className="text-blue-400">📄</span>
+          <span className="text-[#3B82F6]">📄</span>
           <span className="text-xs font-bold text-slate-200 uppercase tracking-widest">Sidebar.tsx</span>
         </div>
         <div className="flex gap-2">
@@ -46,8 +46,8 @@ const DiffViewer = () => {
         </div>
       </div>
 
-      <div className="bg-slate-900/50 p-3 flex justify-end gap-3 border-t border-slate-800">
-        <button className="px-4 py-1.5 bg-slate-800 text-slate-300 text-[10px] font-bold rounded-lg hover:text-white transition-colors">Discard</button>
+      <div className="bg-[#0F172A]/50 p-3 flex justify-end gap-3 border-t border-slate-800">
+        <button className="px-4 py-1.5 bg-[#1E293B] text-slate-300 text-[10px] font-bold rounded-lg hover:text-white transition-colors">Discard</button>
         <button className="px-4 py-1.5 bg-blue-600 text-white text-[10px] font-bold rounded-lg hover:bg-blue-500 transition-all">Stage Changes</button>
       </div>
     </div>

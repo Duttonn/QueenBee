@@ -39,7 +39,7 @@ const QueenBeeTrigger = () => {
         relative overflow-hidden flex items-center transition-all duration-500
         ${isHovered 
           ? 'bg-white shadow-2xl rounded-2xl p-4 border border-blue-50' 
-          : 'bg-slate-900 border border-slate-700 rounded-full py-2 px-4 shadow-lg cursor-pointer'}
+          : 'bg-[#0F172A] border border-slate-700 rounded-full py-2 px-4 shadow-lg cursor-pointer'}
       `}>
         
         {/* Queen Bee Logo (Royal Bee Icon) */}

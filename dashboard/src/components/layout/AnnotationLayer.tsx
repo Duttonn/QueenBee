@@ -40,7 +40,7 @@ const AnnotationLayer = ({ activeComponent }: any) => {
               className="w-full border-none outline-none resize-none h-12"
               placeholder="What should I change here?"
             />
-            <button className="mt-1 w-full bg-slate-900 text-white py-1 rounded font-bold uppercase">Send to Agent</button>
+            <button className="mt-1 w-full bg-[#0F172A] text-white py-1 rounded font-bold uppercase">Send to Agent</button>
           </div>
         </div>
       ))}

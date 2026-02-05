@@ -87,7 +87,7 @@ const ReviewAndShip = () => {
             <div className="flex gap-3">
                <div className="text-2xl">👑🐝</div>
                <div>
-                  <h4 className="text-xs font-bold text-blue-400 uppercase tracking-wide mb-1">Intent Analysis</h4>
+                  <h4 className="text-xs font-bold text-[#3B82F6] uppercase tracking-wide mb-1">Intent Analysis</h4>
                   <p className="text-xs text-gray-300 leading-relaxed">
                      This change introduces the <strong>Sidebar</strong> component to navigate the workspace structure and adds the <strong>AgenticWorkbench</strong> for chat interactions. It aligns with the PRD sections 2.2 and 3.
                   </p>
@@ -107,7 +107,7 @@ const ReviewAndShip = () => {
          {/* PR Intelligence Footer */}
          <div className="h-12 bg-[#1a1a1a] border-t border-gray-800 flex items-center justify-between px-6">
             <div className="flex items-center gap-4">
-               <div className="flex items-center gap-2 text-xs text-green-400">
+               <div className="flex items-center gap-2 text-xs text-[#22C55E]">
                   <Check size={14} />
                   <span>CI Checks Passed</span>
                </div>
@@ -136,7 +136,7 @@ const FileItem = ({ name, status, active, onClick }: any) => (
     <div className="flex items-center gap-2">
       <span className="text-xs">{name}</span>
     </div>
-    <span className={`text-[10px] font-mono w-4 text-center ${status === 'M' ? 'text-yellow-400' : 'text-green-400'}`}>
+    <span className={`text-[10px] font-mono w-4 text-center ${status === 'M' ? 'text-yellow-400' : 'text-[#22C55E]'}`}>
       {status}
     </span>
   </div>

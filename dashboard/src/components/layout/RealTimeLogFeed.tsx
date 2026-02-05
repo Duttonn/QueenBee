@@ -21,11 +21,11 @@ const RealTimeLogFeed = ({ jobId }: { jobId: string }) => {
         Live Log Stream: {jobId}
       </div>
       {logs.map((log, i) => (
-        <div key={i} className="text-green-400 py-0.5 border-l border-slate-800 pl-2">
+        <div key={i} className="text-[#22C55E] py-0.5 border-l border-slate-800 pl-2">
           {log}
         </div>
       ))}
-      <div className="animate-pulse text-blue-400 mt-1">_</div>
+      <div className="animate-pulse text-[#3B82F6] mt-1">_</div>
     </div>
   );
 };

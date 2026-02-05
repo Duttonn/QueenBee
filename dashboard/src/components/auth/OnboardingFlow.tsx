@@ -45,7 +45,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-br from-[#0F172A] via-[#1E293B] to-[#0F172A] flex items-center justify-center p-4">
             {/* Background */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
                 <div className="absolute -top-40 -right-40 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
@@ -55,10 +55,10 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
             <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="relative z-10 w-full max-w-2xl bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+                className="relative z-10 w-full max-w-2xl bg-[#0F172A]/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
             >
                 {/* Progress Bar */}
-                <div className="h-1 bg-slate-800">
+                <div className="h-1 bg-[#1E293B]">
                     <motion.div
                         className="h-full bg-gradient-to-r from-blue-500 to-purple-500"
                         initial={{ width: 0 }}
@@ -95,7 +95,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
                 </div>
 
                 {/* Footer Navigation */}
-                <div className="px-8 py-4 border-t border-white/5 bg-slate-900/50 flex justify-between items-center">
+                <div className="px-8 py-4 border-t border-white/5 bg-[#0F172A]/50 flex justify-between items-center">
                     <div className="flex gap-2">
                         {steps.map((step, i) => (
                             <div
@@ -163,7 +163,7 @@ const WelcomeStep = ({ onNext }: { onNext: () => void }) => (
 );
 
 const FeatureBox = ({ icon, title, desc }: { icon: string; title: string; desc: string }) => (
-    <div className="bg-slate-800/50 border border-white/5 rounded-xl p-4 text-center">
+    <div className="bg-[#1E293B]/50 border border-white/5 rounded-xl p-4 text-center">
         <div className="text-2xl mb-2">{icon}</div>
         <div className="text-sm font-medium text-white">{title}</div>
         <div className="text-xs text-slate-500">{desc}</div>
@@ -271,7 +271,7 @@ const ProvidersStep = ({
                 {providers.map((provider, index) => (
                     <div
                         key={provider.id}
-                        className={`bg-slate-800/50 border rounded-xl transition-all ${provider.connected ? 'border-green-500/30' : 'border-white/5'
+                        className={`bg-[#1E293B]/50 border rounded-xl transition-all ${provider.connected ? 'border-green-500/30' : 'border-white/5'
                             }`}
                     >
                         {/* Header */}
@@ -284,7 +284,7 @@ const ProvidersStep = ({
                                 <div className="flex items-center gap-2">
                                     <span className="font-medium text-white">{provider.name}</span>
                                     {provider.connected && (
-                                        <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                        <span className="text-xs bg-green-500/20 text-[#22C55E] px-2 py-0.5 rounded-full flex items-center gap-1">
                                             <Check size={10} />
                                             Connected
                                         </span>
@@ -332,7 +332,7 @@ const ProvidersStep = ({
                                                         value={provider.apiKey || ''}
                                                         onChange={(e) => onUpdate(provider.id, { apiKey: e.target.value })}
                                                         placeholder={`${provider.name} API key...`}
-                                                        className="w-full bg-slate-900 border border-white/10 rounded-lg py-2 pl-9 pr-4 text-sm text-white focus:border-blue-500 outline-none transition-all placeholder-slate-600"
+                                                        className="w-full bg-[#0F172A] border border-white/10 rounded-lg py-2 pl-9 pr-4 text-sm text-white focus:border-blue-500 outline-none transition-all placeholder-slate-600"
                                                     />
                                                 </div>
                                             </div>
@@ -344,7 +344,7 @@ const ProvidersStep = ({
                                                     value={provider.baseUrl || ''}
                                                     onChange={(e) => onUpdate(provider.id, { baseUrl: e.target.value })}
                                                     placeholder="http://localhost:11434"
-                                                    className="w-full bg-slate-900 border border-white/10 rounded-lg py-2 px-4 text-sm text-white focus:border-blue-500 outline-none transition-all placeholder-slate-600"
+                                                    className="w-full bg-[#0F172A] border border-white/10 rounded-lg py-2 px-4 text-sm text-white focus:border-blue-500 outline-none transition-all placeholder-slate-600"
                                                 />
                                             </div>
                                         )}
@@ -352,7 +352,7 @@ const ProvidersStep = ({
                                         <button
                                             onClick={() => handleTestConnection(provider)}
                                             disabled={testingId === provider.id}
-                                            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                                            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-[#3B82F6] text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
                                         >
                                             {testingId === provider.id ? (
                                                 <>
@@ -379,7 +379,7 @@ const ProvidersStep = ({
                                             >
                                                 <div className="flex items-start gap-2">
                                                     {testResults[provider.id].success ? (
-                                                        <Check className="text-green-400 flex-shrink-0 mt-0.5" size={14} />
+                                                        <Check className="text-[#22C55E] flex-shrink-0 mt-0.5" size={14} />
                                                     ) : (
                                                         <AlertCircle className="text-red-400 flex-shrink-0 mt-0.5" size={14} />
                                                     )}
@@ -478,7 +478,7 @@ const ForgesStep = ({
         >
             <div className="mb-6">
                 <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
-                    <Sparkles className="text-blue-400" size={20} />
+                    <Sparkles className="text-[#3B82F6]" size={20} />
                     Connect OAuth Providers
                 </h2>
                 <p className="text-sm text-slate-400">
@@ -490,7 +490,7 @@ const ForgesStep = ({
                 {forges.map((forge) => (
                     <div
                         key={forge.id}
-                        className={`bg-slate-800/50 border rounded-xl p-5 flex items-center justify-between transition-all ${forge.connected ? 'border-green-500/30' : 'border-white/5'
+                        className={`bg-[#1E293B]/50 border rounded-xl p-5 flex items-center justify-between transition-all ${forge.connected ? 'border-green-500/30' : 'border-white/5'
                             }`}
                     >
                         <div className="flex items-center gap-4">
@@ -510,7 +510,7 @@ const ForgesStep = ({
                                 <div className="flex items-center gap-2">
                                     <span className="font-medium text-white">{forge.name}</span>
                                     {forge.connected && (
-                                        <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                        <span className="text-xs bg-green-500/20 text-[#22C55E] px-2 py-0.5 rounded-full flex items-center gap-1">
                                             <Check size={10} />
                                             @{forge.username}
                                         </span>
@@ -526,7 +526,7 @@ const ForgesStep = ({
                             onClick={() => handleConnect(forge.id)}
                             disabled={connecting === forge.id || forge.connected}
                             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${forge.connected
-                                ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+                                ? 'bg-green-500/10 text-[#22C55E] border border-green-500/20'
                                 : 'bg-blue-600 hover:bg-blue-500 text-white'
                                 } disabled:opacity-50`}
                         >
@@ -597,11 +597,11 @@ const CompleteStep = () => {
                 </div>
             </div>
 
-            <div className="bg-slate-800/30 border border-white/5 rounded-xl p-4 text-left">
+            <div className="bg-[#1E293B]/30 border border-white/5 rounded-xl p-4 text-left">
                 <div className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-3">Connected Services</div>
                 <div className="flex flex-wrap gap-2">
                     {connectedProviders.map(p => (
-                        <span key={p.id} className="px-3 py-1.5 bg-blue-500/20 text-blue-400 rounded-lg text-sm flex items-center gap-1">
+                        <span key={p.id} className="px-3 py-1.5 bg-[#3B82F6]/20 text-[#3B82F6] rounded-lg text-sm flex items-center gap-1">
                             {p.icon} {p.name}
                         </span>
                     ))}

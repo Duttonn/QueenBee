@@ -49,7 +49,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
   io.on('connection', (socket) => {
     console.log('[LogRelay] Dashboard connected:', socket.id);
-    
+
     // Initialize the Nervous System for this client
     new EventLoopManager(socket);
 

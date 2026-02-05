@@ -12,7 +12,9 @@ import {
   Search,
   Plus,
   Loader2,
-  Check
+  Check,
+  Globe,
+  Link as LinkIcon
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -30,22 +32,58 @@ interface SidebarProps {
 const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, selectedProjectId, onProjectSelect }: SidebarProps) => {
   const { projects: appProjects } = useAppStore();
   const { projects, addProject, activeThreadId, setActiveThread } = useHiveStore();
-  const { forges } = useAuthStore();
+  const { forges, user } = useAuthStore();
   const gitForge = forges.find(f => f.id === 'github');
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [isAddRepoOpen, setIsAddRepoOpen] = useState(false);
   const [isCloning, setIsCloning] = useState<string | null>(null);
+  const [importUrl, setImportUrl] = useState('');
+  const [isCloudImportOpen, setIsCloudImportOpen] = useState(false);
+
+  const handleImportUrl = async () => {
+    if (!importUrl) return;
+    setIsCloning('url');
+    
+    try {
+      const res = await fetch('http://localhost:3000/api/projects/import-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repoUrl: importUrl,
+          projectName: importUrl.split('/').pop(),
+          accessToken: gitForge?.accessToken
+        })
+      });
+
+      if (res.ok) {
+        const newProject = await res.json();
+        addProject(newProject);
+        setIsCloudImportOpen(false);
+        setImportUrl('');
+        onProjectSelect?.(newProject.id);
+        setActiveThread(newProject.threads[0].id);
+      } else {
+        const err = await res.json();
+        alert(`Cloud import failed: ${err.error}`);
+      }
+    } catch (error) {
+      console.error('Cloud import failed:', error);
+      alert(`Failed to import repository to cloud: ${error}`);
+    } finally {
+      setIsCloning(null);
+    }
+  };
 
   const handleImportRepo = async (repo: any) => {
     setIsCloning(repo.full_name);
-    const targetDir = `/Users/ndn18/PersonalProjects/QueenBee/projects/${repo.name}`;
     
-    try {
-      console.log(`[Electron] Starting clone for ${repo.full_name}...`);
-      if (window.electron) {
+    // Check if we are in Electron or Web
+    if (window.electron) {
+      const targetDir = `/Users/ndn18/PersonalProjects/QueenBee/projects/${repo.name}`;
+      try {
+        console.log(`[Electron] Starting clone for ${repo.full_name}...`);
         await window.electron.clone(repo.html_url, targetDir);
         
-        // Add to Hive Store
         const newProject = {
           id: repo.id.toString(),
           name: repo.name,
@@ -61,24 +99,49 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
         setIsAddRepoOpen(false);
         onProjectSelect?.(newProject.id);
         setActiveThread(newProject.threads[0].id);
-      } else {
-        alert("Electron native bridge not available. Please ensure you are running the Electron app.");
+      } catch (error) {
+        console.error('Clone failed:', error);
+        alert(`Failed to clone repository: ${error}`);
+      } finally {
+        setIsCloning(null);
       }
-    } catch (error) {
-      console.error('Clone failed:', error);
-      alert(`Failed to clone repository: ${error}`);
-    } finally {
-      setIsCloning(null);
+    } else {
+      // WEB MODE - Use Cloud Import
+      try {
+        const res = await fetch('http://localhost:3000/api/projects/import-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            repoUrl: repo.html_url || repo.url,
+            projectName: repo.name,
+            accessToken: gitForge?.accessToken
+          })
+        });
+
+        if (res.ok) {
+          const newProject = await res.json();
+          addProject(newProject);
+          setIsAddRepoOpen(false);
+          onProjectSelect?.(newProject.id);
+          setActiveThread(newProject.threads[0].id);
+        } else {
+          const err = await res.json();
+          alert(`Cloud import failed: ${err.error}`);
+        }
+      } catch (error) {
+        console.error('Cloud import failed:', error);
+        alert(`Failed to import to cloud: ${error}`);
+      } finally {
+        setIsCloning(null);
+      }
     }
   };
 
   useEffect(() => {
-    // Initialize expanded state for new projects
     const newExpanded = { ...expandedFolders };
     projects.forEach(p => {
       if (newExpanded[p.name] === undefined) newExpanded[p.name] = true;
     });
-    // Add git repos
     if (gitForge?.repositories) {
       gitForge.repositories.forEach(repo => {
         const key = repo.fullName || repo.full_name;
@@ -95,10 +158,8 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
   return (
     <div className="w-72 sm:w-72 bg-gray-50/95 backdrop-blur-xl h-full flex flex-col border-r border-gray-200/50 shadow-sm">
 
-      {/* Top spacing */}
       <div className="h-4 flex-shrink-0"></div>
 
-      {/* Search */}
       <div className="px-3 mb-2 flex-shrink-0">
         <button 
           onClick={onSearchClick}
@@ -110,7 +171,6 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
         </button>
       </div>
 
-      {/* Navigation */}
       <div className="px-2 space-y-0.5 mb-4">
         <NavItem
           icon={<PenSquare size={16} />}
@@ -135,25 +195,67 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
         />
       </div>
 
-      {/* Divider */}
       <div className="mx-3 h-px bg-gray-200 mb-3"></div>
 
-      {/* Threads Section */}
       <div className="flex-1 overflow-y-auto px-2">
         <div className="flex items-center justify-between px-2 mb-2 relative">
           <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
             Threads
           </div>
-          {/* Add Repo Button */}
-          <button
-            onClick={() => setIsAddRepoOpen(!isAddRepoOpen)}
-            className="text-gray-400 hover:text-blue-500 transition-colors p-1 hover:bg-gray-100 rounded"
-            title="Import Repository"
-          >
-            <Plus size={14} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setIsCloudImportOpen(!isCloudImportOpen)}
+              className="text-gray-400 hover:text-blue-500 transition-colors p-1 hover:bg-gray-100 rounded"
+              title="Import from URL (Cloud)"
+            >
+              <Globe size={14} />
+            </button>
+            <button
+              onClick={() => setIsAddRepoOpen(!isAddRepoOpen)}
+              className="text-gray-400 hover:text-blue-500 transition-colors p-1 hover:bg-gray-100 rounded"
+              title="Import Repository"
+            >
+              <Plus size={14} />
+            </button>
+          </div>
 
-          {/* Import Repo Dropdown */}
+          <AnimatePresence>
+            {isCloudImportOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setIsCloudImportOpen(false)} />
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  className="absolute right-0 top-6 w-64 z-20 bg-white rounded-xl shadow-xl border border-gray-100 p-3"
+                >
+                  <div className="text-xs font-bold text-gray-600 mb-2 uppercase tracking-widest flex items-center gap-2">
+                    <Globe size={12} className="text-blue-500" /> Cloud Workspace
+                  </div>
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <LinkIcon size={12} className="absolute left-2 top-2.5 text-gray-400" />
+                      <input 
+                        type="text" 
+                        placeholder="GitHub URL..." 
+                        className="w-full bg-gray-50 border border-gray-100 rounded-lg py-2 pl-7 pr-2 text-xs outline-none focus:border-blue-500"
+                        value={importUrl}
+                        onChange={(e) => setImportUrl(e.target.value)}
+                      />
+                    </div>
+                    <button 
+                      onClick={handleImportUrl}
+                      disabled={isCloning === 'url' || !importUrl}
+                      className="w-full bg-[#0F172A] text-white text-xs font-bold py-2 rounded-lg hover:bg-[#1E293B] transition-colors disabled:opacity-50"
+                    >
+                      {isCloning === 'url' ? <Loader2 size={14} className="animate-spin mx-auto" /> : 'Import to Server'}
+                    </button>
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+
           <AnimatePresence>
             {isAddRepoOpen && (
               <>
@@ -175,10 +277,10 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                     {gitForge?.connected ? (
                       gitForge.repositories && gitForge.repositories.length > 0 ? (
                         gitForge.repositories.map((repo: any) => {
-                          const isImported = projects.some(p => p.id === repo.id.toString());
+                          const isImported = projects.some(p => p.id === (repo.id ? repo.id.toString() : ''));
                           return (
                             <button
-                              key={repo.id}
+                              key={repo.id || repo.name}
                               disabled={isCloning === repo.full_name || isImported}
                               className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors disabled:opacity-50"
                               onClick={() => handleImportRepo(repo)}
@@ -196,7 +298,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                                   {isImported ? 'Imported' : repo.full_name}
                                 </div>
                               </div>
-                              {isImported && <Check size={12} className="text-green-500 flex-shrink-0" />}
+                              {isImported && <Check size={12} className="text-[#22C55E] flex-shrink-0" />}
                             </button>
                           );
                         })
@@ -217,7 +319,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                               console.error('Login failed', e);
                             }
                           }}
-                          className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white text-xs font-medium py-2 rounded-lg hover:bg-slate-800 transition-colors"
+                          className="w-full flex items-center justify-center gap-2 bg-[#0F172A] text-white text-xs font-medium py-2 rounded-lg hover:bg-[#1E293B] transition-colors"
                         >
                           <div className="w-4 h-4 rounded-full bg-white text-slate-900 flex items-center justify-center">
                             <Plus size={10} />
@@ -248,7 +350,6 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
 
         {projects.map(project => (
           <div key={project.name} className="mb-2">
-            {/* Folder Header */}
             <button
               onClick={() => {
                 toggleFolder(project.name);
@@ -257,20 +358,19 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
               }}
               className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm font-medium rounded-lg transition-colors ${
                 selectedProjectId === project.id && !activeThreadId
-                ? 'bg-blue-50 text-blue-700 shadow-sm border border-blue-100/50' 
+                ? 'bg-blue-50 text-[#3B82F6] shadow-sm border border-blue-100/50' 
                 : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
               {expandedFolders[project.name] ? (
-                <ChevronDown size={14} className={selectedProjectId === project.id ? 'text-blue-500' : 'text-gray-400'} />
+                <ChevronDown size={14} className={selectedProjectId === project.id ? 'text-[#3B82F6]' : 'text-gray-400'} />
               ) : (
-                <ChevronRight size={14} className={selectedProjectId === project.id ? 'text-blue-500' : 'text-gray-400'} />
+                <ChevronRight size={14} className={selectedProjectId === project.id ? 'text-[#3B82F6]' : 'text-gray-400'} />
               )}
-              <Folder size={14} className={selectedProjectId === project.id ? 'text-blue-500' : 'text-gray-400'} />
+              {project.path.includes('/workspaces/') ? <Globe size={14} className={selectedProjectId === project.id ? 'text-[#3B82F6]' : 'text-blue-400'} /> : <Folder size={14} className={selectedProjectId === project.id ? 'text-[#3B82F6]' : 'text-gray-400'} />}
               <span>{project.name}</span>
             </button>
 
-            {/* Thread Items */}
             {expandedFolders[project.name] && (
               <div className="ml-4 space-y-0.5 mt-1">
                 {project.threads?.map((thread: any) => (
@@ -287,13 +387,13 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <MessageSquare size={12} className={activeThreadId === thread.id ? 'text-blue-500' : 'text-gray-400'} />
+                      <MessageSquare size={12} className={activeThreadId === thread.id ? 'text-[#3B82F6]' : 'text-gray-400'} />
                       <span className="text-sm truncate">{thread.title}</span>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
                       {thread.diff && (
                         <span className="text-[10px] font-mono">
-                          <span className="text-green-600">{thread.diff.split(' ')[0]}</span>
+                          <span className="text-[#22C55E]">{thread.diff.split(' ')[0]}</span>
                           {' '}
                           <span className="text-red-500">{thread.diff.split(' ')[1]}</span>
                         </span>
@@ -308,7 +408,6 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
         ))}
       </div>
 
-      {/* GitHub Repositories Section */}
       {gitForge?.connected && gitForge?.repositories && gitForge.repositories.length > 0 && (
         <div className="flex-1 overflow-y-auto px-2 mt-4 border-t border-gray-100 pt-2">
           <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-2 mb-2">
@@ -316,12 +415,12 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
           </div>
 
           {gitForge.repositories.map((repo: any) => {
-            const isImported = projects.some(p => p.id === repo.id.toString());
+            const isImported = projects.some(p => p.id === (repo.id ? repo.id.toString() : ''));
             return (
-              <div key={repo.id} className="mb-1">
+              <div key={repo.id || repo.name} className="mb-1">
                 <button
                   onClick={() => {
-                    const existing = projects.find(p => p.id === repo.id.toString());
+                    const existing = projects.find(p => p.id === (repo.id ? repo.id.toString() : ''));
                     if (existing) {
                       onProjectSelect?.(existing.id);
                       setActiveThread(null);
@@ -330,8 +429,8 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                     }
                   }}
                   className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                    selectedProjectId === repo.id.toString() 
-                    ? 'bg-blue-50 text-blue-700 border border-blue-100/50 shadow-sm' 
+                    selectedProjectId === (repo.id ? repo.id.toString() : '') 
+                    ? 'bg-blue-50 text-[#3B82F6] border border-blue-100/50 shadow-sm' 
                     : 'text-gray-700 hover:bg-gray-100'
                   }`}
                 >
@@ -339,7 +438,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                     {isCloning === repo.full_name ? <Loader2 size={10} className="animate-spin" /> : repo.name[0].toUpperCase()}
                   </div>
                   <span className="truncate flex-1 text-left">{repo.name}</span>
-                  {isImported && <Check size={10} className="text-green-500 opacity-60" />}
+                  {isImported && <Check size={10} className="text-[#22C55E] opacity-60" />}
                 </button>
               </div>
             );
@@ -347,15 +446,14 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
         </div>
       )}
 
-      {/* User Footer */}
       <div className="p-3 border-t border-gray-200/50 bg-white/50 mt-auto">
         <div className="flex items-center gap-3 p-2 rounded-xl hover:bg-white transition-all shadow-sm border border-transparent hover:border-gray-100 cursor-pointer group">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-md">
-            ND
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#3B82F6] to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-md">
+            {user?.name ? user.name.split(' ').map((n: string) => n[0]).join('') : 'ND'}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-gray-900 truncate">Natao Dutton</div>
-            <div className="text-xs text-green-600 font-medium">Pro Plan</div>
+            <div className="text-sm font-medium text-gray-900 truncate">{user?.name || 'Natao Dutton'}</div>
+            <div className="text-xs text-[#22C55E] font-medium">Pro Plan</div>
           </div>
 
           {onOpenSettings && (

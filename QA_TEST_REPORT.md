@@ -28,7 +28,7 @@
 
 **Test:**
 ```bash
-curl -X POST http://localhost:3001/api/tasks/claim \
+curl -X POST http://localhost:3000/api/tasks/claim \
   -H "Content-Type: application/json" \
   -d '{"taskId":"TASK-TEST", "agentId":"Antigravity"}'
 ```
@@ -58,7 +58,7 @@ curl -X POST http://localhost:3001/api/tasks/claim \
 
 **Problème détecté:**
 ```
-Access to XMLHttpRequest at 'http://localhost:3001/api/logs/stream/...' 
+Access to XMLHttpRequest at 'http://localhost:3000/api/logs/stream/...' 
 from origin 'http://localhost:5173' has been blocked by CORS policy
 ```
 

@@ -8,7 +8,7 @@ import crypto from 'crypto';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 // Redirect URI for local flow
-const REDIRECT_URI = 'http://localhost:3001/api/auth/callback';
+const REDIRECT_URI = 'http://localhost:3000/api/auth/callback';
 
 export class AuthManager {
 

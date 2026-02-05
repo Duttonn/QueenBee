@@ -1186,7 +1186,7 @@ useEffect(() => { initSocket(); }, [initSocket]);
 **Fichier** : `dashboard/src/store/useHiveStore.ts`
 **Code** :
 fetchProjects: async () => {
-  const res = await fetch('http://localhost:3001/api/projects');
+  const res = await fetch('http://localhost:3000/api/projects');
   if (res.ok) set({ projects: await res.json() });
 }
 **Validation** : Projets de queenbee.json apparaissent

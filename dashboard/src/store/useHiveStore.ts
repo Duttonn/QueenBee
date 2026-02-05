@@ -9,7 +9,7 @@ interface HiveState {
   isOrchestratorActive: boolean;
   queenStatus: string;
   lastEvent: string | null;
-  socket: Socket | null; // Mark as any to avoid persistence issues with Socket instance
+  socket: Socket | null;
 
   // Actions
   initSocket: () => void;
@@ -24,6 +24,7 @@ interface HiveState {
   addThread: (projectId: string, thread: any) => void;
   updateThread: (projectId: string, threadId: string, updates: any) => void;
   addMessage: (projectId: string, threadId: string, message: any) => void;
+  updateLastMessage: (projectId: string, threadId: string, content: string) => void;
   updateToolCall: (projectId: string, threadId: string, messageIndex: number, toolCallId: string, updates: any) => void;
 }
 
@@ -41,15 +42,13 @@ export const useHiveStore = create<HiveState>()(
       initSocket: () => {
         if (get().socket) return;
         const socket = io('http://localhost:3000', {
-          path: '/api/logs/stream'
+          path: '/api/logs/stream',
+          transports: ['websocket', 'polling']
         });
-
-        // Listeners moved to useSocketEvents hook in TASK-03
         set({ socket });
       },
 
       setQueenStatus: (status) => set({ queenStatus: status }),
-
       setProjects: (projects) => set({ projects }),
       addProject: (project) => set((state) => ({ projects: [...state.projects, project] })),
 
@@ -97,17 +96,33 @@ export const useHiveStore = create<HiveState>()(
         )
       })),
 
-      updateToolCall: (projectId, threadId, messageIndex, toolCallId, updates) => set((state) => ({
-        projects: state.projects.map(p => 
+      updateLastMessage: (projectId, threadId, content) => set((state) => ({
+        projects: state.projects.map(p =>
           p.id === projectId ? {
             ...p,
-            threads: p.threads.map((t: any) => 
+            threads: p.threads.map((t: any) =>
               t.id === threadId ? {
                 ...t,
-                messages: t.messages.map((msg: any, idx: number) => 
+                messages: t.messages.map((msg: any, idx: number) =>
+                  idx === t.messages.length - 1 ? { ...msg, content: msg.content + content } : msg
+                )
+              } : t
+            )
+          } : p
+        )
+      })),
+
+      updateToolCall: (projectId, threadId, messageIndex, toolCallId, updates) => set((state) => ({
+        projects: state.projects.map(p =>
+          p.id === projectId ? {
+            ...p,
+            threads: p.threads.map((t: any) =>
+              t.id === threadId ? {
+                ...t,
+                messages: t.messages.map((msg: any, idx: number) =>
                   idx === messageIndex ? {
                     ...msg,
-                    toolCalls: msg.toolCalls?.map((tc: any) => 
+                    toolCalls: msg.toolCalls?.map((tc: any) =>
                       tc.id === toolCallId ? { ...tc, ...updates } : tc
                     )
                   } : msg
@@ -126,7 +141,7 @@ export const useHiveStore = create<HiveState>()(
         activeAgents: state.activeAgents,
         activeThreadId: state.activeThreadId,
         isOrchestratorActive: state.isOrchestratorActive
-      }), // Don't persist the socket instance!
+      }),
     }
   )
 );

@@ -33,7 +33,7 @@ const PRPanel = ({ projectName }: any) => {
           {status === 'draft' && (
             <button 
               onClick={() => setStatus('submitted')}
-              className="flex-1 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-blue-600 transition-all"
+              className="flex-1 py-2 bg-[#0F172A] text-white text-xs font-bold rounded-xl hover:bg-blue-600 transition-all"
             >
               Create Pull Request
             </button>

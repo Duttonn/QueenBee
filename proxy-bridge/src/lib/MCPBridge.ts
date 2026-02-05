@@ -1,12 +1,12 @@
 import { execSync } from 'child_process';
 import axios from 'axios';
+import path from 'path';
 
 /**
  * MCPBridge: Standardized gateway for Model Context Protocol servers.
  */
 export class MCPBridge {
-      import path from 'path';
-    private configPath = path.join(process.cwd(), '../architecture/MCP_CONFIG.json');
+  private configPath = path.join(process.cwd(), '../architecture/MCP_CONFIG.json');
 
   async callTool(serverName: string, toolName: string, args: any) {
     console.log(`[MCP] Calling ${serverName}/${toolName}`);

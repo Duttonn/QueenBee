@@ -123,7 +123,7 @@ const AuthCallback = ({ onSuccess, onError }: AuthCallbackProps) => {
             <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-2xl max-w-md w-full text-center"
+                className="bg-[#0F172A]/80 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-2xl max-w-md w-full text-center"
             >
                 {/* Status Icon */}
                 <div className="mb-6">
@@ -133,7 +133,7 @@ const AuthCallback = ({ onSuccess, onError }: AuthCallbackProps) => {
                             transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                             className="w-16 h-16 mx-auto bg-blue-500/20 rounded-full flex items-center justify-center"
                         >
-                            <Loader2 className="text-blue-400" size={32} />
+                            <Loader2 className="text-[#3B82F6]" size={32} />
                         </motion.div>
                     )}
 
@@ -144,7 +144,7 @@ const AuthCallback = ({ onSuccess, onError }: AuthCallbackProps) => {
                             transition={{ type: 'spring', stiffness: 200 }}
                             className="w-16 h-16 mx-auto bg-green-500/20 rounded-full flex items-center justify-center"
                         >
-                            <CheckCircle2 className="text-green-400" size={32} />
+                            <CheckCircle2 className="text-[#22C55E]" size={32} />
                         </motion.div>
                     )}
 
@@ -178,7 +178,7 @@ const AuthCallback = ({ onSuccess, onError }: AuthCallbackProps) => {
 
                 {/* Message */}
                 <h2 className={`text-xl font-semibold mb-2 ${status === 'error' ? 'text-red-400' :
-                    status === 'success' ? 'text-green-400' :
+                    status === 'success' ? 'text-[#22C55E]' :
                         'text-white'
                     }`}>
                     {status === 'loading' ? 'Connecting...' :

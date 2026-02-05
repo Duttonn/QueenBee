@@ -25,13 +25,14 @@ export class UniversalDispatcher {
 
     if (isAction) {
       this.socket.emit('DISPATCH_TYPE', { type: 'ACTION' });
-      return this.orchestrator.startFeatureWorkflow(activeProjectPath, input, activeProjectPath);
+      const workflowData = await this.orchestrator.startFeatureWorkflow(activeProjectPath, input, activeProjectPath);
+      return { type: 'ACTION' as const, ...workflowData };
     } else {
       this.socket.emit('DISPATCH_TYPE', { type: 'SEARCH' });
       // Search logic: uses the aggregator to find relevant snippets or files
       const results = await this.performSearch(input, activeProjectPath);
       this.socket.emit('SEARCH_RESULTS', results);
-      return results;
+      return { type: 'SEARCH' as const, results };
     }
   }
 

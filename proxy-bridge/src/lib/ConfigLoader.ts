@@ -3,8 +3,7 @@ import path from 'path';
 import yaml from 'js-yaml';
 
 export class ConfigLoader {
-      import path from 'path';
-    private configDir = path.join(process.cwd(), '../config/local');
+  private configDir = path.join(process.cwd(), '../config/local');
 
   async loadLocalConfigs() {
     const files = await fs.readdir(this.configDir);

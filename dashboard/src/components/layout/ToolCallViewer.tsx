@@ -24,12 +24,12 @@ const ToolCallViewer = ({ toolCalls = [], onApprove, onReject }: any) => {
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 20 }}
-                        className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-xl"
+                        className="bg-[#0F172A] border border-slate-200 rounded-xl p-4 shadow-xl"
                     >
                         <div className="flex items-start justify-between mb-3">
                             <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                                    {call.tool === 'write_file' ? <FileEdit size={16} className="text-blue-400" /> : <Terminal size={16} className="text-green-400" />}
+                                    {call.tool === 'write_file' ? <FileEdit size={16} className="text-[#3B82F6]" /> : <Terminal size={16} className="text-[#22C55E]" />}
                                 </div>
                                 <div>
                                     <div className="text-sm font-bold text-white">
@@ -62,7 +62,7 @@ const ToolCallViewer = ({ toolCalls = [], onApprove, onReject }: any) => {
                             </button>
                             <button
                                 onClick={() => onReject?.(call.id)}
-                                className="flex-1 py-2 bg-slate-800 hover:bg-red-600/20 hover:text-red-400 text-slate-400 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+                                className="flex-1 py-2 bg-[#1E293B] hover:bg-red-600/20 hover:text-red-400 text-slate-400 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
                             >
                                 <X size={14} /> Reject
                             </button>
@@ -72,7 +72,7 @@ const ToolCallViewer = ({ toolCalls = [], onApprove, onReject }: any) => {
             </AnimatePresence>
 
             {toolCalls.length === 0 && (
-                <div className="text-center py-8 border border-dashed border-slate-800 rounded-xl">
+                <div className="text-center py-8 border border-dashed border-slate-200 rounded-xl">
                     <Check size={24} className="mx-auto mb-2 text-slate-700 opacity-20" />
                     <p className="text-[10px] text-slate-600 font-medium">No pending security approvals</p>
                 </div>

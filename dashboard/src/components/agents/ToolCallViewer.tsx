@@ -121,7 +121,7 @@ const ToolCallViewer: React.FC<ToolCallViewerProps> = ({
           </button>
           <button 
             onClick={onApprove}
-            className="px-3 py-1.5 rounded-lg bg-zinc-900 text-white text-xs font-medium hover:bg-zinc-800 transition-all shadow-sm flex items-center gap-1.5"
+            className="px-3 py-1.5 rounded-lg bg-[#0F172A] text-white text-xs font-medium hover:bg-zinc-800 transition-all shadow-sm flex items-center gap-1.5"
           >
             <Check size={14} />
             Approve & Execute
