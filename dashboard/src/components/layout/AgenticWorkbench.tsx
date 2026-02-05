@@ -90,22 +90,6 @@ const AgenticWorkbench = ({
               <span className="text-xs font-semibold text-zinc-700">{activeProject.name}</span>
             </div>
           )}
-
-          {/* Mode Selector */}
-          <div className="flex items-center bg-gray-100 rounded-lg p-1">
-            {(['local', 'worktree', 'cloud'] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => onModeChange(m)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${mode === m
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-                  }`}
-              >
-                {m.charAt(0).toUpperCase() + m.slice(1)}
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* Actions */}

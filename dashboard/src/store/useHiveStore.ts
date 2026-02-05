@@ -5,6 +5,7 @@ import { io, Socket } from 'socket.io-client';
 interface HiveState {
   projects: any[];
   activeAgents: any[];
+  activeThreadId: string | null;
   isOrchestratorActive: boolean;
   lastEvent: string | null;
   socket: any | null; // Mark as any to avoid persistence issues with Socket instance
@@ -15,6 +16,12 @@ interface HiveState {
   addProject: (project: any) => void;
   spawnAgent: (projectId: string, agent: any) => void;
   updateAgentStatus: (projectId: string, agentName: string, status: string) => void;
+  
+  // Thread Actions
+  setActiveThread: (id: string | null) => void;
+  addThread: (projectId: string, thread: any) => void;
+  updateThread: (projectId: string, threadId: string, updates: any) => void;
+  addMessage: (projectId: string, threadId: string, message: any) => void;
 }
 
 export const useHiveStore = create<HiveState>()(
@@ -25,6 +32,7 @@ export const useHiveStore = create<HiveState>()(
         { id: 'vos', name: 'visionOS MCP', agents: [], threads: [], type: 'local' }
       ],
       activeAgents: [],
+      activeThreadId: null,
       isOrchestratorActive: false,
       lastEvent: null,
       socket: null,
@@ -63,6 +71,35 @@ export const useHiveStore = create<HiveState>()(
             agents: p.agents.map((a: any) => a.name === agentName ? { ...a, status } : a)
           } : p
         )
+      })),
+
+      setActiveThread: (activeThreadId) => set({ activeThreadId }),
+
+      addThread: (projectId, thread) => set((state) => ({
+        projects: state.projects.map(p => 
+          p.id === projectId ? { ...p, threads: [{ ...thread, messages: [] }, ...(p.threads || [])] } : p
+        ),
+        activeThreadId: thread.id
+      })),
+
+      updateThread: (projectId, threadId, updates) => set((state) => ({
+        projects: state.projects.map(p => 
+          p.id === projectId ? {
+            ...p,
+            threads: p.threads.map((t: any) => t.id === threadId ? { ...t, ...updates } : t)
+          } : p
+        )
+      })),
+
+      addMessage: (projectId, threadId, message) => set((state) => ({
+        projects: state.projects.map(p => 
+          p.id === projectId ? {
+            ...p,
+            threads: p.threads.map((t: any) => 
+              t.id === threadId ? { ...t, messages: [...(t.messages || []), message] } : t
+            )
+          } : p
+        )
       }))
     }),
     {
@@ -71,6 +108,7 @@ export const useHiveStore = create<HiveState>()(
       partialize: (state) => ({
         projects: state.projects,
         activeAgents: state.activeAgents,
+        activeThreadId: state.activeThreadId,
         isOrchestratorActive: state.isOrchestratorActive
       }), // Don't persist the socket instance!
     }
