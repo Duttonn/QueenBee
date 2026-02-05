@@ -9,5 +9,6 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.once('native-context-reply', (event, data) => resolve(data));
       ipcRenderer.send('get-native-context');
     });
-  }
+  },
+  notify: (title, body) => ipcRenderer.send('notification:show', { title, body })
 });

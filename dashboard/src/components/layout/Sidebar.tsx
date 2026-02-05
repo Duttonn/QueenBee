@@ -10,7 +10,9 @@ import {
   MessageSquare,
   Settings,
   Search,
-  Plus
+  Plus,
+  Loader2,
+  Check
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -35,11 +37,55 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
   const [isCloning, setIsCloning] = useState<string | null>(null);
 
   const handleImportRepo = async (repo: any) => {
-    // ... (rest same as before)
+    setIsCloning(repo.full_name);
+    const targetDir = `/Users/ndn18/PersonalProjects/QueenBee/projects/${repo.name}`;
+    
+    try {
+      console.log(`[Electron] Starting clone for ${repo.full_name}...`);
+      if (window.electron) {
+        await window.electron.clone(repo.html_url, targetDir);
+        
+        // Add to Hive Store
+        const newProject = {
+          id: repo.id.toString(),
+          name: repo.name,
+          path: targetDir,
+          agents: [],
+          threads: [
+            { id: Date.now().toString(), title: 'Initial Triage', diff: '+0 -0', time: 'Just now', messages: [] }
+          ],
+          type: 'local'
+        };
+        
+        addProject(newProject);
+        setIsAddRepoOpen(false);
+        onProjectSelect?.(newProject.id);
+        setActiveThread(newProject.threads[0].id);
+      } else {
+        alert("Electron native bridge not available. Please ensure you are running the Electron app.");
+      }
+    } catch (error) {
+      console.error('Clone failed:', error);
+      alert(`Failed to clone repository: ${error}`);
+    } finally {
+      setIsCloning(null);
+    }
   };
 
   useEffect(() => {
-    // ... (rest same as before)
+    // Initialize expanded state for new projects
+    const newExpanded = { ...expandedFolders };
+    projects.forEach(p => {
+      if (newExpanded[p.name] === undefined) newExpanded[p.name] = true;
+    });
+    // Add git repos
+    if (gitForge?.repositories) {
+      gitForge.repositories.forEach(repo => {
+        const key = repo.fullName || repo.full_name;
+        if (newExpanded[key] === undefined) newExpanded[key] = false;
+      });
+    }
+    setExpandedFolders(newExpanded);
   }, [projects, gitForge?.repositories]);
 
   const toggleFolder = (folder: string) => {
@@ -128,26 +174,32 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                   <div className="max-h-60 overflow-y-auto">
                     {gitForge?.connected ? (
                       gitForge.repositories && gitForge.repositories.length > 0 ? (
-                        gitForge.repositories.map((repo: any) => (
-                          <button
-                            key={repo.id}
-                            disabled={isCloning === repo.full_name}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors disabled:opacity-50"
-                            onClick={() => handleImportRepo(repo)}
-                          >
-                            <div className="w-5 h-5 rounded-md bg-slate-100 flex items-center justify-center flex-shrink-0 text-xs text-slate-600 font-medium">
-                              {isCloning === repo.full_name ? (
-                                <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                              ) : (
-                                repo.name[0].toUpperCase()
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="text-sm text-gray-700 font-medium truncate">{repo.name}</div>
-                              <div className="text-[10px] text-gray-400 truncate">{repo.full_name}</div>
-                            </div>
-                          </button>
-                        ))
+                        gitForge.repositories.map((repo: any) => {
+                          const isImported = projects.some(p => p.id === repo.id.toString());
+                          return (
+                            <button
+                              key={repo.id}
+                              disabled={isCloning === repo.full_name || isImported}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors disabled:opacity-50"
+                              onClick={() => handleImportRepo(repo)}
+                            >
+                              <div className="w-5 h-5 rounded-md bg-slate-100 flex items-center justify-center flex-shrink-0 text-xs text-slate-600 font-medium">
+                                {isCloning === repo.full_name ? (
+                                  <Loader2 size={12} className="text-blue-500 animate-spin" />
+                                ) : (
+                                  repo.name[0].toUpperCase()
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm text-gray-700 font-medium truncate">{repo.name}</div>
+                                <div className="text-[10px] text-gray-400 truncate">
+                                  {isImported ? 'Imported' : repo.full_name}
+                                </div>
+                              </div>
+                              {isImported && <Check size={12} className="text-green-500 flex-shrink-0" />}
+                            </button>
+                          );
+                        })
                       ) : (
                         <div className="px-3 py-4 text-center text-xs text-gray-400">
                           No repositories found
@@ -263,19 +315,35 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
             Repositories
           </div>
 
-          {gitForge.repositories.map((repo: any) => (
-            <div key={repo.id} className="mb-1">
-              <button
-                onClick={() => {/* TODO: Switch Context to this Repo */ }}
-                className="w-full flex items-center gap-2 px-2 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <div className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center text-xs">
-                  G
-                </div>
-                <span className="truncate">{repo.name}</span>
-              </button>
-            </div>
-          ))}
+          {gitForge.repositories.map((repo: any) => {
+            const isImported = projects.some(p => p.id === repo.id.toString());
+            return (
+              <div key={repo.id} className="mb-1">
+                <button
+                  onClick={() => {
+                    const existing = projects.find(p => p.id === repo.id.toString());
+                    if (existing) {
+                      onProjectSelect?.(existing.id);
+                      setActiveThread(null);
+                    } else {
+                      handleImportRepo(repo);
+                    }
+                  }}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                    selectedProjectId === repo.id.toString() 
+                    ? 'bg-blue-50 text-blue-700 border border-blue-100/50 shadow-sm' 
+                    : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  <div className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-500 font-bold flex-shrink-0">
+                    {isCloning === repo.full_name ? <Loader2 size={10} className="animate-spin" /> : repo.name[0].toUpperCase()}
+                  </div>
+                  <span className="truncate flex-1 text-left">{repo.name}</span>
+                  {isImported && <Check size={10} className="text-green-500 opacity-60" />}
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 

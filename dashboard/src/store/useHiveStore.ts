@@ -52,6 +52,12 @@ export const useHiveStore = create<HiveState>()(
           }
         });
 
+        socket.on('NATIVE_NOTIFICATION', (data: any) => {
+          if (window.electron) {
+            window.electron.notify(data.title, data.body);
+          }
+        });
+
         set({ socket });
       },
 
