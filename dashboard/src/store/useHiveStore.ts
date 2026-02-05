@@ -7,6 +7,7 @@ interface HiveState {
   activeAgents: any[];
   activeThreadId: string | null;
   isOrchestratorActive: boolean;
+  queenStatus: string;
   lastEvent: string | null;
   socket: any | null; // Mark as any to avoid persistence issues with Socket instance
 
@@ -27,13 +28,11 @@ interface HiveState {
 export const useHiveStore = create<HiveState>()(
   persist(
     (set, get) => ({
-      projects: [
-        { id: 'bj', name: 'Blackjack Advisor', agents: [], threads: [], type: 'local' },
-        { id: 'vos', name: 'visionOS MCP', agents: [], threads: [], type: 'local' }
-      ],
+      projects: [],
       activeAgents: [],
       activeThreadId: null,
       isOrchestratorActive: false,
+      queenStatus: 'idle',
       lastEvent: null,
       socket: null,
 
@@ -41,6 +40,18 @@ export const useHiveStore = create<HiveState>()(
         if (get().socket) return;
         const socket = io('http://localhost:3001', {
           path: '/api/logs/stream'
+        });
+
+        socket.on('connect', () => {
+          console.log('[Socket] Connected to backend');
+        });
+
+        socket.on('QUEEN_STATUS', (data: any) => {
+          set({ queenStatus: data.status });
+        });
+
+        socket.on('PROJECT_LIST_UPDATE', (data: any) => {
+          set({ projects: data.projects });
         });
 
         socket.on('UI_UPDATE', (data: any) => {

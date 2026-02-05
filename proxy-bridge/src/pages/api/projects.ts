@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { getDb, saveDb, Project } from '../../lib/db';
 import fs from 'fs';
 import path from 'path';
+import { broadcast } from '../../lib/socket-instance';
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
     const db = getDb();
@@ -28,6 +29,9 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
         db.projects.push(newProject);
         saveDb(db);
+
+        broadcast('PROJECT_LIST_UPDATE', { projects: db.projects });
+
         return res.status(201).json(newProject);
     }
 

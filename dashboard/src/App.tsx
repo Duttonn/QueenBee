@@ -5,11 +5,18 @@ import LoginPage from './components/auth/LoginPage';
 import AuthCallback from './components/auth/AuthCallback';
 import OnboardingFlow from './components/auth/OnboardingFlow';
 import { useAuthStore } from './store/useAuthStore';
+import { useHiveStore } from './store/useHiveStore';
 
 function App() {
   const { isAuthenticated, isOnboarded, login, setOnboarded, connectForge, forges } = useAuthStore();
+  const initSocket = useHiveStore(state => state.initSocket);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isCallback, setIsCallback] = useState(false);
+
+  // Initialize Socket.io connection on mount
+  useEffect(() => {
+    initSocket();
+  }, [initSocket]);
 
   // Check if this is an OAuth callback
   useEffect(() => {
