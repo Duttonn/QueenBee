@@ -4,7 +4,8 @@ import fs from 'fs-extra';
  * InboxManager: Triage system for autonomous agent findings.
  */
 export class InboxManager {
-  private inboxPath = '/home/fish/clawd/projects/codex-clone/data/inbox.json';
+      import path from 'path';
+    private inboxPath = path.join(process.cwd(), '../data/inbox.json');
 
   async addFinding(agentId: string, title: string, content: string) {
     const findings = await this.getFindings();

@@ -1,0 +1,36 @@
+{
+  "automations": [
+    {
+      "id": "1",
+      "title": "Daily Summary",
+      "description": "Generate a summary of code changes at 9 AM",
+      "schedule": "0 9 * * *",
+      "active": true,
+      "script": "git log --since=\"24 hours ago\" --oneline | mcp summarize"
+    },
+    {
+      "id": "2",
+      "title": "Auto-Review PRs",
+      "description": "Automatically review new PRs on GitHub",
+      "schedule": "Every hour",
+      "active": false
+    }
+  ],
+  "skills": [
+    {
+      "id": "figma-mcp",
+      "title": "Figma MCP → Figma",
+      "description": "Use Figma MCP for design-to-code work",
+      "installed": true,
+      "type": "mcp"
+    },
+    {
+      "id": "skill-creator",
+      "title": "Skill Creator",
+      "description": "Create or update a skill",
+      "installed": true,
+      "type": "plugin"
+    }
+  ],
+  "projects": []
+}

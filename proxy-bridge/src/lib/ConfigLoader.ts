@@ -3,7 +3,8 @@ import path from 'path';
 import yaml from 'js-yaml';
 
 export class ConfigLoader {
-  private configDir = '/home/fish/clawd/projects/codex-clone/config/local';
+      import path from 'path';
+    private configDir = path.join(process.cwd(), '../config/local');
 
   async loadLocalConfigs() {
     const files = await fs.readdir(this.configDir);
