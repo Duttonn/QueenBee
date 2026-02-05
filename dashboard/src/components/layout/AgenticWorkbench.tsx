@@ -174,7 +174,7 @@ const AgenticWorkbench = ({
           <button className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-medium rounded-lg transition-colors">
             <GitCommit size={12} />
             Commit
-            {diffStats.added > 0 && <span className="text-green-400 ml-1">+{diffStats.added}</span>}
+            {diffStats.added > 0 && <span className="text-[#22C55E] ml-1">+{diffStats.added}</span>}
             {diffStats.removed > 0 && <span className="text-red-400">-{diffStats.removed}</span>}
           </button>
         </div>

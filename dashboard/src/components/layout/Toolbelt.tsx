@@ -18,7 +18,7 @@ const Toolbelt = () => {
       {/* Skills Section */}
       <div className="space-y-2 mb-4">
         {skills.map(skill => (
-          <div key={skill.id} className="flex items-center gap-2 p-2 bg-slate-800/50 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors group">
+          <div key={skill.id} className="flex items-center gap-2 p-2 bg-[#1E293B]/50 rounded-lg hover:bg-[#1E293B] cursor-pointer transition-colors group">
             <span className="text-sm">{skill.icon}</span>
             <span className="text-xs text-slate-300 group-hover:text-white">{skill.name}</span>
           </div>
@@ -28,7 +28,7 @@ const Toolbelt = () => {
       {/* MCP Servers Section */}
       <div className="space-y-2">
         {mcpServers.map(server => (
-          <div key={server.id} className="flex items-center justify-between p-2 bg-slate-800/50 rounded-lg group">
+          <div key={server.id} className="flex items-center justify-between p-2 bg-[#1E293B]/50 rounded-lg group">
             <div className="flex items-center gap-2">
               <span className="text-sm">{server.icon}</span>
               <span className="text-xs text-slate-300">{server.name}</span>

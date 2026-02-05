@@ -33,7 +33,7 @@ export class EventLoopManager {
       const result = await this.dispatcher.dispatch(prompt, projectPath);
 
       if (result.type === 'ACTION') {
-        const agentName = result.agentName || 'Worker Bee';
+        const agentName = (result as any).agentName || 'Worker Bee';
         broadcast('UI_UPDATE', {
           action: 'SPAWN_AGENT_UI',
           payload: {

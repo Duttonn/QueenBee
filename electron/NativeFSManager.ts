@@ -1,19 +1,20 @@
-import { ipcMain, shell } from 'electron';
-import { exec } from 'child_process';
-import fs from 'fs-extra';
-import path from 'path';
+import type { IpcMainInvokeEvent } from 'electron';
+const { ipcMain, shell } = require('electron');
+const { exec } = require('child_process');
+const fs = require('fs-extra');
+const path = require('path');
 
 /**
  * NativeFSManager: The IPC bridge for system-level operations.
  * This runs in the Electron Main process (Native side).
  */
-export class NativeFSManager {
+class NativeFSManager {
   setupHandlers() {
     // Handler for cloning repos to the local machine
-    ipcMain.handle('fs:clone', async (event, { repoUrl, targetDir }) => {
+    ipcMain.handle('fs:clone', async (event: IpcMainInvokeEvent, { repoUrl, targetDir }: { repoUrl: string, targetDir: string }) => {
       console.log(`[NativeFS] Cloning ${repoUrl} into ${targetDir}`);
       return new Promise((resolve, reject) => {
-        exec(`git clone ${repoUrl} ${targetDir}`, (error, stdout, stderr) => {
+        exec(`git clone ${repoUrl} ${targetDir}`, (error: any, stdout: string, stderr: string) => {
           if (error) reject(stderr);
           else resolve(stdout);
         });
@@ -21,51 +22,46 @@ export class NativeFSManager {
     });
 
     // Handler for reading local system files
-    ipcMain.handle('fs:read', async (event, filePath) => {
+    ipcMain.handle('fs:read', async (event: IpcMainInvokeEvent, filePath: string) => {
       return await fs.readFile(filePath, 'utf-8');
     });
 
     // Handler for writing local system files
-    ipcMain.handle('fs:write', async (event, { filePath, content }) => {
+    ipcMain.handle('fs:write', async (event: IpcMainInvokeEvent, { filePath, content }: { filePath: string, content: string }) => {
       await fs.writeFile(filePath, content);
       return true;
     });
 
     // Handler for listing directory content
-    ipcMain.handle('fs:readDir', async (event, dirPath) => {
+    ipcMain.handle('fs:readDir', async (event: IpcMainInvokeEvent, dirPath: string) => {
       return await fs.readdir(dirPath);
     });
 
     // Shell Operations
-    ipcMain.handle('shell:openExternal', async (event, url) => {
+    ipcMain.handle('shell:openExternal', async (event: IpcMainInvokeEvent, url: string) => {
       await shell.openExternal(url);
       return true;
     });
 
-    ipcMain.handle('shell:showItemInFolder', async (event, filePath) => {
+    ipcMain.handle('shell:showItemInFolder', async (event: IpcMainInvokeEvent, filePath: string) => {
       shell.showItemInFolder(filePath);
       return true;
     });
 
     // Git Operations (Basic wrappers around CLI)
-    ipcMain.handle('git:status', async (event, projectPath) => {
+    ipcMain.handle('git:status', async (event: IpcMainInvokeEvent, projectPath: string) => {
       return new Promise((resolve, reject) => {
-        exec('git status --json', { cwd: projectPath }, (error, stdout) => {
-          // Note: git status doesn't have a --json flag by default, 
-          // this is just a placeholder for the intent. 
-          // For now we return raw output or use a library if available.
-          exec('git status', { cwd: projectPath }, (err, out) => {
+        exec('git status', { cwd: projectPath }, (err: any, out: string) => { // Removed --json as it's not standard git status
             if (err) reject(err);
             else resolve(out);
           });
-        });
       });
     });
 
-    ipcMain.handle('git:diff', async (event, { projectPath, filePath }) => {
+    ipcMain.handle('git:diff', async (event: IpcMainInvokeEvent, { projectPath, filePath }: { projectPath: string, filePath?: string }) => {
       return new Promise((resolve, reject) => {
         const cmd = filePath ? `git diff ${filePath}` : 'git diff';
-        exec(cmd, { cwd: projectPath }, (error, stdout) => {
+        exec(cmd, { cwd: projectPath }, (error: any, stdout: string) => {
           if (error) reject(error);
           else resolve(stdout);
         });
@@ -73,3 +69,5 @@ export class NativeFSManager {
     });
   }
 }
+
+module.exports = { NativeFSManager };

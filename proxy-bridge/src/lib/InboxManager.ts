@@ -1,11 +1,11 @@
 import fs from 'fs-extra';
+import path from 'path';
 
 /**
  * InboxManager: Triage system for autonomous agent findings.
  */
 export class InboxManager {
-      import path from 'path';
-    private inboxPath = path.join(process.cwd(), '../data/inbox.json');
+  private inboxPath = path.join(process.cwd(), '../data/inbox.json');
 
   async addFinding(agentId: string, title: string, content: string) {
     const findings = await this.getFindings();

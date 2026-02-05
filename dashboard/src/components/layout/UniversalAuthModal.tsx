@@ -37,11 +37,11 @@ const UniversalAuthModal = ({ onComplete }: { onComplete: () => void }) => {
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="w-full max-w-2xl bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        className="w-full max-w-2xl bg-[#0F172A] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
       >
 
         {/* Header */}
-        <div className="p-6 border-b border-white/5 bg-zinc-900/50 backdrop-blur-md flex justify-between items-center">
+        <div className="p-6 border-b border-white/5 bg-[#0F172A]/50 backdrop-blur-md flex justify-between items-center">
           <div>
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               <ShieldCheck className="text-blue-500" />
@@ -56,7 +56,7 @@ const UniversalAuthModal = ({ onComplete }: { onComplete: () => void }) => {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 bg-zinc-900/30">
+        <div className="flex-1 overflow-y-auto p-6 bg-[#0F172A]/30">
           <AnimatePresence mode="wait">
 
             {activeTab === 'identity' && (
@@ -141,7 +141,7 @@ const UniversalAuthModal = ({ onComplete }: { onComplete: () => void }) => {
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-white/5 bg-zinc-900/50 backdrop-blur-md flex justify-end gap-3">
+        <div className="p-4 border-t border-white/5 bg-[#0F172A]/50 backdrop-blur-md flex justify-end gap-3">
           <button className="px-4 py-2 text-xs font-bold text-zinc-500 hover:text-zinc-300 transition-colors">Skip for now</button>
           <button
             onClick={onComplete}
@@ -169,14 +169,14 @@ const TabButton = ({ active, onClick, icon, label }: any) => (
 const ForgeCard = ({ name, icon, description, connected, details }: any) => (
   <div className="bg-zinc-950/50 border border-white/5 p-4 rounded-xl flex items-center justify-between hover:border-white/10 transition-colors shadow-sm">
     <div className="flex items-center gap-4">
-      <div className="w-10 h-10 bg-zinc-900 rounded-full flex items-center justify-center text-white border border-white/5">
+      <div className="w-10 h-10 bg-[#0F172A] rounded-full flex items-center justify-center text-white border border-white/5">
         {icon}
       </div>
       <div>
         <div className="flex items-center gap-2">
           <h4 className="font-bold text-zinc-200">{name}</h4>
           {connected ? (
-            <span className="text-[10px] bg-green-900/20 text-green-400 px-1.5 py-0.5 rounded border border-green-900/30">Connected</span>
+            <span className="text-[10px] bg-green-900/20 text-[#22C55E] px-1.5 py-0.5 rounded border border-green-900/30">Connected</span>
           ) : (
             <span className="text-[10px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded border border-white/5">Not Connected</span>
           )}
@@ -186,7 +186,7 @@ const ForgeCard = ({ name, icon, description, connected, details }: any) => (
     </div>
     <button className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${connected
         ? 'border-red-900/30 text-red-400 hover:bg-red-900/20'
-        : 'border-blue-600/50 text-blue-400 hover:bg-blue-900/20 hover:border-blue-500'
+        : 'border-blue-600/50 text-[#3B82F6] hover:bg-blue-900/20 hover:border-blue-500'
       }`}>
       {connected ? 'Disconnect' : 'Connect'}
     </button>

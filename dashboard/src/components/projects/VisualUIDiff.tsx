@@ -8,7 +8,7 @@ const VisualUIDiff = ({ beforeImg, afterImg }: any) => {
   const [mode, setMode] = useState<'swipe' | 'ghost'>('swipe');
 
   return (
-    <div className="relative w-full aspect-video bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-2xl">
+    <div className="relative w-full aspect-video bg-[#0F172A] rounded-3xl overflow-hidden border border-slate-800 shadow-2xl">
       {/* Header Controls */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex gap-2 bg-black/40 backdrop-blur-md p-1 rounded-full border border-white/10">
         <button 
@@ -50,7 +50,7 @@ const VisualUIDiff = ({ beforeImg, afterImg }: any) => {
 
           {/* Slider Handle */}
           <div 
-            className="absolute top-0 bottom-0 w-1 bg-blue-500 z-40 shadow-[0_0_15px_#3b82f6]"
+            className="absolute top-0 bottom-0 w-1 bg-blue-500 z-40 shadow-[0_0_15px_#3B82F6]"
             style={{ left: `${sliderPos}%` }}
           >
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs shadow-xl">
@@ -66,7 +66,7 @@ const VisualUIDiff = ({ beforeImg, afterImg }: any) => {
       )}
 
       <div className="absolute bottom-4 left-6 flex flex-col">
-        <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Visual Delta Engine</span>
+        <span className="text-[10px] font-black text-[#3B82F6] uppercase tracking-widest">Visual Delta Engine</span>
         <span className="text-[9px] text-slate-500">98% match detected. 4 components modified.</span>
       </div>
     </div>

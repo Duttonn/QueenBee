@@ -72,6 +72,79 @@ export async function sendChatMessage(request: ChatRequest): Promise<any> {
 }
 
 /**
+ * Send a chat message to the AI provider and stream the response
+ */
+export async function sendChatMessageStream(
+    request: ChatRequest,
+    onChunk: (text: string) => void,
+    onComplete: (fullText: string) => void,
+    onError: (error: Error) => void
+): Promise<void> {
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'X-Codex-Provider': request.provider || 'mock',
+    };
+
+    if (request.apiKey) {
+        headers['Authorization'] = `Bearer ${request.apiKey}`;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/api/chat`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                model: request.model,
+                messages: request.messages,
+                stream: true,
+            }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Chat request failed');
+        }
+
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let fullText = '';
+
+        if (!reader) {
+            throw new Error('Response body is null');
+        }
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            
+            // SSE parsing (simplified)
+            // Expected format: data: {"choices": [{"delta": {"content": "..."}}]}
+            const lines = chunk.split('\n');
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.substring(6));
+                        const content = data.choices?.[0]?.delta?.content || '';
+                        if (content) {
+                            fullText += content;
+                            onChunk(content);
+                        }
+                    } catch (e) {
+                        // Not JSON, might be raw text or partial
+                    }
+                }
+            }
+        }
+
+        onComplete(fullText);
+    } catch (error: any) {
+        onError(error instanceof Error ? error : new Error(String(error)));
+    }
+}
+
+/**
  * Get git diff for a project
  */
 export async function getGitDiff(projectPath: string, filePath?: string): Promise<DiffStats> {

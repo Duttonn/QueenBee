@@ -32,7 +32,7 @@ const GlobalOrchestratorOverlay = () => {
   }, []);
 
   return (
-    <div className="fixed bottom-4 right-4 w-80 bg-slate-800 border border-blue-500 rounded-lg shadow-2xl p-4 text-white z-50">
+    <div className="fixed bottom-4 right-4 w-80 bg-[#1E293B] border border-blue-500 rounded-lg shadow-2xl p-4 text-white z-50">
       <div className="flex items-center gap-2 mb-2">
         <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
         <span className="font-bold text-sm uppercase">Global Orchestrator</span>
@@ -40,8 +40,8 @@ const GlobalOrchestratorOverlay = () => {
       <div className="text-xs text-slate-400 mb-3">
         {lastCommand || "Monitoring UI events..."}
       </div>
-      <div className="bg-slate-900 rounded p-2 text-xs border border-slate-700">
-        <span className="text-green-400">fitch@codex:~$</span> Waiting for command...
+      <div className="bg-[#0F172A] rounded p-2 text-xs border border-slate-700">
+        <span className="text-[#22C55E]">fitch@codex:~$</span> Waiting for command...
       </div>
     </div>
   );

@@ -5,21 +5,21 @@ const SourceControl = () => {
   const [isPushing, setIsPushing] = useState(false);
 
   return (
-    <div className="mt-6 border-t border-slate-700 pt-4 px-4 bg-slate-900/50 rounded-b-xl pb-4">
+    <div className="mt-6 border-t border-slate-700 pt-4 px-4 bg-[#0F172A]/50 rounded-b-xl pb-4">
       <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 flex justify-between items-center">
         <span>Source Control</span>
-        <span className="text-blue-400">main*</span>
+        <span className="text-[#3B82F6]">main*</span>
       </div>
 
       {/* Changes List */}
       <div className="space-y-1 mb-4">
-        <div className="flex justify-between items-center text-[11px] text-slate-300 hover:bg-slate-800 p-1 rounded cursor-pointer group">
+        <div className="flex justify-between items-center text-[11px] text-slate-300 hover:bg-[#1E293B] p-1 rounded cursor-pointer group">
           <span className="truncate">M Sidebar.tsx</span>
-          <span className="text-blue-400 opacity-0 group-hover:opacity-100">diff</span>
+          <span className="text-[#3B82F6] opacity-0 group-hover:opacity-100">diff</span>
         </div>
-        <div className="flex justify-between items-center text-[11px] text-slate-300 hover:bg-slate-800 p-1 rounded cursor-pointer group">
+        <div className="flex justify-between items-center text-[11px] text-slate-300 hover:bg-[#1E293B] p-1 rounded cursor-pointer group">
           <span className="truncate">A GitWorkflow.md</span>
-          <span className="text-green-400 opacity-0 group-hover:opacity-100">diff</span>
+          <span className="text-[#22C55E] opacity-0 group-hover:opacity-100">diff</span>
         </div>
       </div>
 
@@ -28,7 +28,7 @@ const SourceControl = () => {
         <textarea 
           value={commitMsg}
           onChange={(e) => setCommitMsg(e.target.value)}
-          className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-[10px] text-slate-200 focus:border-blue-500 outline-none resize-none h-16"
+          className="w-full bg-[#1E293B] border border-slate-700 rounded-lg p-2 text-[10px] text-slate-200 focus:border-blue-500 outline-none resize-none h-16"
           placeholder="Commit message..."
         />
         <div className="flex gap-2">
@@ -45,7 +45,7 @@ const SourceControl = () => {
       </div>
       
       {isPushing && (
-        <div className="mt-3 text-[9px] text-green-400 animate-pulse font-mono">
+        <div className="mt-3 text-[9px] text-[#22C55E] animate-pulse font-mono">
           {'>'} git push origin main... SUCCESS
         </div>
       )}

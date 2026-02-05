@@ -2,30 +2,42 @@
   "name": "queen-bee",
   "version": "0.1.0",
   "private": true,
-  "main": "electron/main.ts",
+  "main": "dashboard/dist-electron/main.js",
   "scripts": {
     "postinstall": "npm install --prefix dashboard && npm install --prefix proxy-bridge",
-    "dev": "concurrently \"npm run dev --prefix dashboard\" \"npm run dev --prefix proxy-bridge\" \"npm run electron:dev\"",
-    "build": "npm run build --prefix dashboard && npm run build --prefix proxy-bridge && electron-builder",
-    "electron:dev": "npm run build --prefix dashboard && concurrently \"npm run dev --prefix dashboard\" \"wait-on http://localhost:5173 && electron .\"",
+    "dev": "npm run dev --prefix dashboard",
+    "build": "npm run build --prefix dashboard && electron-builder",
+    "electron:dev": "npm run dev --prefix dashboard",
     "electron:build": "npm run build --prefix dashboard && electron-builder",
     "build-dashboard": "npm run build --prefix dashboard"
   },
   "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "concurrently": "^8.2.2",
     "electron": "^29.2.0",
     "electron-builder": "^23.0.0",
-    "concurrently": "^8.2.2",
+    "vite": "^7.3.1",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6",
     "wait-on": "^7.2.0"
   },
   "build": {
     "appId": "com.queenbee.app",
     "productName": "QueenBee",
     "directories": {
-      "output": "dist-electron"
+      "output": "dist-electron",
+      "buildResources": "build"
     },
     "files": [
-      "electron/**/*",
-      "dashboard/dist/**/*"
+      "dashboard/dist-electron/**",
+      "dashboard/dist/**"
+    ],
+    "asarUnpack": [
+      "**/*.node"
     ]
+  },
+  "dependencies": {
+    "fs-extra": "^11.3.3",
+    "simple-git": "^3.30.0"
   }
 }

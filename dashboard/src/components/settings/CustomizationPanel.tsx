@@ -213,7 +213,7 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
                         <>
                             <button
                                 onClick={() => toggleFolder(node.path)}
-                                className="w-full flex items-center gap-1.5 px-2 py-1 text-left text-sm text-slate-400 hover:text-white hover:bg-white/5 rounded transition-colors"
+                                className="w-full flex items-center gap-1.5 px-2 py-1 text-left text-sm text-slate-500 hover:text-[#0F172A] hover:bg-slate-50 rounded transition-colors"
                             >
                                 {expandedFolders.has(node.path) ? (
                                     <ChevronDown size={14} />
@@ -231,11 +231,11 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
                         <button
                             onClick={() => loadFile(node.path)}
                             className={`w-full flex items-center gap-1.5 px-2 py-1 text-left text-sm rounded transition-colors ${selectedFile === node.path
-                                ? 'bg-blue-500/20 text-blue-300'
-                                : 'text-slate-400 hover:text-white hover:bg-white/5'
+                                ? 'bg-blue-50 text-[#3B82F6]'
+                                : 'text-slate-500 hover:text-[#0F172A] hover:bg-slate-50'
                                 }`}
                         >
-                            <FileCode size={14} className="text-blue-400 ml-4" />
+                            <FileCode size={14} className="text-[#3B82F6] ml-4" />
                             <span>{node.name}</span>
                         </button>
                     )}
@@ -252,30 +252,30 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+                className="fixed inset-0 z-50 bg-[#0F172A]/60 backdrop-blur-sm flex items-center justify-center p-4"
                 onClick={onClose}
             >
                 <motion.div
                     initial={{ opacity: 0, scale: 0.95, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                    className="w-full max-w-5xl h-[80vh] bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+                    className="w-full max-w-5xl h-[80vh] bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
                     onClick={e => e.stopPropagation()}
                 >
                     {/* Header */}
-                    <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-gray-50/50 backdrop-blur-md">
+                    <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/50 backdrop-blur-md">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-zinc-900 rounded-xl flex items-center justify-center shadow-lg">
+                            <div className="w-10 h-10 bg-[#0F172A] rounded-xl flex items-center justify-center shadow-lg">
                                 <Settings className="text-white" size={20} />
                             </div>
                             <div>
-                                <h2 className="text-lg font-bold text-zinc-900">Customize Queen Bee</h2>
-                                <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider">Settings & Configuration</p>
+                                <h2 className="text-lg font-bold text-[#0F172A]">Customize Queen Bee</h2>
+                                <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">Settings & Configuration</p>
                             </div>
                         </div>
                         <button
                             onClick={onClose}
-                            className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-lg transition-colors"
+                            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                         >
                             <X size={20} />
                         </button>
@@ -283,7 +283,7 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
 
                     <div className="flex flex-1 overflow-hidden">
                         {/* Sidebar */}
-                        <div className="w-56 border-r border-gray-100 bg-zinc-50/50 backdrop-blur-xl p-2 flex flex-col gap-1">
+                        <div className="w-56 border-r border-slate-100 bg-slate-50/50 backdrop-blur-xl p-2 flex flex-col gap-1">
                             <TabButton
                                 active={activeTab === 'appearance'}
                                 onClick={() => setActiveTab('appearance')}
@@ -386,8 +386,8 @@ const TabButton = ({ active, onClick, icon, label }: any) => (
     <button
         onClick={onClick}
         className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${active
-            ? 'bg-zinc-900 text-white shadow-md'
-            : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+            ? 'bg-[#0F172A] text-white shadow-md'
+            : 'text-slate-600 hover:bg-slate-100 hover:text-[#0F172A]'
             }`}
     >
         {icon}
@@ -453,14 +453,14 @@ const ConfigTab = () => {
             className="flex-1 flex flex-col overflow-hidden bg-white"
         >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/30">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/30">
                 <div>
-                    <h3 className="text-lg font-bold text-zinc-900">Global Configuration</h3>
-                    <p className="text-[11px] font-medium text-zinc-400 uppercase tracking-widest">Edit hive parameters</p>
+                    <h3 className="text-lg font-bold text-[#0F172A]">Global Configuration</h3>
+                    <p className="text-[11px] font-medium text-slate-400 uppercase tracking-widest">Edit hive parameters</p>
                 </div>
                 <div className="flex items-center gap-2">
                     {status === 'success' && (
-                        <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+                        <span className="flex items-center gap-1 text-xs text-[#22C55E] font-medium">
                             <CheckCircle2 size={12} />
                             Saved Successfully
                         </span>
@@ -468,7 +468,7 @@ const ConfigTab = () => {
                     <button
                         onClick={saveConfig}
                         disabled={isSaving || isLoading}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-colors shadow-lg"
+                        className="flex items-center gap-1.5 px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-colors shadow-lg"
                     >
                         {isSaving ? (
                             <Loader2 size={12} className="animate-spin" />
@@ -480,7 +480,7 @@ const ConfigTab = () => {
                     <button
                         onClick={loadConfig}
                         disabled={isSaving || isLoading}
-                        className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-lg transition-colors"
+                        className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                         title="Refresh"
                     >
                         <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
@@ -489,7 +489,7 @@ const ConfigTab = () => {
             </div>
 
             {/* Editor Area */}
-            <div className="flex-1 relative bg-zinc-50/50">
+            <div className="flex-1 relative bg-slate-50/50">
                 {errorMessage && (
                     <div className="absolute top-0 left-0 right-0 p-2 bg-red-50 border-b border-red-100 text-red-600 text-xs text-center font-medium">
                         {errorMessage}
@@ -498,7 +498,7 @@ const ConfigTab = () => {
                 <textarea
                     value={configYaml}
                     onChange={(e) => setConfigYaml(e.target.value)}
-                    className="w-full h-full bg-transparent text-zinc-800 font-mono text-sm p-6 resize-none focus:outline-none leading-relaxed"
+                    className="w-full h-full bg-transparent text-[#1E293B] font-mono text-sm p-6 resize-none focus:outline-none leading-relaxed"
                     spellCheck={false}
                     disabled={isLoading}
                 />
@@ -508,17 +508,14 @@ const ConfigTab = () => {
 };
 
 // Appearance Tab
-// ... existing AppearanceTab implementation ...
 const AppearanceTab = ({ theme, setTheme }: any) => (
     <motion.div
-        // ... existing content ...
-
         initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -20 }}
         className="p-6 overflow-y-auto"
     >
-        <h3 className="text-lg font-bold text-white mb-6">Theme & Appearance</h3>
+        <h3 className="text-lg font-bold text-[#0F172A] mb-6">Theme & Appearance</h3>
 
         <div className="space-y-6">
             {/* Color Pickers */}
@@ -538,7 +535,7 @@ const AppearanceTab = ({ theme, setTheme }: any) => (
                             type="text"
                             value={theme.primaryColor}
                             onChange={e => setTheme({ ...theme, primaryColor: e.target.value })}
-                            className="flex-1 bg-slate-800 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                            className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-[#1E293B]"
                         />
                     </div>
                 </div>
@@ -558,7 +555,7 @@ const AppearanceTab = ({ theme, setTheme }: any) => (
                             type="text"
                             value={theme.accentColor}
                             onChange={e => setTheme({ ...theme, accentColor: e.target.value })}
-                            className="flex-1 bg-slate-800 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                            className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-[#1E293B]"
                         />
                     </div>
                 </div>
@@ -575,8 +572,8 @@ const AppearanceTab = ({ theme, setTheme }: any) => (
                             key={size}
                             onClick={() => setTheme({ ...theme, fontSize: size })}
                             className={`flex-1 py-2 rounded-lg text-sm capitalize transition-colors ${theme.fontSize === size
-                                ? 'bg-blue-500 text-white'
-                                : 'bg-slate-800 text-slate-400 hover:text-white'
+                                ? 'bg-[#3B82F6] text-white'
+                                : 'bg-slate-100 text-slate-500 hover:text-[#0F172A]'
                                 }`}
                         >
                             {size}
@@ -596,8 +593,8 @@ const AppearanceTab = ({ theme, setTheme }: any) => (
                             key={density}
                             onClick={() => setTheme({ ...theme, density })}
                             className={`flex-1 py-2 rounded-lg text-sm capitalize transition-colors ${theme.density === density
-                                ? 'bg-blue-500 text-white'
-                                : 'bg-slate-800 text-slate-400 hover:text-white'
+                                ? 'bg-[#3B82F6] text-white'
+                                : 'bg-slate-100 text-slate-500 hover:text-[#0F172A]'
                                 }`}
                         >
                             {density}
@@ -644,7 +641,7 @@ const SkillsTab = ({ skills, setSkills }: any) => {
             exit={{ opacity: 0, x: -20 }}
             className="p-6 overflow-y-auto flex-1"
         >
-            <h3 className="text-lg font-bold text-white mb-2">Custom Skills</h3>
+            <h3 className="text-lg font-bold text-[#0F172A] mb-2">Custom Skills</h3>
             <p className="text-sm text-slate-400 mb-6">
                 Define custom behaviors and personas for the AI agents.
             </p>
@@ -655,32 +652,32 @@ const SkillsTab = ({ skills, setSkills }: any) => {
                     <div
                         key={skill.id}
                         className={`p-4 rounded-xl border transition-colors ${skill.enabled
-                            ? 'bg-slate-800/50 border-white/10'
-                            : 'bg-slate-900/50 border-white/5 opacity-50'
+                            ? 'bg-slate-50 border-slate-200'
+                            : 'bg-slate-50 border-slate-100 opacity-50'
                             }`}
                     >
                         <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-3">
                                 <button
                                     onClick={() => toggleSkill(skill.id)}
-                                    className={`w-10 h-6 rounded-full transition-colors ${skill.enabled ? 'bg-green-500' : 'bg-slate-700'
+                                    className={`w-10 h-6 rounded-full transition-colors ${skill.enabled ? 'bg-[#22C55E]' : 'bg-slate-200'
                                         }`}
                                 >
                                     <div className={`w-4 h-4 rounded-full bg-white transition-transform ${skill.enabled ? 'translate-x-5' : 'translate-x-1'
                                         }`} />
                                 </button>
-                                <span className="font-medium text-white">{skill.name}</span>
+                                <span className="font-medium text-[#1E293B]">{skill.name}</span>
                             </div>
                             <div className="flex items-center gap-1">
                                 <button
                                     onClick={() => setEditingSkill(editingSkill === skill.id ? null : skill.id)}
-                                    className="p-1.5 text-slate-400 hover:text-white hover:bg-white/5 rounded transition-colors"
+                                    className="p-1.5 text-slate-400 hover:text-[#0F172A] hover:bg-slate-100 rounded transition-colors"
                                 >
                                     <Edit3 size={14} />
                                 </button>
                                 <button
                                     onClick={() => deleteSkill(skill.id)}
-                                    className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
                                 >
                                     <Trash2 size={14} />
                                 </button>
@@ -693,7 +690,7 @@ const SkillsTab = ({ skills, setSkills }: any) => {
                                 onChange={e => setSkills(skills.map((s: any) =>
                                     s.id === skill.id ? { ...s, prompt: e.target.value } : s
                                 ))}
-                                className="w-full mt-2 bg-slate-900 border border-white/10 rounded-lg p-3 text-sm text-white resize-none"
+                                className="w-full mt-2 bg-white border border-slate-200 rounded-lg p-3 text-sm text-[#1E293B] resize-none focus:border-[#3B82F6] outline-none"
                                 rows={4}
                             />
                         )}
@@ -702,29 +699,29 @@ const SkillsTab = ({ skills, setSkills }: any) => {
             </div>
 
             {/* Add New Skill */}
-            <div className="p-4 bg-slate-800/30 border border-dashed border-white/10 rounded-xl">
+            <div className="p-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl">
                 <div className="flex items-center gap-2 mb-3">
                     <Plus size={16} className="text-slate-400" />
-                    <span className="text-sm font-medium text-slate-300">Add New Skill</span>
+                    <span className="text-sm font-medium text-slate-500">Add New Skill</span>
                 </div>
                 <input
                     type="text"
                     value={newSkillName}
                     onChange={e => setNewSkillName(e.target.value)}
                     placeholder="Skill name..."
-                    className="w-full mb-2 bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500"
+                    className="w-full mb-2 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-[#1E293B] placeholder-slate-400 outline-none focus:border-[#3B82F6]"
                 />
                 <textarea
                     value={newSkillPrompt}
                     onChange={e => setNewSkillPrompt(e.target.value)}
                     placeholder="System prompt for this skill..."
-                    className="w-full mb-3 bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 resize-none"
+                    className="w-full mb-3 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-[#1E293B] placeholder-slate-400 resize-none outline-none focus:border-[#3B82F6]"
                     rows={3}
                 />
                 <button
                     onClick={addSkill}
                     disabled={!newSkillName.trim()}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+                    className="px-4 py-2 bg-[#3B82F6] hover:bg-blue-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
                 >
                     Add Skill
                 </button>
@@ -752,8 +749,8 @@ const CodeTab = ({
         className="flex-1 flex overflow-hidden"
     >
         {/* File Tree */}
-        <div className="w-64 border-r border-white/5 overflow-y-auto p-2">
-            <div className="text-xs font-medium text-slate-500 uppercase tracking-wider px-2 py-2">
+        <div className="w-64 border-r border-slate-100 overflow-y-auto p-2 bg-white">
+            <div className="text-xs font-medium text-slate-400 uppercase tracking-wider px-2 py-2">
                 Source Files
             </div>
             {renderFileTree(fileTree)}
@@ -764,14 +761,14 @@ const CodeTab = ({
             {selectedFile ? (
                 <>
                     {/* File Header */}
-                    <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-slate-800/50">
+                    <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 bg-slate-50/50">
                         <div className="flex items-center gap-2">
-                            <FileCode size={14} className="text-blue-400" />
-                            <span className="text-sm text-slate-300">{selectedFile}</span>
+                            <FileCode size={14} className="text-[#3B82F6]" />
+                            <span className="text-sm text-slate-600 font-medium">{selectedFile}</span>
                         </div>
                         <div className="flex items-center gap-2">
                             {saveStatus === 'success' && (
-                                <span className="flex items-center gap-1 text-xs text-green-400">
+                                <span className="flex items-center gap-1 text-xs text-[#22C55E]">
                                     <CheckCircle2 size={12} />
                                     Saved
                                 </span>
@@ -779,7 +776,7 @@ const CodeTab = ({
                             <button
                                 onClick={onSave}
                                 disabled={isSaving}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#3B82F6] hover:bg-blue-600 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
                             >
                                 {isSaving ? (
                                     <Loader2 size={12} className="animate-spin" />
@@ -801,17 +798,17 @@ const CodeTab = ({
                             <textarea
                                 value={fileContent}
                                 onChange={e => setFileContent(e.target.value)}
-                                className="w-full h-full bg-slate-950 text-slate-300 text-sm font-mono p-4 resize-none focus:outline-none"
+                                className="w-full h-full bg-slate-50 text-[#1E293B] text-sm font-mono p-4 resize-none focus:outline-none leading-relaxed"
                                 spellCheck={false}
                             />
                         )}
                     </div>
                 </>
             ) : (
-                <div className="flex-1 flex items-center justify-center text-slate-500">
+                <div className="flex-1 flex items-center justify-center text-slate-400 bg-slate-50/30">
                     <div className="text-center">
-                        <FileCode size={48} className="mx-auto mb-4 opacity-30" />
-                        <p>Select a file to edit</p>
+                        <FileCode size={48} className="mx-auto mb-4 opacity-20" />
+                        <p className="text-sm font-medium uppercase tracking-widest">Select a file to edit</p>
                     </div>
                 </div>
             )}
@@ -827,7 +824,7 @@ const PluginsTab = () => (
         exit={{ opacity: 0, x: -20 }}
         className="p-6 overflow-y-auto"
     >
-        <h3 className="text-lg font-bold text-white mb-2">Plugins</h3>
+        <h3 className="text-lg font-bold text-[#0F172A] mb-2">Plugins</h3>
         <p className="text-sm text-slate-400 mb-6">
             Extend Queen Bee with community plugins.
         </p>
@@ -856,20 +853,20 @@ const PluginsTab = () => (
 );
 
 const PluginCard = ({ name, description, installed, author }: any) => (
-    <div className="p-4 bg-slate-800/50 border border-white/5 rounded-xl flex items-center justify-between">
+    <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between">
         <div>
             <div className="flex items-center gap-2 mb-1">
-                <span className="font-medium text-white">{name}</span>
-                <span className="text-xs px-1.5 py-0.5 bg-slate-700 text-slate-400 rounded">
+                <span className="font-medium text-[#1E293B]">{name}</span>
+                <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 bg-slate-200 text-slate-500 rounded">
                     {author}
                 </span>
             </div>
-            <p className="text-sm text-slate-400">{description}</p>
+            <p className="text-xs text-slate-500">{description}</p>
         </div>
         <button
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${installed
-                ? 'bg-slate-700 text-slate-400'
-                : 'bg-blue-600 hover:bg-blue-500 text-white'
+            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${installed
+                ? 'bg-slate-200 text-slate-500'
+                : 'bg-[#3B82F6] text-white hover:bg-blue-600 shadow-sm'
                 }`}
         >
             {installed ? 'Installed' : 'Install'}
@@ -903,39 +900,39 @@ const IntegrationsTab = ({ apiKeys, setApiKeys, githubForge }: any) => {
             exit={{ opacity: 0, x: -20 }}
             className="p-6 overflow-y-auto"
         >
-            <h3 className="text-lg font-bold text-white mb-6">Integrations & Connections</h3>
+            <h3 className="text-lg font-bold text-[#0F172A] mb-6">Integrations & Connections</h3>
 
             {/* GitHub Section */}
             <div className="mb-8">
                 <div className="flex items-center gap-2 mb-4">
-                    <Github className="text-white" size={20} />
-                    <h4 className="text-md font-semibold text-white">GitHub Repositories</h4>
+                    <Github className="text-[#0F172A]" size={20} />
+                    <h4 className="text-md font-semibold text-[#0F172A]">GitHub Repositories</h4>
                 </div>
 
                 {!githubForge?.connected ? (
-                    <div className="flex flex-col items-center justify-center p-8 bg-slate-800/30 border border-dashed border-white/10 rounded-xl">
-                        <Github size={32} className="text-slate-500 mb-2" />
-                        <p className="text-slate-400 text-sm mb-4">Connect GitHub to see your repositories</p>
+                    <div className="flex flex-col items-center justify-center p-8 bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                        <Github size={32} className="text-slate-300 mb-2" />
+                        <p className="text-slate-500 text-sm mb-4">Connect GitHub to see your repositories</p>
                         <button
                             onClick={handleConnectGithub}
-                            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg border border-white/10 transition-colors flex items-center gap-2"
+                            className="px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-colors flex items-center gap-2 shadow-md"
                         >
                             Connect GitHub Account
                         </button>
                     </div>
                 ) : (
-                    <div className="bg-slate-800/50 border border-white/5 rounded-xl p-4 mb-4">
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 mb-4">
                         <div className="flex gap-2 mb-4">
                             <input
                                 type="text"
                                 value={newRepoUrl}
                                 onChange={(e) => setNewRepoUrl(e.target.value)}
                                 placeholder="https://github.com/username/repo"
-                                className="flex-1 bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50 transition-colors"
+                                className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-[#1E293B] focus:outline-none focus:border-[#3B82F6] transition-colors"
                             />
                             <button
                                 onClick={handleAddRepo}
-                                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+                                className="px-4 py-2 bg-[#3B82F6] hover:bg-blue-600 text-white text-xs font-bold uppercase tracking-widest rounded-lg transition-colors flex items-center gap-2 shadow-sm"
                             >
                                 <Plus size={16} />
                                 Add Repo
@@ -945,27 +942,27 @@ const IntegrationsTab = ({ apiKeys, setApiKeys, githubForge }: any) => {
                         <div className="space-y-2">
                             {githubForge.repositories && githubForge.repositories.length > 0 ? (
                                 githubForge.repositories.map((repo: any) => (
-                                    <div key={repo.id} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-white/5">
+                                    <div key={repo.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-100 shadow-sm">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center">
+                                            <div className="w-8 h-8 bg-slate-50 rounded-full flex items-center justify-center">
                                                 <Github size={16} className="text-slate-400" />
                                             </div>
                                             <div>
-                                                <p className="text-sm font-medium text-white">{repo.name}</p>
-                                                <p className="text-xs text-green-400 flex items-center gap-1">
+                                                <p className="text-sm font-medium text-[#1E293B]">{repo.name}</p>
+                                                <p className="text-[10px] text-[#22C55E] font-bold uppercase flex items-center gap-1">
                                                     <CheckCircle2 size={10} /> Connected
                                                 </p>
                                             </div>
                                         </div>
                                         <button
-                                            className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                                         >
                                             <Trash2 size={14} />
                                         </button>
                                     </div>
                                 ))
                             ) : (
-                                <div className="text-center py-4 text-slate-500 text-sm">
+                                <div className="text-center py-4 text-slate-400 text-sm">
                                     No repositories found.
                                 </div>
                             )}
@@ -977,28 +974,28 @@ const IntegrationsTab = ({ apiKeys, setApiKeys, githubForge }: any) => {
             {/* AI Models Section */}
             <div>
                 <div className="flex items-center gap-2 mb-4">
-                    <Cpu className="text-white" size={20} />
-                    <h4 className="text-md font-semibold text-white">AI Model Providers</h4>
+                    <Cpu className="text-[#0F172A]" size={20} />
+                    <h4 className="text-md font-semibold text-[#0F172A]">AI Model Providers</h4>
                 </div>
 
                 <div className="space-y-4">
                     <ProviderCard
                         name="NVIDIA NIM (Kimi)"
-                        icon={<Cpu size={20} className="text-green-400" />}
+                        icon={<Cpu size={20} className="text-[#22C55E]" />}
                         status="Connected"
                         apiKey={apiKeys.nvidia}
                         onChange={(val: string) => setApiKeys({ ...apiKeys, nvidia: val })}
                     />
                     <ProviderCard
                         name="OpenAI"
-                        icon={<Cpu size={20} className="text-blue-400" />}
+                        icon={<Cpu size={20} className="text-[#3B82F6]" />}
                         status={apiKeys.openai ? "Connected" : "Not Configured"}
                         apiKey={apiKeys.openai}
                         onChange={(val: string) => setApiKeys({ ...apiKeys, openai: val })}
                     />
                     <ProviderCard
                         name="Anthropic"
-                        icon={<Cpu size={20} className="text-amber-400" />}
+                        icon={<Cpu size={20} className="text-amber-500" />}
                         status={apiKeys.anthropic ? "Connected" : "Not Configured"}
                         apiKey={apiKeys.anthropic}
                         onChange={(val: string) => setApiKeys({ ...apiKeys, anthropic: val })}
@@ -1010,31 +1007,31 @@ const IntegrationsTab = ({ apiKeys, setApiKeys, githubForge }: any) => {
 };
 
 const ProviderCard = ({ name, icon, status, apiKey, onChange }: any) => (
-    <div className="p-4 bg-slate-800/50 border border-white/5 rounded-xl">
+    <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl">
         <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-slate-900 rounded-lg flex items-center justify-center border border-white/5">
+                <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center border border-slate-100 shadow-sm">
                     {icon}
                 </div>
                 <div>
-                    <h5 className="text-sm font-medium text-white">{name}</h5>
-                    <p className={`text-xs ${status === 'Connected' ? 'text-green-400' : 'text-slate-500'}`}>
+                    <h5 className="text-sm font-medium text-[#1E293B]">{name}</h5>
+                    <p className={`text-[10px] font-bold uppercase ${status === 'Connected' ? 'text-[#22C55E]' : 'text-slate-400'}`}>
                         {status}
                     </p>
                 </div>
             </div>
         </div>
         <div>
-            <label className="text-xs text-slate-500 uppercase tracking-wider mb-1 block">API Key</label>
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">API Key</label>
             <div className="flex gap-2">
                 <input
                     type="password"
                     value={apiKey}
                     onChange={(e) => onChange(e.target.value)}
                     placeholder="sk-..."
-                    className="flex-1 bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50 transition-colors font-mono"
+                    className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-[#1E293B] focus:outline-none focus:border-[#3B82F6] transition-colors font-mono"
                 />
-                <button className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium rounded-lg transition-colors">
+                <button className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-600 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-colors">
                     Save
                 </button>
             </div>

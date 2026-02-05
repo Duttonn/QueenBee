@@ -34,7 +34,7 @@ const AtlasCodeBridge = () => {
       </div>
       
       <div className="p-4 mt-auto">
-        <button className="w-full py-2 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-blue-600 transition-colors shadow-lg shadow-slate-200">
+        <button className="w-full py-2 bg-[#0F172A] text-white rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-blue-600 transition-colors shadow-lg shadow-slate-200">
           Apply Fix to Worktree
         </button>
       </div>

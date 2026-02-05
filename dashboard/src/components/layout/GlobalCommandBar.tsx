@@ -84,7 +84,7 @@ const GlobalCommandBar = () => {
       ></div>
 
       {/* Command Modal */}
-      <div className="relative w-full max-w-2xl bg-zinc-900/80 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 ring-1 ring-black/5">
+      <div className="relative w-full max-w-2xl bg-[#0F172A]/80 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 ring-1 ring-black/5">
         
         {/* Header / Input Area */}
         <div className="flex items-center px-4 py-4 border-b border-white/5">
@@ -113,7 +113,7 @@ const GlobalCommandBar = () => {
               {isRecording ? <Loader2 size={18} className="animate-spin" /> : <Mic size={18} strokeWidth={1.5} />}
             </button>
             
-            <div className="px-2 py-1 bg-zinc-800/50 rounded text-[10px] text-zinc-400 font-mono border border-white/5">
+            <div className="px-2 py-1 bg-[#1E293B]/50 rounded text-[10px] text-zinc-400 font-mono border border-white/5">
               ESC
             </div>
           </div>
@@ -129,8 +129,8 @@ const GlobalCommandBar = () => {
             </div>
             <div className="space-y-1">
               <CommandItem icon={<Zap className="text-yellow-400" size={18} />} title="Spawn New Agent" shortcut="S" />
-              <CommandItem icon={<Layers className="text-blue-400" size={18} />} title="Switch Project Workspace" />
-              <CommandItem icon={<Cpu className="text-green-400" size={18} />} title="View Hive System Status" />
+              <CommandItem icon={<Layers className="text-[#3B82F6]" size={18} />} title="Switch Project Workspace" />
+              <CommandItem icon={<Cpu className="text-[#22C55E]" size={18} />} title="View Hive System Status" />
             </div>
           </div>
 
@@ -148,10 +148,10 @@ const GlobalCommandBar = () => {
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-2 bg-zinc-950/30 border-t border-white/5 flex justify-between items-center text-[10px] text-zinc-500 font-medium">
+        <div className="px-4 py-2 bg-[#0F172A]/30 border-t border-white/5 flex justify-between items-center text-[10px] text-zinc-500 font-medium">
            <span>Queen Bee Orchestrator v2.0</span>
            <div className="flex gap-2">
-             <span className="flex items-center gap-1"><span className="bg-zinc-800 px-1 rounded">Ctrl+M</span> Voice</span>
+             <span className="flex items-center gap-1"><span className="bg-[#1E293B] px-1 rounded">Ctrl+M</span> Voice</span>
              <span>Select ↵</span>
              <span>Navigate ↑↓</span>
            </div>
@@ -172,7 +172,7 @@ const CommandItem = ({ icon, title, desc, shortcut }: any) => (
       {desc && <div className="text-xs text-zinc-500 group-hover:text-zinc-400">{desc}</div>}
     </div>
     {shortcut && (
-      <span className="text-[10px] bg-zinc-800 group-hover:bg-blue-600 group-hover:text-white px-1.5 py-0.5 rounded text-zinc-400 font-mono transition-colors">
+      <span className="text-[10px] bg-[#1E293B] group-hover:bg-blue-600 group-hover:text-white px-1.5 py-0.5 rounded text-zinc-400 font-mono transition-colors">
         {shortcut}
       </span>
     )}

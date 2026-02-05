@@ -111,7 +111,7 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-4 overflow-hidden relative">
+        <div className="min-h-screen bg-gradient-to-br from-[#0F172A] via-[#1E293B] to-[#0F172A] flex items-center justify-center p-4 overflow-hidden relative">
             {/* Background Effects */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
                 <div className="absolute -top-40 -right-40 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
@@ -182,7 +182,7 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.5 }}
-                    className="bg-slate-900/50 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-2xl"
+                    className="bg-[#0F172A]/50 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-2xl"
                 >
                     {/* Features List */}
                     <div className="space-y-3 mb-8">
@@ -194,7 +194,7 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
                     {/* Device Flow UI */}
                     {deviceFlowData ? (
                         <div className="space-y-6 text-center">
-                            <div className="p-6 bg-slate-800/50 rounded-xl border border-white/10">
+                            <div className="p-6 bg-[#1E293B]/50 rounded-xl border border-white/10">
                                 <h3 className="text-sm text-slate-400 mb-2">Device Activation Code</h3>
                                 <div className="text-4xl font-mono font-bold text-amber-400 tracking-wider mb-4">
                                     {deviceFlowData.user_code}
@@ -227,7 +227,7 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
                                 </h3>
                                 <p className="text-xs text-slate-400 mb-4">
                                     To connect your GitHub account, you need to create a GitHub App once.
-                                    <a href="https://github.com/settings/applications/new" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 ml-1 inline-flex items-center gap-0.5">
+                                    <a href="https://github.com/settings/applications/new" target="_blank" rel="noreferrer" className="text-[#3B82F6] hover:text-blue-300 ml-1 inline-flex items-center gap-0.5">
                                         Create App <ExternalLink size={10} />
                                     </a>
                                 </p>
@@ -344,7 +344,7 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
                                     },
                                     accessToken: 'mock-token'
                                 })}
-                                className="w-full flex items-center justify-center gap-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-2 px-6 rounded-xl transition-all duration-200 shadow-lg shadow-black/20 group mt-4 border border-white/5"
+                                className="w-full flex items-center justify-center gap-3 bg-[#1E293B] hover:bg-slate-700 text-slate-300 font-semibold py-2 px-6 rounded-xl transition-all duration-200 shadow-lg shadow-black/20 group mt-4 border border-white/5"
                             >
                                 <Shield size={16} />
                                 <span>Dev Bypass</span>
@@ -388,7 +388,7 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
 
 const Feature = ({ icon, text }: { icon: React.ReactNode; text: string }) => (
     <div className="flex items-center gap-3 text-slate-300">
-        <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400">
+        <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-[#3B82F6]">
             {icon}
         </div>
         <span className="text-sm">{text}</span>

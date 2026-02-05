@@ -70,10 +70,10 @@ const XtermTerminal = () => {
 
   return (
     <div className="flex flex-col h-full bg-black border-t border-slate-800 animate-in slide-in-from-bottom duration-300">
-      <div className="flex items-center justify-between px-4 py-1.5 bg-slate-900 border-b border-slate-800">
+      <div className="flex items-center justify-between px-4 py-1.5 bg-[#0F172A] border-b border-slate-800">
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Interactive Shell</span>
-          <span className="text-[8px] bg-slate-800 text-green-400 px-1.5 rounded font-mono">bash</span>
+          <span className="text-[8px] bg-[#1E293B] text-[#22C55E] px-1.5 rounded font-mono">bash</span>
         </div>
         <div className="flex gap-4">
           <button 

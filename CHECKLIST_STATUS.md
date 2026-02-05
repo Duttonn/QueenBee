@@ -151,7 +151,7 @@ addThread: async (projectId, thread) => {
   // 2. Create worktree
   const project = get().projects.find(p => p.id === projectId);
   if (project?.path) {
-    const response = await fetch('http://localhost:3001/api/git/worktree', {
+    const response = await fetch('http://localhost:3000/api/git/worktree', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

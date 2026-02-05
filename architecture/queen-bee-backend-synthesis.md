@@ -1067,7 +1067,7 @@ def get_relay_prompt(project_id):
 ## 🎯 Diagnostic de l'État Actuel
 
 ### Ce qui FONCTIONNE déjà :
-1. **Socket.io initialisé** dans `useHiveStore.ts` avec connexion à `localhost:3001`
+1. **Socket.io initialisé** dans `useHiveStore.ts` avec connexion à `localhost:3000`
 2. **Listeners configurés** pour `UI_UPDATE` et `NATIVE_NOTIFICATION`
 3. **Service API** (`api.ts`) avec fonctions pour chat, diff, worktree, etc.
 4. **Electron IPC** via `preload.ts` expose `clone`, `read`, `write`, `notify`
@@ -1351,7 +1351,7 @@ projects: [], // était: [{ id: 'bj', name: 'Blackjack...
 **Code** :
 ```tsx
 fetchProjects: async () => {
-  const res = await fetch('http://localhost:3001/api/projects');
+  const res = await fetch('http://localhost:3000/api/projects');
   if (res.ok) {
     const projects = await res.json();
     set({ projects });
