@@ -25,35 +25,53 @@ export class EventLoopManager {
     this.socket.on('CMD_SUBMIT', async ({ prompt, projectPath, projectId }) => {
       console.log(`[EventLoop] Processing global prompt: ${prompt}`);
       
-      // 1. Notify UI that the Queen is thinking
       this.socket.emit('QUEEN_STATUS', { status: 'thinking', target: projectId });
 
-      // 2. Dispatch logic (Search vs Action)
       const result = await this.dispatcher.dispatch(prompt, projectPath);
 
-      // 3. If Action: The Dispatcher already triggered startFeatureWorkflow.
-      // We must ensure the UI knows a NEW agent is born under this project.
       if (result.type === 'ACTION') {
+        const agentName = result.agentName || 'Worker Bee';
         this.socket.emit('UI_UPDATE', {
           action: 'SPAWN_AGENT_UI',
           payload: {
             projectId: projectId,
-            agentName: result.agentName || 'Worker Bee',
+            agentName: agentName,
             status: 'initializing'
           }
         });
+
+        // After successful workflow start, trigger initial DIFF update
+        this.socket.emit('UI_UPDATE', {
+          action: 'SET_AGENT_STATUS',
+          payload: { projectId, agentName, status: 'working' }
+        });
       }
+    });
+
+    /**
+     * Scenario: Agent modified a file
+     * This is triggered by the FileWatcher inside AutoContextManager
+     */
+    this.socket.on('FILE_CHANGE_DETECTED', async ({ projectId, filePath, treePath }) => {
+      console.log(`[EventLoop] File change detected in ${filePath}. Updating Diff View.`);
+      
+      // Notify UI to refresh the Diff for this specific file
+      this.socket.emit('UI_UPDATE', {
+        action: 'UPDATE_LIVE_DIFF',
+        payload: {
+          projectId,
+          filePath,
+          // The UI will now call /api/git/diff to get the structured JSON
+        }
+      });
     });
 
     /**
      * Scenario: Agent finishes code implementation
      */
     this.socket.on('AGENT_CODE_COMPLETE', async ({ projectId, treePath }) => {
-      // 1. Logically trigger the Visual Verification
       this.socket.emit('UI_UPDATE', { action: 'SET_AGENT_STATUS', payload: { projectId, status: 'verifying' } });
       
-      // 2. The Verification Engine kicks in (connected in Orchestrator)
-      // 3. Once verified, transition to "Review" mode in the dashboard
       this.socket.emit('UI_UPDATE', { 
         action: 'OPEN_REVIEW_PANE', 
         payload: { projectId, treePath } 
