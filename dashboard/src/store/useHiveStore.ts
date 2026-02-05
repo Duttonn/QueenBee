@@ -3,24 +3,19 @@ import { io, Socket } from 'socket.io-client';
 
 interface HiveState {
   projects: any[];
-  activeAgents: any[];
-  isOrchestratorActive: boolean;
-  lastEvent: string | null;
   socket: Socket | null;
   
-  // Actions
   initSocket: () => void;
-  setProjects: (projects: any[]) => void;
   addProject: (project: any) => void;
-  spawnAgent: (agent: any) => void;
-  setOrchestratorStatus: (active: boolean) => void;
+  spawnAgent: (projectId: string, agent: any) => void;
+  updateAgentStatus: (projectId: string, agentName: string, status: string) => void;
 }
 
 export const useHiveStore = create<HiveState>((set, get) => ({
-  projects: [],
-  activeAgents: [],
-  isOrchestratorActive: false,
-  lastEvent: null,
+  projects: [
+    { id: 'bj', name: 'Blackjack Advisor', agents: [], type: 'local' },
+    { id: 'vos', name: 'visionOS MCP', agents: [], type: 'local' }
+  ],
   socket: null,
 
   initSocket: () => {
@@ -28,17 +23,31 @@ export const useHiveStore = create<HiveState>((set, get) => ({
     const socket = io('/api/logs/stream');
     
     socket.on('UI_UPDATE', (data) => {
-      console.log('[Socket] UI Update received:', data);
-      if (data.action === 'ADD_PROJECT') get().addProject(data.payload);
-      if (data.action === 'SPAWN_AGENT') get().spawnAgent(data.payload);
-      set({ lastEvent: data.action });
+      if (data.action === 'SPAWN_AGENT_UI') {
+        get().spawnAgent(data.payload.projectId, data.payload);
+      }
+      if (data.action === 'SET_AGENT_STATUS') {
+        get().updateAgentStatus(data.payload.projectId, data.payload.agentName, data.payload.status);
+      }
     });
 
     set({ socket });
   },
 
-  setProjects: (projects) => set({ projects }),
   addProject: (project) => set((state) => ({ projects: [...state.projects, project] })),
-  spawnAgent: (agent) => set((state) => ({ activeAgents: [...state.activeAgents, agent] })),
-  setOrchestratorStatus: (active) => set({ isOrchestratorActive: active }),
+  
+  spawnAgent: (projectId, agent) => set((state) => ({
+    projects: state.projects.map(p => 
+      p.id === projectId ? { ...p, agents: [...p.agents, agent] } : p
+    )
+  })),
+
+  updateAgentStatus: (projectId, agentName, status) => set((state) => ({
+    projects: state.projects.map(p => 
+      p.id === projectId ? { 
+        ...p, 
+        agents: p.agents.map((a: any) => a.name === agentName ? { ...a, status } : a) 
+      } : p
+    )
+  }))
 }));
