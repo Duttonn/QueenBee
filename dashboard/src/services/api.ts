@@ -6,9 +6,19 @@
 // Backend base URL - defaults to localhost in dev
 const API_BASE = (typeof window !== 'undefined' && (window as any).__API_URL__) || 'http://localhost:3000';
 
+export interface ToolCall {
+    id: string;
+    name: string;
+    arguments: any;
+    status: 'pending' | 'running' | 'success' | 'error' | 'rejected';
+    result?: any;
+    error?: string;
+}
+
 export interface Message {
     role: 'system' | 'user' | 'assistant';
     content: string;
+    toolCalls?: ToolCall[];
 }
 
 export interface DiffStats {

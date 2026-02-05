@@ -24,6 +24,7 @@ interface HiveState {
   addThread: (projectId: string, thread: any) => void;
   updateThread: (projectId: string, threadId: string, updates: any) => void;
   addMessage: (projectId: string, threadId: string, message: any) => void;
+  updateToolCall: (projectId: string, threadId: string, messageIndex: number, toolCallId: string, updates: any) => void;
 }
 
 export const useHiveStore = create<HiveState>()(
@@ -91,6 +92,27 @@ export const useHiveStore = create<HiveState>()(
             ...p,
             threads: p.threads.map((t: any) =>
               t.id === threadId ? { ...t, messages: [...(t.messages || []), message] } : t
+            )
+          } : p
+        )
+      })),
+
+      updateToolCall: (projectId, threadId, messageIndex, toolCallId, updates) => set((state) => ({
+        projects: state.projects.map(p => 
+          p.id === projectId ? {
+            ...p,
+            threads: p.threads.map((t: any) => 
+              t.id === threadId ? {
+                ...t,
+                messages: t.messages.map((msg: any, idx: number) => 
+                  idx === messageIndex ? {
+                    ...msg,
+                    toolCalls: msg.toolCalls?.map((tc: any) => 
+                      tc.id === toolCallId ? { ...tc, ...updates } : tc
+                    )
+                  } : msg
+                )
+              } : t
             )
           } : p
         )
