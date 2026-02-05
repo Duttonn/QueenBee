@@ -46,7 +46,7 @@ const SourceControl = () => {
       
       {isPushing && (
         <div className="mt-3 text-[9px] text-green-400 animate-pulse font-mono">
-          > git push origin main... SUCCESS
+          {'>'} git push origin main... SUCCESS
         </div>
       )}
     </div>
