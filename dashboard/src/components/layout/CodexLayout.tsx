@@ -12,6 +12,7 @@ import UniversalAuthModal from './UniversalAuthModal';
 import GlobalCommandBar from './GlobalCommandBar';
 import Sidebar from './Sidebar';
 import AgenticWorkbench from './AgenticWorkbench';
+import ReviewAndShip from '../projects/ReviewAndShip';
 
 // Mock Editor Component
 const EditorView = () => (
@@ -103,13 +104,19 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
 
         {/* Content Area */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Main View (Editor) */}
-          <div className="flex-1 flex flex-col min-w-0">
-             {activeTab === 'editor' ? <EditorView /> : children}
-          </div>
+          {activeTab === 'git' ? (
+             <ReviewAndShip />
+          ) : (
+            <>
+              {/* Main View (Editor) */}
+              <div className="flex-1 flex flex-col min-w-0">
+                 {activeTab === 'editor' ? <EditorView /> : children}
+              </div>
 
-          {/* Right Pane (Chat/Context) - The Agentic Workbench */}
-          <AgenticWorkbench />
+              {/* Right Pane (Chat/Context) - The Agentic Workbench */}
+              <AgenticWorkbench />
+            </>
+          )}
         </div>
       </div>
       
