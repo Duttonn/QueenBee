@@ -1,7 +1,7 @@
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { EventLoopManager } from './src/lib/EventLoopManager';
-import { setIO } from './src/lib/socket-instance';
+import { EventLoopManager } from './src/lib/EventLoopManager.ts';
+import { setIO } from './src/lib/socket-instance.ts';
 
 const PORT = 3001;
 

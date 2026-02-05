@@ -12,7 +12,7 @@ export class FileWatcher {
   start(projectPath: string) {
     console.log(`[Watcher] Starting auto-context for ${projectPath}`);
     this.watcher = chokidar.watch(projectPath, {
-      ignored: /(^|[\/\])\../, // ignore dotfiles
+      ignored: /(^|[\/\\])\../, // ignore dotfiles
       persistent: true
     });
 

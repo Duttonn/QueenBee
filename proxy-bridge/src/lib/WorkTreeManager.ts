@@ -7,7 +7,6 @@ import { execSync } from 'child_process';
  * Manages the lifecycle of ephemeral git checkouts for agentic work.
  */
 export class WorkTreeManager {
-      import path from 'path';
     private baseDir = path.join(process.cwd(), '../worktrees');
 
   constructor(baseDir?: string) {
