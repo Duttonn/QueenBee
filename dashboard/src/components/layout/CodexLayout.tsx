@@ -10,6 +10,7 @@ import {
 import GlobalOrchestratorOverlay from './GlobalOrchestrator';
 import UniversalAuthModal from './UniversalAuthModal';
 import GlobalCommandBar from './GlobalCommandBar';
+import Sidebar from './Sidebar';
 
 // Mock Editor Component
 const EditorView = () => (
@@ -80,7 +81,10 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         </div>
       </div>
 
-      {/* 2. Main Work Area (Split View) */}
+      {/* 2. The Hive Sidebar (Project Explorer) */}
+      {activeTab === 'editor' && <Sidebar />}
+
+      {/* 3. Main Work Area (Split View) */}
       <div className="flex-1 flex flex-col relative">
         {/* Top Bar */}
         <div className="h-12 border-b border-gray-800 flex items-center px-4 justify-between bg-[#0a0a0a]">
