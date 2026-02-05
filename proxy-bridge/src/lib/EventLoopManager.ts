@@ -1,6 +1,9 @@
 import { Socket } from 'socket.io';
 import { HiveOrchestrator } from './HiveOrchestrator';
 import { UniversalDispatcher } from './UniversalDispatcher';
+import { broadcast } from './socket-instance';
+import { exec } from 'child_process';
+import path from 'path';
 
 /**
  * EventLoopManager: The "Nervous System" of Queen Bee.
@@ -25,13 +28,13 @@ export class EventLoopManager {
     this.socket.on('CMD_SUBMIT', async ({ prompt, projectPath, projectId }) => {
       console.log(`[EventLoop] Processing global prompt: ${prompt}`);
       
-      this.socket.emit('QUEEN_STATUS', { status: 'thinking', target: projectId });
+      broadcast('QUEEN_STATUS', { status: 'thinking', target: projectId });
 
       const result = await this.dispatcher.dispatch(prompt, projectPath);
 
       if (result.type === 'ACTION') {
         const agentName = result.agentName || 'Worker Bee';
-        this.socket.emit('UI_UPDATE', {
+        broadcast('UI_UPDATE', {
           action: 'SPAWN_AGENT_UI',
           payload: {
             projectId: projectId,
@@ -41,7 +44,7 @@ export class EventLoopManager {
         });
 
         // After successful workflow start, trigger initial DIFF update
-        this.socket.emit('UI_UPDATE', {
+        broadcast('UI_UPDATE', {
           action: 'SET_AGENT_STATUS',
           payload: { projectId, agentName, status: 'working' }
         });
@@ -53,29 +56,48 @@ export class EventLoopManager {
      * This is triggered by the FileWatcher inside AutoContextManager
      */
     this.socket.on('FILE_CHANGE_DETECTED', async ({ projectId, filePath, treePath }) => {
-      console.log(`[EventLoop] File change detected in ${filePath}. Updating Diff View.`);
+      console.log(`[EventLoop] File change detected in ${filePath}. Calculating Diff.`);
       
-      // Notify UI to refresh the Diff for this specific file
-      this.socket.emit('UI_UPDATE', {
-        action: 'UPDATE_LIVE_DIFF',
-        payload: {
-          projectId,
-          filePath,
-          // The UI will now call /api/git/diff to get the structured JSON
-        }
-      });
-    });
+      try {
+        const scriptPath = path.join(process.cwd(), 'src/lib/git_diff_extractor.py');
+        const diffProcess = exec(`python3 ${scriptPath} "${treePath}" "${filePath}"`);
+        let diffOutput = '';
+        diffProcess.stdout?.on('data', (data) => {
+          diffOutput += data.toString();
+        });
+        diffProcess.stderr?.on('data', (data) => {
+          console.error(`[DiffExtractor Error] ${data.toString()}`);
+        });
 
-    /**
-     * Scenario: Agent finishes code implementation
-     */
-    this.socket.on('AGENT_CODE_COMPLETE', async ({ projectId, treePath }) => {
-      this.socket.emit('UI_UPDATE', { action: 'SET_AGENT_STATUS', payload: { projectId, status: 'verifying' } });
-      
-      this.socket.emit('UI_UPDATE', { 
-        action: 'OPEN_REVIEW_PANE', 
-        payload: { projectId, treePath } 
-      });
+        await new Promise<void>((resolve, reject) => {
+          diffProcess.on('close', (code) => {
+            if (code === 0) {
+              resolve();
+            } else {
+              reject(new Error(`git_diff_extractor.py exited with code ${code}`));
+            }
+          });
+        });
+
+        const diffJson = JSON.parse(diffOutput);
+        
+        broadcast('DIFF_UPDATE', {
+          projectId,
+          file: filePath,
+          added: diffJson.diff.filter((l: any) => l.type === 'add').length,
+          removed: diffJson.diff.filter((l: any) => l.type === 'del').length
+        });
+
+        broadcast('UI_UPDATE', {
+          action: 'UPDATE_LIVE_DIFF',
+          payload: {
+            projectId,
+            filePath,
+            diff: diffJson.diff // Send the full structured diff
+          }
+        });
+
+      } catch (error) {
+        console.error(`[EventLoop] Failed to calculate diff for ${filePath}: ${error}`);
+      }
     });
-  }
-}

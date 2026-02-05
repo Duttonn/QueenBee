@@ -1,73 +1,76 @@
-#!/usr/bin/env python3
-import subprocess
 import json
+import subprocess
 import sys
-import os
 
 def get_git_diff(project_path, file_path=None):
-    """
-    Extracts git diff in a structured JSON format for the UI.
-    If file_path is provided, gets diff for that file. Otherwise, gets all unstaged changes.
-    """
     try:
         cmd = ["git", "diff", "--unified=3"]
         if file_path:
             cmd.append(file_path)
         
-        raw_diff = subprocess.check_output(cmd, cwd=project_path).decode('utf-8')
-        
-        if not raw_diff:
-            return {"status": "no_changes", "diff": []}
+        result = subprocess.run(cmd, cwd=project_path, capture_output=True, text=True, check=True)
+        diff_output = result.stdout
 
-        structured_diff = []
-        current_file = file_path
-        lines = raw_diff.split('\n')
-        
-        line_no_old = 0
-        line_no_new = 0
+        lines = diff_output.splitlines()
+        parsed_diff = []
+        current_file = None
 
         for line in lines:
-            if line.startswith('@@'):
-                # Extract starting line numbers from @@ -line,count +line,count @@
+            if line.startswith('diff --git'):
                 parts = line.split(' ')
-                line_no_old = int(parts[1].split(',')[0].replace('-', ''))
-                line_no_new = int(parts[2].split(',')[0].replace('+', ''))
+                # Heuristic to get the file path, assumes format like 'diff --git a/path/to/file b/path/to/file'
+                if len(parts) > 4:
+                    current_file = parts[3][2:] # Remove 'b/' prefix
                 continue
-            
-            if line.startswith('---') or line.startswith('+++') or line.startswith('diff'):
+            if line.startswith('--- a/'):
+                current_file = line[6:]
+                continue
+            if line.startswith('+++ b/'):
+                current_file = line[6:]
+                continue
+            if line.startswith('@@'):
+                # @@ -start,count +start,count @@
+                parts = line.split(' ')
+                if len(parts) >= 3:
+                    range_info = parts[2].split(',') # '+start,count'
+                    if len(range_info) > 0:
+                        try:
+                            start_line = int(range_info[0].replace('+', ''))
+                        except ValueError:
+                            start_line = 0 # Default if parsing fails
+                        parsed_diff.append({"type": "header", "content": line, "line": start_line})
                 continue
 
-            type = 'neutral'
             if line.startswith('+'):
-                type = 'add'
-                line_no = line_no_new
-                line_no_new += 1
+                parsed_diff.append({"type": "add", "content": line[1:]})
             elif line.startswith('-'):
-                type = 'del'
-                line_no = line_no_old
-                line_no_old += 1
+                parsed_diff.append({"type": "del", "content": line[1:]})
             else:
-                line_no = line_no_new
-                line_no_old += 1
-                line_no_new += 1
-
-            structured_diff.append({
-                "line": line_no,
-                "type": type,
-                "content": line[1:] if type != 'neutral' else line
-            })
-
+                parsed_diff.append({"type": "neutral", "content": line[1:]})
+        
         return {
             "status": "success",
-            "file": current_file,
-            "diff": structured_diff
+            "file": file_path if file_path else current_file,
+            "diff": parsed_diff
+        }
+    except subprocess.CalledProcessError as e:
+        return {
+            "status": "error",
+            "message": e.stderr.strip()
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
         }
 
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
 if __name__ == "__main__":
-    path = sys.argv[1] if len(sys.argv) > 1 else "/home/fish/clawd"
-    target_file = sys.argv[2] if len(sys.argv) > 2 else None
-    result = get_git_diff(path, target_file)
-    print(json.dumps(result, indent=2))
+    if len(sys.argv) < 2:
+        print(json.dumps({"status": "error", "message": "Usage: python git_diff_extractor.py <project_path> [file_path]"}))
+        sys.exit(1)
+    
+    project_path = sys.argv[1]
+    file_path = sys.argv[2] if len(sys.argv) > 2 else None
+    
+    diff_data = get_git_diff(project_path, file_path)
+    print(json.dumps(diff_data))
