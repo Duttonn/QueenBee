@@ -379,8 +379,10 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const { runAutomation, commit, fetchData, addProject: addAppProject } = useAppStore();
 
   // Hive state
-  const { projects, addProject } = useHiveStore();
+  const { projects, addProject, activeThreadId, setActiveThread, addThread, addMessage, updateThread } = useHiveStore();
   const activeProject = projects.find(p => p.id === selectedProjectId);
+  const activeThread = activeProject?.threads?.find((t: any) => t.id === activeThreadId);
+  const messages = activeThread?.messages || [];
 
   useEffect(() => {
     fetchData();
@@ -436,7 +438,6 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   };
 
   // Chat state
-  const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [executionMode, setExecutionMode] = useState<'local' | 'worktree' | 'cloud'>('worktree');
@@ -444,10 +445,25 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
 
   // Send message to backend using active provider
   const handleSendMessage = useCallback(async () => {
-    if (!inputValue.trim() || isLoading) return;
+    if (!inputValue.trim() || isLoading || !selectedProjectId) return;
+
+    let currentThreadId = activeThreadId;
+    
+    // Create thread if none exists
+    if (!currentThreadId) {
+      currentThreadId = Date.now().toString();
+      const title = inputValue.length > 30 ? inputValue.substring(0, 30) + '...' : inputValue;
+      addThread(selectedProjectId, {
+        id: currentThreadId,
+        title: title,
+        diff: '+0 -0',
+        time: 'Just now'
+      });
+    }
 
     const userMessage: Message = { role: 'user', content: inputValue };
-    setMessages(prev => [...prev, userMessage]);
+    addMessage(selectedProjectId, currentThreadId, userMessage);
+    
     setInputValue('');
     setIsLoading(true);
 
@@ -468,25 +484,31 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         role: 'assistant',
         content: response.choices?.[0]?.message?.content || 'No response received',
       };
-      setMessages(prev => [...prev, assistantMessage]);
+      addMessage(selectedProjectId, currentThreadId, assistantMessage);
 
       // Update diff stats after action
       try {
         const diff = await getGitDiff('/Users/ndn18/PersonalProjects/QueenBee');
         setDiffStats({ added: diff.added, removed: diff.removed });
+        
+        // Update thread stats in sidebar
+        updateThread(selectedProjectId, currentThreadId, {
+          diff: `+${diff.added} -${diff.removed}`,
+          time: 'Just now'
+        });
       } catch {
         // Ignore diff errors
       }
     } catch (error) {
       console.error('Chat error:', error);
-      setMessages(prev => [...prev, {
+      addMessage(selectedProjectId, currentThreadId, {
         role: 'assistant',
         content: `Error: ${error instanceof Error ? error.message : 'Failed to get response'}`,
-      }]);
+      });
     } finally {
       setIsLoading(false);
     }
-  }, [inputValue, messages, isLoading]);
+  }, [inputValue, messages, isLoading, selectedProjectId, activeThreadId, activeProvider, selectedModel, addThread, addMessage, updateThread]);
 
   // Keyboard shortcuts
   useEffect(() => {
