@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Terminal, 
   Layout, 
   GitBranch, 
   Settings, 
   Cpu, 
-  MessageSquare 
+  MessageSquare,
+  X 
 } from 'lucide-react';
-import GlobalOrchestratorOverlay from './GlobalOrchestrator';
 import UniversalAuthModal from './UniversalAuthModal';
 import GlobalCommandBar from './GlobalCommandBar';
 import Sidebar from './Sidebar';
@@ -35,21 +36,60 @@ const EditorView = () => (
   </div>
 );
 
+const TerminalDrawer = ({ onClose }: { onClose: () => void }) => (
+  <motion.div 
+    initial={{ y: '100%' }}
+    animate={{ y: 0 }}
+    exit={{ y: '100%' }}
+    transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+    className="absolute bottom-0 left-0 right-0 h-64 bg-[#0d0d0d] border-t border-gray-800 shadow-2xl z-50 flex flex-col"
+  >
+    <div className="flex justify-between items-center px-4 py-2 bg-[#1a1a1a] border-b border-gray-800">
+       <div className="flex items-center gap-2 text-xs font-bold text-gray-400">
+          <Terminal size={14} />
+          <span>TERMINAL - Local</span>
+       </div>
+       <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={14}/></button>
+    </div>
+    <div className="flex-1 p-4 font-mono text-sm text-gray-300 overflow-auto">
+       <div><span className="text-green-400">➜</span> <span className="text-blue-400">~/projects/queen-bee</span> git status</div>
+       <div className="text-gray-500">On branch main</div>
+       <div className="text-gray-500">Your branch is up to date with 'origin/main'.</div>
+       <div className="mt-2"><span className="text-green-400">➜</span> <span className="text-blue-400">~/projects/queen-bee</span> <span className="animate-pulse">_</span></div>
+    </div>
+  </motion.div>
+);
+
 const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const [activeTab, setActiveTab] = useState('editor');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isTerminalOpen, setIsTerminalOpen] = useState(false);
+
+  // Toggle Terminal with Cmd+J
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'j') {
+        e.preventDefault();
+        setIsTerminalOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <div className="flex h-screen w-full bg-[#0d0d0d] text-white overflow-hidden font-sans">
       
       <GlobalCommandBar />
 
-      {!isAuthenticated && (
-        <UniversalAuthModal onComplete={() => setIsAuthenticated(true)} />
-      )}
+      <AnimatePresence>
+        {!isAuthenticated && (
+          <UniversalAuthModal onComplete={() => setIsAuthenticated(true)} />
+        )}
+      </AnimatePresence>
 
       {/* 1. Slim Sidebar */}
-      <div className="w-16 flex flex-col items-center py-6 border-r border-gray-800 bg-[#0a0a0a]">
+      <div className="w-16 flex flex-col items-center py-6 border-r border-gray-800 bg-[#0a0a0a] z-20">
         <div className="mb-8 p-2 bg-white/10 rounded-lg">
           <Cpu size={24} className="text-blue-400" />
         </div>
@@ -68,8 +108,8 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
             <GitBranch size={20} />
           </button>
           <button 
-             onClick={() => setActiveTab('terminal')}
-             className={`p-3 rounded-xl transition-all ${activeTab === 'terminal' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}
+             onClick={() => setIsTerminalOpen(prev => !prev)}
+             className={`p-3 rounded-xl transition-all ${isTerminalOpen ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}
           >
             <Terminal size={20} />
           </button>
@@ -87,7 +127,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
       {activeTab === 'editor' && <Sidebar />}
 
       {/* 3. Main Work Area (Split View) */}
-      <div className="flex-1 flex flex-col relative">
+      <div className="flex-1 flex flex-col relative min-w-0">
         {/* Top Bar */}
         <div className="h-12 border-b border-gray-800 flex items-center px-4 justify-between bg-[#0a0a0a]">
           <div className="flex items-center gap-3">
@@ -103,7 +143,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden relative">
           {activeTab === 'git' ? (
              <ReviewAndShip />
           ) : (
@@ -117,11 +157,16 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
               <AgenticWorkbench />
             </>
           )}
+
+          {/* Bottom Drawer (Terminal) */}
+          <AnimatePresence>
+            {isTerminalOpen && (
+              <TerminalDrawer onClose={() => setIsTerminalOpen(false)} />
+            )}
+          </AnimatePresence>
         </div>
       </div>
       
-      {/* Overlay for specific notifications if needed */}
-      {/* <GlobalOrchestratorOverlay /> */}
     </div>
   );
 };
