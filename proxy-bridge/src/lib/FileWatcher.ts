@@ -1,11 +1,13 @@
 import chokidar from 'chokidar';
 import { Socket } from 'socket.io';
+import { EventEmitter } from 'events';
 
-export class FileWatcher {
+export class FileWatcher extends EventEmitter {
   private watcher: any;
   private socket: Socket;
 
   constructor(socket: Socket) {
+    super();
     this.socket = socket;
   }
 
@@ -18,7 +20,18 @@ export class FileWatcher {
 
     this.watcher.on('change', (path: string) => {
       console.log(`[Watcher] File changed: ${path}`);
-      this.socket.emit('FILE_CHANGE', { path, timestamp: Date.now() });
+      const timestamp = Date.now();
+      
+      // Emit locally for AutoContextManager
+      this.emit('file-change', { 
+        eventType: 'change', 
+        filePath: path, 
+        relativePath: path, // Simplified for now
+        timestamp 
+      });
+
+      // Emit to socket for frontend
+      this.socket.emit('FILE_CHANGE', { path, timestamp });
     });
   }
 
