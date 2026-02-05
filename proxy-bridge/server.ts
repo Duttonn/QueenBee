@@ -11,6 +11,7 @@ const httpServer = createServer((req, res) => {
 });
 
 const io = new Server(httpServer, {
+  path: '/api/logs/stream',
   cors: {
     origin: '*', // Allow all origins for local dev
     methods: ['GET', 'POST'],
