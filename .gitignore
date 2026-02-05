@@ -25,3 +25,4 @@ relay_cache.json
 worktrees/
 data/inbox.json
 search_index.json
+dist-electron/
