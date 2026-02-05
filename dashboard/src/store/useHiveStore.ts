@@ -9,10 +9,11 @@ interface HiveState {
   isOrchestratorActive: boolean;
   queenStatus: string;
   lastEvent: string | null;
-  socket: any | null; // Mark as any to avoid persistence issues with Socket instance
+  socket: Socket | null; // Mark as any to avoid persistence issues with Socket instance
 
   // Actions
   initSocket: () => void;
+  setQueenStatus: (status: string) => void;
   setProjects: (projects: any[]) => void;
   addProject: (project: any) => void;
   spawnAgent: (projectId: string, agent: any) => void;
@@ -39,38 +40,14 @@ export const useHiveStore = create<HiveState>()(
       initSocket: () => {
         if (get().socket) return;
         const socket = io('http://localhost:3001', {
-          path: '/api/logs/stream'
+          path: '/api/logs/stream' // This path will be corrected in TASK-02
         });
 
-        socket.on('connect', () => {
-          console.log('[Socket] Connected to backend');
-        });
-
-        socket.on('QUEEN_STATUS', (data: any) => {
-          set({ queenStatus: data.status });
-        });
-
-        socket.on('PROJECT_LIST_UPDATE', (data: any) => {
-          set({ projects: data.projects });
-        });
-
-        socket.on('UI_UPDATE', (data: any) => {
-          if (data.action === 'SPAWN_AGENT_UI') {
-            get().spawnAgent(data.payload.projectId, data.payload);
-          }
-          if (data.action === 'SET_AGENT_STATUS') {
-            get().updateAgentStatus(data.payload.projectId, data.payload.agentName, data.payload.status);
-          }
-        });
-
-        socket.on('NATIVE_NOTIFICATION', (data: any) => {
-          if (window.electron) {
-            window.electron.notify(data.title, data.body);
-          }
-        });
-
+        // Listeners moved to useSocketEvents hook in TASK-03
         set({ socket });
       },
+
+      setQueenStatus: (status) => set({ queenStatus: status }),
 
       setProjects: (projects) => set({ projects }),
       addProject: (project) => set((state) => ({ projects: [...state.projects, project] })),
