@@ -5,7 +5,7 @@ import path from 'path';
  * TerminalSessionManager: Ensures terminal panes persist their state and history.
  */
 export class TerminalSessionManager {
-  private historyDir = '/home/fish/.codex/terminal_history';
+  private historyDir = path.join(process.cwd(), '../data/terminal_history');
 
   constructor() {
     fs.ensureDirSync(this.historyDir);

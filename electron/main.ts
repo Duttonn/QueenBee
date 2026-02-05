@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, Notification } from 'electron';
 import path from 'path';
 import { NativeFSManager } from './NativeFSManager';
 
@@ -37,4 +37,9 @@ app.on('window-all-closed', () => {
 ipcMain.on('get-native-context', (event) => {
   // Logic to get focused app on macOS for "Auto Context"
   event.reply('native-context-reply', { focusedApp: 'Xcode' });
+});
+
+// Native Notification Handler
+ipcMain.on('notification:show', (event, { title, body }) => {
+  new Notification({ title, body }).show();
 });
