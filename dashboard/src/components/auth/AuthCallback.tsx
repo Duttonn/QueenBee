@@ -7,7 +7,7 @@ interface AuthCallbackProps {
     onError: (error: string) => void;
 }
 
-const API_BASE = 'http://localhost:3001';
+const API_BASE = 'http://localhost:3000';
 
 /**
  * Handles the GitHub OAuth callback

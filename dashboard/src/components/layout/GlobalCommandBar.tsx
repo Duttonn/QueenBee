@@ -1,18 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Command, Search, Cpu, GitBranch, Zap, Layers } from 'lucide-react';
+import { Mic, Command, Search, Cpu, GitBranch, Zap, Layers, Loader2 } from 'lucide-react';
 
 const GlobalCommandBar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Toggle with Cmd+K
+  // Toggle with Cmd+K and Ctrl+M for Voice
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Toggle Modal
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setIsOpen(prev => !prev);
       }
+      
+      // Voice Shortcut (Ctrl+M)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'm') {
+        e.preventDefault();
+        if (!isOpen) setIsOpen(true);
+        startVoiceRecording();
+      }
+
       if (e.key === 'Escape') {
         setIsOpen(false);
       }
@@ -20,7 +30,7 @@ const GlobalCommandBar = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isOpen]);
 
   // Focus input when opened
   useEffect(() => {
@@ -28,6 +38,40 @@ const GlobalCommandBar = () => {
       inputRef.current.focus();
     }
   }, [isOpen]);
+
+  const startVoiceRecording = () => {
+    if (isRecording) return;
+    
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+      alert('Speech recognition is not supported in your browser/environment.');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    
+    recognition.onstart = () => {
+      setIsRecording(true);
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setQuery(prev => (prev ? `${prev} ${transcript}` : transcript));
+    };
+
+    recognition.onerror = () => {
+      setIsRecording(false);
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+    };
+
+    recognition.start();
+  };
 
   if (!isOpen) return null;
 
@@ -49,7 +93,7 @@ const GlobalCommandBar = () => {
             ref={inputRef}
             type="text"
             className="flex-1 bg-transparent text-lg text-white placeholder-zinc-500 outline-none font-medium"
-            placeholder="Command the Queen Bee..."
+            placeholder={isRecording ? "Listening..." : "Command the Queen Bee..."}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -62,8 +106,11 @@ const GlobalCommandBar = () => {
             </div>
             
             {/* Voice Toggle */}
-            <button className="p-2 hover:bg-white/10 rounded-lg text-zinc-500 hover:text-white transition-colors">
-              <Mic size={18} strokeWidth={1.5} />
+            <button 
+                onClick={startVoiceRecording}
+                className={`p-2 rounded-lg transition-colors ${isRecording ? 'bg-red-500/20 text-red-400' : 'hover:bg-white/10 text-zinc-500 hover:text-white'}`}
+            >
+              {isRecording ? <Loader2 size={18} className="animate-spin" /> : <Mic size={18} strokeWidth={1.5} />}
             </button>
             
             <div className="px-2 py-1 bg-zinc-800/50 rounded text-[10px] text-zinc-400 font-mono border border-white/5">
@@ -104,6 +151,7 @@ const GlobalCommandBar = () => {
         <div className="px-4 py-2 bg-zinc-950/30 border-t border-white/5 flex justify-between items-center text-[10px] text-zinc-500 font-medium">
            <span>Queen Bee Orchestrator v2.0</span>
            <div className="flex gap-2">
+             <span className="flex items-center gap-1"><span className="bg-zinc-800 px-1 rounded">Ctrl+M</span> Voice</span>
              <span>Select ↵</span>
              <span>Navigate ↑↓</span>
            </div>

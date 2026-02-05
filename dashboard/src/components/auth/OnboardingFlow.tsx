@@ -170,7 +170,7 @@ const FeatureBox = ({ icon, title, desc }: { icon: string; title: string; desc: 
     </div>
 );
 
-const API_BASE = 'http://localhost:3001';
+const API_BASE = 'http://localhost:3000';
 
 interface TestResult {
     success: boolean;

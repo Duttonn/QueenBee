@@ -6,7 +6,7 @@ interface LoginPageProps {
     onLoginComplete: (data: any) => void;
 }
 
-const API_BASE = 'http://localhost:3001';
+const API_BASE = 'http://localhost:3000';
 
 const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
     const [isLoading, setIsLoading] = useState(false);
@@ -63,7 +63,7 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
 
         } catch (err: any) {
             const message = err.message === 'Failed to fetch' 
-                ? 'Could not connect to Proxy Bridge (localhost:3001). Is the backend running?'
+                ? 'Could not connect to Proxy Bridge (localhost:3000). Is the backend running?'
                 : err.message;
             setError(message);
             setIsLoading(false);

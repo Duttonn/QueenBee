@@ -41,7 +41,7 @@ interface FileNode {
     children?: FileNode[];
 }
 
-const API_BASE = 'http://localhost:3001';
+const API_BASE = 'http://localhost:3000';
 const APP_ROOT = '/Users/ndn18/PersonalProjects/QueenBee/dashboard';
 
 const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {

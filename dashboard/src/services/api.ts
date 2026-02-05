@@ -4,7 +4,7 @@
  */
 
 // Backend base URL - defaults to localhost in dev
-const API_BASE = (typeof window !== 'undefined' && (window as any).__API_URL__) || 'http://localhost:3001';
+const API_BASE = (typeof window !== 'undefined' && (window as any).__API_URL__) || 'http://localhost:3000';
 
 export interface Message {
     role: 'system' | 'user' | 'assistant';
