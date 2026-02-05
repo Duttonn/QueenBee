@@ -1,0 +1,41 @@
+# Queen Bee UI Development Progress - Branch [UI]
+
+## 1. Core Layout & Shell (The Hive Architecture)
+- [x] AppShell Implementation: Glassmorphic zinc-based layout with backdrop-blur-xl.
+- [x] Slim Navigation Rail: Activity bar for switching between Editor, Git, and Terminal.
+- [x] Hive Sidebar: macOS Finder-inspired project explorer with "Traffic Lights" spacing.
+- [x] Bottom Drawer Terminal: Collapsible xterm.js-style terminal toggleable via Cmd+J (Framer Motion).
+- [x] Global Orchestrator Command Bar: Centered floating modal (Cmd+K) for NL commands and voice toggles.
+
+## 2. Authentication & Identity
+- [x] Universal Auth Modal: Multi-step setup flow (GitHub OAuth -> LLM Provider).
+- [x] Identity Management: Tabbed interface for API Keys and Source Control (GitHub/GitLab).
+- [x] Model Preference Stack: Visual tiering system for primary (High Reasoning) and fallback models.
+
+## 3. Agentic Workbench (Thread View)
+- [x] Thread Configuration: Mode toggles for [Local | WorkTree | Cloud].
+- [x] Model Succession Indicator: Real-time display of active model (e.g. GPT-4o) and next-in-line.
+- [x] Rich Chat Stream: Differentiated bubbles, collapsible "Thinking..." blocks, and tool-use blocks (Terminal/File write).
+- [x] Advanced Composer: Multi-modal input with "Auto Context" pill (Linked to current file).
+
+## 4. Automation & Triage
+- [x] Automation Dashboard: Card-based grid for managing GSD_SCAN and SYNC jobs.
+- [x] Job Controls: Play/Pause/Trash functionality on schedule cards.
+- [x] History Log: Dedicated side panel showing success/failure status and error logs for autonomous jobs.
+
+## 5. Source Control (Review & Ship)
+- [x] Review & Ship Panel: Sticky Intent Summary banner by Queen Bee.
+- [x] Diff Viewer: Unified/Split diff view with red/green syntax-highlighted blocks.
+- [x] PR Intelligence: Checkbox staging, commit messaging, and CI status indicators.
+
+## Aesthetic Refinements (Cupertino Flux)
+- [x] Zinc/Neutral color palette for premium Apple-style dark mode.
+- [x] Lucide icons updated to stroke-width 1.5 for elegant visuals.
+- [x] Glassmorphism: Heavy blurs (backdrop-blur-2xl) and thin glow borders (white/10).
+- [x] Typography: Optimized hierarchy using Inter/SF Pro with heavy weights and muted zinc tones.
+
+## Technical Foundation
+- [x] Framework: Vite + React + TypeScript.
+- [x] Styling: Tailwind CSS 3.x.
+- [x] Animations: Framer Motion.
+- [x] Icons: Lucide React.
