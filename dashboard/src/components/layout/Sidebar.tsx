@@ -9,9 +9,7 @@ import {
   Clock, 
   Inbox, 
   PlayCircle,
-  User,
-  Settings,
-  LogOut
+  Settings
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -47,125 +45,132 @@ const Sidebar = () => {
     { id: 'auto-2', name: 'Inbox Triage', time: 'Every 30m' },
   ];
 
-  const StatusDot = ({ status }: { status: string }) => {
-    switch(status) {
-      case 'working': return <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse" />;
-      case 'thinking': return <span className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)] animate-ping" />;
-      case 'blocked': return <span className="w-2 h-2 rounded-full bg-red-500" />;
-      default: return <span className="w-2 h-2 rounded-full bg-gray-600" />;
-    }
-  };
-
   return (
-    <div className="w-64 bg-[#111] h-full text-gray-400 flex flex-col border-r border-gray-800 font-sans text-sm select-none">
+    <div className="w-64 bg-zinc-900/50 backdrop-blur-xl h-full text-zinc-400 flex flex-col border-r border-white/5 font-sans text-sm select-none pt-4">
       
-      <div className="flex-1 overflow-y-auto">
-        {/* 1. Workspaces */}
-        <SectionHeader 
-          title="WORKSPACES" 
-          isOpen={expandedSections.workspaces} 
-          onClick={() => toggleSection('workspaces')} 
-        />
-        {expandedSections.workspaces && (
-          <div className="px-2 pb-2 space-y-1">
-            {workspaces.map(ws => (
-               <div key={ws.name} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-800 rounded cursor-pointer text-gray-300">
-                 <Folder size={14} className="text-blue-400" />
-                 <span className="truncate">{ws.name}</span>
-               </div>
-            ))}
-          </div>
-        )}
+      {/* macOS Traffic Lights Spacing */}
+      <div className="px-5 mb-6 flex gap-2 opacity-100 transition-opacity hover:opacity-100">
+         <div className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E]"></div>
+         <div className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123]"></div>
+         <div className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29]"></div>
+      </div>
 
-        {/* 2. Active Projects (Local) */}
-        <SectionHeader 
-          title="ACTIVE PROJECTS" 
-          isOpen={expandedSections.local} 
-          onClick={() => toggleSection('local')} 
-        />
-        {expandedSections.local && (
-          <div className="px-2 pb-2 space-y-1">
-            {localProjects.map(p => (
-              <div key={p.id} className="flex items-center justify-between px-2 py-1.5 hover:bg-gray-800 rounded cursor-pointer group">
-                <span className={`truncate ${p.status === 'working' ? 'text-white font-medium' : 'text-gray-400'}`}>{p.name}</span>
-                <StatusDot status={p.status} />
-              </div>
-            ))}
-          </div>
-        )}
+      <div className="flex-1 overflow-y-auto px-2 space-y-6">
+        
+        {/* 1. Workspaces */}
+        <div>
+          <SectionHeader 
+            title="WORKSPACES" 
+            isOpen={expandedSections.workspaces} 
+            onClick={() => toggleSection('workspaces')} 
+          />
+          {expandedSections.workspaces && (
+            <div className="space-y-0.5 mt-1">
+              {workspaces.map(ws => (
+                 <div key={ws.name} className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 rounded-md cursor-pointer text-zinc-300 transition-colors">
+                   <Folder size={14} className="text-blue-500/80" strokeWidth={1.5} />
+                   <span className="truncate">{ws.name}</span>
+                 </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 2. Active Projects */}
+        <div>
+          <SectionHeader 
+            title="ACTIVE PROJECTS" 
+            isOpen={expandedSections.local} 
+            onClick={() => toggleSection('local')} 
+          />
+          {expandedSections.local && (
+            <div className="space-y-0.5 mt-1">
+              {localProjects.map(p => (
+                <div key={p.id} className={`flex items-center justify-between px-3 py-1.5 rounded-md cursor-pointer group transition-all ${p.status === 'working' ? 'bg-white/10 text-white shadow-sm' : 'hover:bg-white/5'}`}>
+                  <span className="truncate font-medium">{p.name}</span>
+                  <StatusDot status={p.status} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* 3. Remote Forges */}
-        <SectionHeader 
-          title="REMOTE FORGES" 
-          isOpen={expandedSections.remote} 
-          onClick={() => toggleSection('remote')} 
-        />
-        {expandedSections.remote && (
-          <div className="px-2 pb-2 space-y-3">
-            {/* GitHub Group */}
-            <div>
-              <div className="flex items-center gap-2 px-2 text-xs font-bold text-gray-500 mb-1">
-                 <Github size={12} /> <span>Duttonn</span>
-              </div>
-              {remotes.filter(r => r.forge === 'github').map(repo => (
-                <div key={repo.id} className="flex items-center justify-between px-2 py-1 hover:bg-gray-800 rounded cursor-pointer group">
-                  <span className="truncate text-xs">{repo.name}</span>
-                  <Download size={12} className="opacity-0 group-hover:opacity-100 text-blue-400" />
+        <div>
+          <SectionHeader 
+            title="REMOTE FORGES" 
+            isOpen={expandedSections.remote} 
+            onClick={() => toggleSection('remote')} 
+          />
+          {expandedSections.remote && (
+            <div className="space-y-3 mt-1">
+              {/* GitHub Group */}
+              <div>
+                <div className="flex items-center gap-2 px-3 text-[10px] font-bold text-zinc-500 mb-1 uppercase tracking-wider">
+                   <Github size={10} strokeWidth={1.5} /> <span>Duttonn</span>
                 </div>
-              ))}
-            </div>
-            
-            {/* GitLab Group */}
-            <div>
-               <div className="flex items-center gap-2 px-2 text-xs font-bold text-gray-500 mb-1">
-                 <Gitlab size={12} /> <span>natao.dutton</span>
+                {remotes.filter(r => r.forge === 'github').map(repo => (
+                  <div key={repo.id} className="flex items-center justify-between px-3 py-1 hover:bg-white/5 rounded-md cursor-pointer group transition-colors">
+                    <span className="truncate text-xs">{repo.name}</span>
+                    <Download size={12} className="opacity-0 group-hover:opacity-100 text-zinc-400" strokeWidth={1.5} />
+                  </div>
+                ))}
               </div>
-              {remotes.filter(r => r.forge === 'gitlab').map(repo => (
-                <div key={repo.id} className="flex items-center justify-between px-2 py-1 hover:bg-gray-800 rounded cursor-pointer group">
-                  <span className="truncate text-xs">{repo.name}</span>
-                  <Download size={12} className="opacity-0 group-hover:opacity-100 text-orange-400" />
+              
+              {/* GitLab Group */}
+              <div>
+                 <div className="flex items-center gap-2 px-3 text-[10px] font-bold text-zinc-500 mb-1 uppercase tracking-wider">
+                   <Gitlab size={10} strokeWidth={1.5} /> <span>natao.dutton</span>
                 </div>
-              ))}
+                {remotes.filter(r => r.forge === 'gitlab').map(repo => (
+                  <div key={repo.id} className="flex items-center justify-between px-3 py-1 hover:bg-white/5 rounded-md cursor-pointer group transition-colors">
+                    <span className="truncate text-xs">{repo.name}</span>
+                    <Download size={12} className="opacity-0 group-hover:opacity-100 text-orange-400" strokeWidth={1.5} />
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* 4. Automations */}
-        <SectionHeader 
-          title="TRIAGE & AUTOMATION" 
-          isOpen={expandedSections.automation} 
-          onClick={() => toggleSection('automation')} 
-        />
-        {expandedSections.automation && (
-          <div className="px-2 pb-4 space-y-1">
-            <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-800 rounded cursor-pointer text-gray-300">
-               <Inbox size={14} className="text-purple-400" />
-               <span>Inbox (3)</span>
-            </div>
-             {automations.map(auto => (
-               <div key={auto.id} className="flex items-center justify-between px-2 py-1.5 hover:bg-gray-800 rounded cursor-pointer group text-xs text-gray-500">
-                  <div className="flex items-center gap-2">
-                    <Clock size={12} />
-                    <span>{auto.name}</span>
-                  </div>
-                  <PlayCircle size={12} className="opacity-0 group-hover:opacity-100 text-green-400" />
+        <div>
+          <SectionHeader 
+            title="TRIAGE & AUTOMATION" 
+            isOpen={expandedSections.automation} 
+            onClick={() => toggleSection('automation')} 
+          />
+          {expandedSections.automation && (
+            <div className="space-y-0.5 mt-1">
+               <div className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 rounded-md cursor-pointer text-zinc-300 transition-colors">
+                 <Inbox size={14} className="text-purple-500/80" strokeWidth={1.5} />
+                 <span>Inbox (3)</span>
                </div>
-             ))}
-          </div>
-        )}
+               {automations.map(auto => (
+                 <div key={auto.id} className="flex items-center justify-between px-3 py-1.5 hover:bg-white/5 rounded-md cursor-pointer group text-xs text-zinc-500 transition-colors">
+                    <div className="flex items-center gap-2">
+                      <Clock size={12} strokeWidth={1.5} />
+                      <span>{auto.name}</span>
+                    </div>
+                    <PlayCircle size={12} className="opacity-0 group-hover:opacity-100 text-green-400" strokeWidth={1.5} />
+                 </div>
+               ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Footer: User Profile */}
-      <div className="p-3 border-t border-gray-800 bg-[#0f0f0f]">
-         <div className="flex items-center gap-3 p-2 hover:bg-gray-800 rounded-lg cursor-pointer transition-colors group">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 border border-white/20 flex items-center justify-center text-xs text-white font-bold">
+      <div className="p-3 border-t border-white/5 bg-zinc-900/80 backdrop-blur-md">
+         <div className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg cursor-pointer transition-colors group">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-zinc-700 to-zinc-600 border border-white/10 flex items-center justify-center text-xs text-white font-bold shadow-inner">
                ND
             </div>
             <div className="flex-1 overflow-hidden">
-               <div className="text-xs font-bold text-white truncate">Natao Dutton</div>
-               <div className="text-[10px] text-gray-500 truncate">Pro Plan • Active</div>
+               <div className="text-xs font-bold text-zinc-200 truncate">Natao Dutton</div>
+               <div className="text-[10px] text-zinc-500 truncate">Pro Plan • Active</div>
             </div>
-            <Settings size={14} className="text-gray-500 group-hover:text-white" />
+            <Settings size={14} className="text-zinc-600 group-hover:text-zinc-400 transition-colors" strokeWidth={1.5} />
          </div>
       </div>
 
@@ -176,11 +181,22 @@ const Sidebar = () => {
 const SectionHeader = ({ title, isOpen, onClick }: any) => (
   <div 
     onClick={onClick}
-    className="flex items-center gap-1 px-4 py-3 cursor-pointer hover:text-white transition-colors"
+    className="flex items-center gap-1 px-3 py-1 cursor-pointer hover:text-white transition-colors group"
   >
-    {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-    <span className="text-[10px] font-bold tracking-widest">{title}</span>
+    <div className={`text-zinc-600 group-hover:text-zinc-400 transition-colors ${isOpen ? '' : '-rotate-90'}`}>
+      <ChevronDown size={10} strokeWidth={2} />
+    </div>
+    <span className="text-[10px] font-bold tracking-[0.15em] text-zinc-500 group-hover:text-zinc-400">{title}</span>
   </div>
 );
+
+const StatusDot = ({ status }: { status: string }) => {
+  switch(status) {
+    case 'working': return <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)] animate-pulse" />;
+    case 'thinking': return <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)] animate-ping" />;
+    case 'blocked': return <span className="w-1.5 h-1.5 rounded-full bg-red-500/80" />;
+    default: return <span className="w-1.5 h-1.5 rounded-full bg-zinc-700" />;
+  }
+};
 
 export default Sidebar;
