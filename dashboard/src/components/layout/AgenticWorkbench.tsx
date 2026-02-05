@@ -17,8 +17,9 @@ import {
   Plus,
   Sparkles
 } from 'lucide-react';
-import { type Message } from '../../services/api';
+import { type Message, type ToolCall } from '../../services/api';
 import { useHiveStore } from '../../store/useHiveStore';
+import ToolCallViewer from '../agents/ToolCallViewer';
 
 interface AgenticWorkbenchProps {
   messages: Message[];
@@ -42,7 +43,7 @@ const AgenticWorkbench = ({
   const [expandedThinking, setExpandedThinking] = useState<Record<number, boolean>>({});
   const [isAgentMenuOpen, setIsAgentMenuOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { spawnAgent } = useHiveStore();
+  const { spawnAgent, socket, activeThreadId } = useHiveStore();
 
   const handleAddAgent = (role: string) => {
     if (!activeProject) return;
@@ -225,7 +226,35 @@ const AgenticWorkbench = ({
                   )}
 
                   {/* Render tool calls if present */}
-                  {msg.content.includes('Called ') && (
+                  {msg.toolCalls && msg.toolCalls.map((tool, tIdx) => (
+                    <ToolCallViewer
+                      key={tool.id || tIdx}
+                      toolName={tool.name}
+                      args={tool.arguments}
+                      status={tool.status}
+                      result={tool.result}
+                      error={tool.error}
+                      onApprove={() => {
+                        socket?.emit('TOOL_APPROVAL', { 
+                          projectId: activeProject?.id, 
+                          threadId: activeThreadId, 
+                          toolCallId: tool.id || tool.name, 
+                          approved: true 
+                        });
+                      }}
+                      onReject={() => {
+                        socket?.emit('TOOL_APPROVAL', { 
+                          projectId: activeProject?.id, 
+                          threadId: activeThreadId, 
+                          toolCallId: tool.id || tool.name, 
+                          approved: false 
+                        });
+                      }}
+                    />
+                  ))}
+
+                  {/* Render legacy tool calls (placeholders) */}
+                  {msg.content.includes('Called ') && !msg.toolCalls && (
                     <div className="flex items-center gap-2 text-xs text-gray-500 my-2">
                       <Terminal size={12} className="text-gray-400" />
                       <span className="font-mono">
