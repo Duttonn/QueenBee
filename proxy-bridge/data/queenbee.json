@@ -30,6 +30,13 @@
       "description": "Create or update a skill",
       "installed": true,
       "type": "plugin"
+    },
+    {
+      "id": "notion-capture",
+      "title": "Notion Capture",
+      "description": "Save to Notion",
+      "installed": true,
+      "type": "plugin"
     }
   ],
   "projects": []
