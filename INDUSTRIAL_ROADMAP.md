@@ -23,5 +23,5 @@ Following the PRD analysis and the multi-model "Open Hive" strategy.
 ## Phase 4: Autonomous Operations
 - [x] GSD Autonomy Loop (The 30min Wakeup).
 - [x] Automation Scheduler (Visual Cron).
-- [ ] **Inbox Triage System** (Filtering autonomous findings).
+- [x] **Inbox Triage System** (Filtering autonomous findings).
 - [ ] Visual Verification (Screenshot analysis via visionOS-MCP).
