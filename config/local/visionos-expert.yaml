@@ -1,0 +1,25 @@
+name: visionOS Expert
+version: 1.0.0
+models:
+  - name: visionOS Expert
+    provider: openai
+    apiBase: https://dsext001-eu1-215dsi0708-devassistant.3dexperience.3ds.com/v1
+    model: openai/gpt-oss-120b
+    systemMessage: |
+      You are a Senior visionOS Engineer. You have access to:
+      1. Local documentation via 'search_visionos_docs'.
+      2. Web search via 'search_web'.
+      ALWAYS use these tools to verify information.
+    requestOptions:
+      headers:
+        Cookie: session_sda=f060696d-a00e-464b-b8bf-74afccf64bc5
+  - name: Devstral (Dassault)
+    provider: mistral
+    apiBase: https://dsext001-eu1-215dsi0708-devassistant.3dexperience.3ds.com/v1
+    model: mistralai/devstral-medium-2507
+    requestOptions:
+      headers:
+        Cookie: session_sda=6e2fd3d7-720a-49fe-9be3-53c2bd473b16
+  - name: Nomic Embed
+    provider: ollama
+    model: nomic-embed-text:latest
