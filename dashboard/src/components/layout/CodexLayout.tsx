@@ -11,6 +11,7 @@ import GlobalOrchestratorOverlay from './GlobalOrchestrator';
 import UniversalAuthModal from './UniversalAuthModal';
 import GlobalCommandBar from './GlobalCommandBar';
 import Sidebar from './Sidebar';
+import AgenticWorkbench from './AgenticWorkbench';
 
 // Mock Editor Component
 const EditorView = () => (
@@ -107,55 +108,8 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
              {activeTab === 'editor' ? <EditorView /> : children}
           </div>
 
-          {/* Right Pane (Chat/Context) - Always visible in Codex mode */}
-          <div className="w-[400px] border-l border-gray-800 bg-[#111] flex flex-col">
-            <div className="h-12 border-b border-gray-800 flex items-center px-4 gap-2">
-               <MessageSquare size={16} className="text-gray-400" />
-               <span className="text-xs font-bold text-gray-300 uppercase">Orchestrator Chat</span>
-            </div>
-            <div className="flex-1 p-4 overflow-auto space-y-4">
-              {/* Chat History Mock */}
-              <div className="flex gap-3">
-                <div className="w-6 h-6 rounded bg-blue-600 flex items-center justify-center text-[10px] flex-shrink-0">QM</div>
-                <div className="text-sm text-gray-300 leading-relaxed">
-                  I've set up the basic project structure. The <code className="bg-gray-800 px-1 rounded text-xs">proxy-bridge</code> is running on port 3000.
-                </div>
-              </div>
-              
-              <div className="flex gap-3 flex-row-reverse">
-                <div className="w-6 h-6 rounded bg-purple-600 flex items-center justify-center text-[10px] flex-shrink-0">YOU</div>
-                <div className="text-sm text-gray-300 leading-relaxed bg-gray-800/50 p-2 rounded-lg">
-                  Great. Can you show me the Git status?
-                </div>
-              </div>
-
-               <div className="flex gap-3">
-                <div className="w-6 h-6 rounded bg-blue-600 flex items-center justify-center text-[10px] flex-shrink-0">QM</div>
-                <div className="text-sm text-gray-300 leading-relaxed">
-                  Checking <code className="bg-gray-800 px-1 rounded text-xs">git status</code>...
-                  <div className="mt-2 bg-black rounded p-2 font-mono text-xs text-green-400">
-                    On branch main<br/>
-                    Your branch is up to date.<br/>
-                    nothing to commit, working tree clean
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Input Area */}
-            <div className="p-4 border-t border-gray-800 bg-[#0a0a0a]">
-              <div className="relative">
-                <input 
-                  type="text" 
-                  placeholder="Ask Queen Bee to make changes..." 
-                  className="w-full bg-[#1e1e1e] border border-gray-700 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                />
-                <div className="absolute right-3 top-3 text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">
-                  ⏎
-                </div>
-              </div>
-            </div>
-          </div>
+          {/* Right Pane (Chat/Context) - The Agentic Workbench */}
+          <AgenticWorkbench />
         </div>
       </div>
       
