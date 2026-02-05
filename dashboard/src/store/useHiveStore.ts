@@ -8,10 +8,12 @@ interface HiveState {
   activeThreadId: string | null;
   isOrchestratorActive: boolean;
   lastEvent: string | null;
+  queenStatus: string;
   socket: any | null; // Mark as any to avoid persistence issues with Socket instance
 
   // Actions
   initSocket: () => void;
+  setQueenStatus: (status: string) => void;
   setProjects: (projects: any[]) => void;
   addProject: (project: any) => void;
   spawnAgent: (projectId: string, agent: any) => void;
@@ -35,6 +37,7 @@ export const useHiveStore = create<HiveState>()(
       activeThreadId: null,
       isOrchestratorActive: false,
       lastEvent: null,
+      queenStatus: 'idle',
       socket: null,
 
       initSocket: () => {
@@ -43,23 +46,10 @@ export const useHiveStore = create<HiveState>()(
           path: '/api/logs/stream'
         });
 
-        socket.on('UI_UPDATE', (data: any) => {
-          if (data.action === 'SPAWN_AGENT_UI') {
-            get().spawnAgent(data.payload.projectId, data.payload);
-          }
-          if (data.action === 'SET_AGENT_STATUS') {
-            get().updateAgentStatus(data.payload.projectId, data.payload.agentName, data.payload.status);
-          }
-        });
-
-        socket.on('NATIVE_NOTIFICATION', (data: any) => {
-          if (window.electron) {
-            window.electron.notify(data.title, data.body);
-          }
-        });
-
         set({ socket });
       },
+
+      setQueenStatus: (status) => set({ queenStatus: status }),
 
       setProjects: (projects) => set({ projects }),
       addProject: (project) => set((state) => ({ projects: [...state.projects, project] })),
