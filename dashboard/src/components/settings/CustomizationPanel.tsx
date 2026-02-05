@@ -259,23 +259,23 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
                     initial={{ opacity: 0, scale: 0.95, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                    className="w-full max-w-5xl h-[80vh] bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+                    className="w-full max-w-5xl h-[80vh] bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
                     onClick={e => e.stopPropagation()}
                 >
                     {/* Header */}
-                    <div className="flex items-center justify-between p-4 border-b border-white/5 bg-slate-900/50">
+                    <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-gray-50/50 backdrop-blur-md">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
+                            <div className="w-10 h-10 bg-zinc-900 rounded-xl flex items-center justify-center shadow-lg">
                                 <Settings className="text-white" size={20} />
                             </div>
                             <div>
-                                <h2 className="text-lg font-bold text-white">Customize Queen Bee</h2>
-                                <p className="text-xs text-slate-400">Personalize your experience or modify the source code</p>
+                                <h2 className="text-lg font-bold text-zinc-900">Customize Queen Bee</h2>
+                                <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider">Settings & Configuration</p>
                             </div>
                         </div>
                         <button
                             onClick={onClose}
-                            className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+                            className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-lg transition-colors"
                         >
                             <X size={20} />
                         </button>
@@ -283,7 +283,7 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
 
                     <div className="flex flex-1 overflow-hidden">
                         {/* Sidebar */}
-                        <div className="w-48 border-r border-white/5 p-2 flex flex-col gap-1">
+                        <div className="w-56 border-r border-gray-100 bg-zinc-50/50 backdrop-blur-xl p-2 flex flex-col gap-1">
                             <TabButton
                                 active={activeTab === 'appearance'}
                                 onClick={() => setActiveTab('appearance')}
@@ -322,10 +322,10 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
                             />
 
                             {/* Warning */}
-                            <div className="mt-auto p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                            <div className="mt-auto p-4 bg-amber-50 border border-amber-100 rounded-xl">
                                 <div className="flex items-start gap-2">
-                                    <AlertTriangle className="text-yellow-400 flex-shrink-0 mt-0.5" size={14} />
-                                    <p className="text-xs text-slate-400">
+                                    <AlertTriangle className="text-amber-600 flex-shrink-0 mt-0.5" size={14} />
+                                    <p className="text-[11px] font-medium text-amber-900">
                                         Changes to source code require a dev server restart.
                                     </p>
                                 </div>
@@ -333,7 +333,7 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
                         </div>
 
                         {/* Content */}
-                        <div className="flex-1 overflow-hidden flex flex-col">
+                        <div className="flex-1 overflow-hidden flex flex-col bg-white">
                             <AnimatePresence mode="wait">
                                 {activeTab === 'appearance' && (
                                     <AppearanceTab theme={theme} setTheme={setTheme} />
@@ -386,8 +386,8 @@ const TabButton = ({ active, onClick, icon, label }: any) => (
     <button
         onClick={onClick}
         className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${active
-            ? 'bg-blue-500/20 text-blue-300'
-            : 'text-slate-400 hover:text-white hover:bg-white/5'
+            ? 'bg-zinc-900 text-white shadow-md'
+            : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
             }`}
     >
         {icon}
@@ -450,31 +450,25 @@ const ConfigTab = () => {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            className="flex-1 flex flex-col overflow-hidden"
+            className="flex-1 flex flex-col overflow-hidden bg-white"
         >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-slate-800/50">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/30">
                 <div>
-                    <h3 className="text-lg font-bold text-white">Global Configuration</h3>
-                    <p className="text-xs text-slate-400">Edit core settings, models, and tools directly.</p>
+                    <h3 className="text-lg font-bold text-zinc-900">Global Configuration</h3>
+                    <p className="text-[11px] font-medium text-zinc-400 uppercase tracking-widest">Edit hive parameters</p>
                 </div>
                 <div className="flex items-center gap-2">
                     {status === 'success' && (
-                        <span className="flex items-center gap-1 text-xs text-green-400 animate-in fade-in slide-in-from-right-2">
+                        <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
                             <CheckCircle2 size={12} />
                             Saved Successfully
-                        </span>
-                    )}
-                    {status === 'error' && (
-                        <span className="flex items-center gap-1 text-xs text-red-400 animate-in fade-in slide-in-from-right-2">
-                            <AlertTriangle size={12} />
-                            Save Failed
                         </span>
                     )}
                     <button
                         onClick={saveConfig}
                         disabled={isSaving || isLoading}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-colors shadow-lg shadow-amber-900/20"
+                        className="flex items-center gap-1.5 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-colors shadow-lg"
                     >
                         {isSaving ? (
                             <Loader2 size={12} className="animate-spin" />
@@ -486,7 +480,7 @@ const ConfigTab = () => {
                     <button
                         onClick={loadConfig}
                         disabled={isSaving || isLoading}
-                        className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+                        className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-lg transition-colors"
                         title="Refresh"
                     >
                         <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
@@ -495,16 +489,16 @@ const ConfigTab = () => {
             </div>
 
             {/* Editor Area */}
-            <div className="flex-1 relative bg-slate-950">
+            <div className="flex-1 relative bg-zinc-50/50">
                 {errorMessage && (
-                    <div className="absolute top-0 left-0 right-0 p-2 bg-red-500/10 border-b border-red-500/20 text-red-400 text-xs text-center">
+                    <div className="absolute top-0 left-0 right-0 p-2 bg-red-50 border-b border-red-100 text-red-600 text-xs text-center font-medium">
                         {errorMessage}
                     </div>
                 )}
                 <textarea
                     value={configYaml}
                     onChange={(e) => setConfigYaml(e.target.value)}
-                    className="w-full h-full bg-transparent text-slate-300 font-mono text-xs p-6 resize-none focus:outline-none leading-relaxed"
+                    className="w-full h-full bg-transparent text-zinc-800 font-mono text-sm p-6 resize-none focus:outline-none leading-relaxed"
                     spellCheck={false}
                     disabled={isLoading}
                 />

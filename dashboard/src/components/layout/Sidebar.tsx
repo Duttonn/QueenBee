@@ -14,19 +14,58 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { useAuthStore } from '../../store/useAuthStore';
+import { useHiveStore } from '../../store/useHiveStore';
 
 interface SidebarProps {
   activeView: 'build' | 'automations' | 'skills';
   onViewChange: (view: 'build' | 'automations' | 'skills') => void;
   onOpenSettings?: () => void;
+  onSearchClick?: () => void;
+  selectedProjectId?: string | null;
+  onProjectSelect?: (id: string) => void;
 }
 
-const Sidebar = ({ activeView, onViewChange, onOpenSettings }: SidebarProps) => {
-  const { projects } = useAppStore();
+const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, selectedProjectId, onProjectSelect }: SidebarProps) => {
+  const { projects: appProjects } = useAppStore();
+  const { projects, addProject } = useHiveStore();
   const { forges } = useAuthStore();
   const gitForge = forges.find(f => f.id === 'github');
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [isAddRepoOpen, setIsAddRepoOpen] = useState(false);
+  const [isCloning, setIsCloning] = useState<string | null>(null);
+
+  const handleImportRepo = async (repo: any) => {
+    setIsCloning(repo.full_name);
+    const targetDir = `/Users/ndn18/PersonalProjects/QueenBee/projects/${repo.name}`;
+    
+    try {
+      console.log(`[Electron] Starting clone for ${repo.full_name}...`);
+      if (window.electron) {
+        await window.electron.clone(repo.html_url, targetDir);
+        
+        // Add to Hive Store
+        addProject({
+          id: repo.id.toString(),
+          name: repo.name,
+          path: targetDir,
+          agents: [],
+          threads: [
+            { id: Date.now().toString(), title: 'Initial Triage', diff: '+0 -0', time: 'Just now' }
+          ],
+          type: 'local'
+        });
+        
+        setIsAddRepoOpen(false);
+      } else {
+        alert("Electron native bridge not available. Are you running in a web browser?");
+      }
+    } catch (error) {
+      console.error('Clone failed:', error);
+      alert(`Failed to clone repository: ${error}`);
+    } finally {
+      setIsCloning(null);
+    }
+  };
 
   useEffect(() => {
     // Initialize expanded state for new projects
@@ -55,11 +94,14 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings }: SidebarProps) => 
 
       {/* Search */}
       <div className="px-3 mb-2 flex-shrink-0">
-        <div className="flex items-center gap-2 px-3 py-2 bg-gray-100/80 rounded-lg text-gray-400">
+        <button 
+          onClick={onSearchClick}
+          className="w-full flex items-center gap-2 px-3 py-2 bg-gray-100/80 rounded-lg text-gray-400 hover:bg-gray-200/50 transition-colors"
+        >
           <Search size={14} />
-          <span className="text-sm">Search</span>
-          <span className="ml-auto text-xs text-gray-400 font-mono hidden sm:block">⌘K</span>
-        </div>
+          <span className="text-sm text-left flex-1">Search</span>
+          <span className="text-xs text-gray-400 font-mono hidden sm:block font-medium">⌘K</span>
+        </button>
       </div>
 
       {/* Navigation */}
@@ -126,14 +168,16 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings }: SidebarProps) => 
                         gitForge.repositories.map((repo: any) => (
                           <button
                             key={repo.id}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors"
-                            onClick={() => {
-                              console.log('Importing repo:', repo.full_name);
-                              setIsAddRepoOpen(false);
-                            }}
+                            disabled={isCloning === repo.full_name}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors disabled:opacity-50"
+                            onClick={() => handleImportRepo(repo)}
                           >
                             <div className="w-5 h-5 rounded-md bg-slate-100 flex items-center justify-center flex-shrink-0 text-xs text-slate-600 font-medium">
-                              {repo.name[0].toUpperCase()}
+                              {isCloning === repo.full_name ? (
+                                <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                repo.name[0].toUpperCase()
+                              )}
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="text-sm text-gray-700 font-medium truncate">{repo.name}</div>
@@ -191,24 +235,32 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings }: SidebarProps) => 
           <div key={project.name} className="mb-2">
             {/* Folder Header */}
             <button
-              onClick={() => toggleFolder(project.name)}
-              className="w-full flex items-center gap-2 px-2 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              onClick={() => {
+                toggleFolder(project.name);
+                onProjectSelect?.(project.id);
+              }}
+              className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                selectedProjectId === project.id 
+                ? 'bg-blue-50 text-blue-700 shadow-sm border border-blue-100/50' 
+                : 'text-gray-700 hover:bg-gray-100'
+              }`}
             >
               {expandedFolders[project.name] ? (
-                <ChevronDown size={14} className="text-gray-400" />
+                <ChevronDown size={14} className={selectedProjectId === project.id ? 'text-blue-500' : 'text-gray-400'} />
               ) : (
-                <ChevronRight size={14} className="text-gray-400" />
+                <ChevronRight size={14} className={selectedProjectId === project.id ? 'text-blue-500' : 'text-gray-400'} />
               )}
-              <Folder size={14} className="text-gray-400" />
+              <Folder size={14} className={selectedProjectId === project.id ? 'text-blue-500' : 'text-gray-400'} />
               <span>{project.name}</span>
             </button>
 
             {/* Thread Items */}
             {expandedFolders[project.name] && (
               <div className="ml-4 space-y-0.5 mt-1">
-                {project.threads.map(thread => (
+                {project.threads?.map(thread => (
                   <div
                     key={thread.id}
+                    onClick={() => onProjectSelect?.(project.id)}
                     className="flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-gray-100 cursor-pointer group transition-colors"
                   >
                     <div className="flex items-center gap-2 min-w-0">

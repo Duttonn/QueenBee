@@ -30,6 +30,7 @@ import AgenticWorkbench from './AgenticWorkbench';
 import { sendChatMessage, getGitDiff, type Message } from '../../services/api';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useAppStore } from '../../store/useAppStore';
+import { useHiveStore } from '../../store/useHiveStore';
 import CustomizationPanel from '../settings/CustomizationPanel';
 
 // Cloud Terminal Icon Component (matches ☁️_ from spec)
@@ -160,101 +161,111 @@ const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange,
   };
 
   return (
-    <div className="absolute bottom-4 left-4 right-4 sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-2xl sm:px-4">
-      <div className="bg-white border border-gray-200 rounded-2xl shadow-lg px-3 sm:px-4 py-3 flex items-center gap-2 sm:gap-3">
-        {/* Left Controls */}
-        <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0">
-          <Plus size={18} />
-        </button>
+    <div className="absolute bottom-6 left-4 right-4 sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-3xl sm:px-4">
+      <div className="bg-white border border-gray-200 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+        {/* Top: Input Area */}
+        <div className="px-4 pt-4 pb-2">
+          <textarea
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask Codex anything, @ to add files, / for commands..."
+            disabled={isLoading}
+            rows={1}
+            className="w-full bg-transparent text-sm text-slate-800 placeholder-gray-400 outline-none resize-none min-h-[44px] max-h-40 leading-relaxed"
+            style={{ height: 'auto' }}
+          />
+        </div>
 
-        {/* Mode Selector - Hidden on mobile */}
-        <div className="hidden sm:flex items-center gap-1 bg-gray-100 rounded-lg p-1 flex-shrink-0">
-          {(['local', 'worktree', 'cloud'] as const).map((m) => (
+        {/* Bottom: Controls Row */}
+        <div className="px-3 pb-3 pt-1 flex items-center justify-between bg-zinc-50/30 border-t border-gray-100/50">
+          <div className="flex items-center gap-2">
+            {/* Plus button */}
+            <button className="p-2 hover:bg-gray-100 rounded-xl text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0">
+              <Plus size={18} strokeWidth={1.5} />
+            </button>
+
+            <div className="w-px h-4 bg-gray-200 mx-1"></div>
+
+            {/* Mode Selector */}
+            <div className="flex items-center gap-1 bg-gray-100/80 rounded-xl p-1 flex-shrink-0">
+              {(['local', 'worktree', 'cloud'] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => onModeChange(m)}
+                  className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${mode === m
+                    ? 'bg-white text-zinc-900 shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-600'
+                    }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+
+            {/* Model Selector */}
+            <div className="relative flex-shrink-0 ml-1">
+              <button
+                onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-600 bg-gray-100/80 hover:bg-gray-200/80 rounded-xl transition-colors border border-transparent"
+              >
+                <span>{selectedModel || 'Select Model'}</span>
+                <ChevronDown size={12} className="text-gray-400" />
+              </button>
+              <AnimatePresence>
+                {isModelMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setIsModelMenuOpen(false)} />
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="absolute bottom-full left-0 mb-3 w-56 bg-white border border-gray-200 shadow-2xl rounded-2xl overflow-hidden z-20 p-1 backdrop-blur-xl"
+                    >
+                      <div className="px-3 py-2 text-[9px] font-bold text-zinc-400 uppercase tracking-[0.2em] border-b border-gray-50 mb-1">
+                        AI Model
+                      </div>
+                      <div className="max-h-60 overflow-y-auto">
+                        {availableModels.length > 0 ? (
+                          availableModels.map((m) => (
+                            <button
+                              key={m}
+                              onClick={() => { onModelSelect(m); setIsModelMenuOpen(false); }}
+                              className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition-colors ${m === selectedModel
+                                ? 'bg-zinc-900 text-white shadow-lg'
+                                : 'text-zinc-600 hover:bg-zinc-50'
+                                }`}
+                            >
+                              {m}
+                            </button>
+                          ))
+                        ) : (
+                          <div className="px-3 py-3 text-xs text-zinc-400 italic">No models available</div>
+                        )}
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+
+          {/* Right side: Voice and Send */}
+          <div className="flex items-center gap-2">
+            <button className="p-2 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-gray-600 transition-colors">
+              <Mic size={18} strokeWidth={1.5} />
+            </button>
             <button
-              key={m}
-              onClick={() => onModeChange(m)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${mode === m
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
+              onClick={onSubmit}
+              disabled={!value.trim() || isLoading}
+              className={`p-2 rounded-xl transition-all shadow-md ${!value.trim() || isLoading
+                ? 'bg-gray-100 text-gray-300'
+                : 'bg-zinc-900 text-white hover:bg-zinc-800 scale-105 active:scale-95'
                 }`}
             >
-              {m.charAt(0).toUpperCase() + m.slice(1)}
+              {isLoading ? <Loader2 size={18} className="animate-spin" /> : <ArrowUp size={18} strokeWidth={2.5} />}
             </button>
-          ))}
-        </div>
-
-        {/* Model Selector */}
-        <div className="relative flex-shrink-0">
-          <button
-            onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors border border-transparent hover:border-gray-300"
-          >
-            <span>{selectedModel || 'Select Model'}</span>
-            <ChevronDown size={12} className="text-gray-400" />
-          </button>
-          <AnimatePresence>
-            {isModelMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setIsModelMenuOpen(false)} />
-                <motion.div
-                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  className="absolute bottom-full left-0 mb-2 w-48 bg-white border border-gray-200 shadow-xl rounded-xl overflow-hidden z-20 p-1"
-                >
-                  <div className="px-2 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
-                    Select Model
-                  </div>
-                  <div className="max-h-60 overflow-y-auto">
-                    {availableModels.length > 0 ? (
-                      availableModels.map((m) => (
-                        <button
-                          key={m}
-                          onClick={() => { onModelSelect(m); setIsModelMenuOpen(false); }}
-                          className={`w-full text-left px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${m === selectedModel
-                            ? 'bg-blue-50 text-blue-600'
-                            : 'text-gray-700 hover:bg-gray-50'
-                            }`}
-                        >
-                          {m}
-                        </button>
-                      ))
-                    ) : (
-                      <div className="px-2 py-2 text-xs text-gray-400">No models available</div>
-                    )}
-                  </div>
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Input */}
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Ask Codex anything..."
-          disabled={isLoading}
-          className="flex-1 min-w-0 bg-transparent text-sm text-slate-800 placeholder-gray-400 outline-none disabled:opacity-50"
-        />
-
-        {/* Right Controls */}
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <button className="hidden sm:block p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors">
-            <Lock size={16} />
-          </button>
-          <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors">
-            <Mic size={16} />
-          </button>
-          <button
-            onClick={onSubmit}
-            disabled={!value.trim() || isLoading}
-            className="p-2 bg-slate-900 hover:bg-slate-800 rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isLoading ? <Loader2 size={16} className="animate-spin" /> : <ArrowUp size={16} />}
-          </button>
+          </div>
         </div>
       </div>
     </div>
@@ -355,6 +366,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const [activeView, setActiveView] = useState<'build' | 'automations' | 'skills'>('build');
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isCustomizationOpen, setIsCustomizationOpen] = useState(false);
@@ -364,7 +376,11 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const activeProvider = providers.find(p => p.id === activeProviderId) || providers.find(p => p.connected);
 
   // App state
-  const { runAutomation, commit, projects, fetchData, addProject } = useAppStore();
+  const { runAutomation, commit, fetchData, addProject: addAppProject } = useAppStore();
+
+  // Hive state
+  const { projects, addProject } = useHiveStore();
+  const activeProject = projects.find(p => p.id === selectedProjectId);
 
   useEffect(() => {
     fetchData();
@@ -411,7 +427,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     if (path) {
       const name = path.split('/').pop() || 'Untitled';
       try {
-        await addProject(name, path);
+        await addAppProject(name, path);
         alert(`Project "${name}" added successfully!`);
       } catch (e: any) {
         alert('Failed to add project. Ensure backend is running and path exists.');
@@ -543,6 +559,12 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
               <Sidebar
                 activeView={activeView}
                 onOpenSettings={() => setIsCustomizationOpen(true)}
+                onSearchClick={() => setIsSearchOpen(true)}
+                selectedProjectId={selectedProjectId}
+                onProjectSelect={(id) => {
+                  setSelectedProjectId(id);
+                  setActiveView('build');
+                }}
                 onViewChange={(view) => {
                   setActiveView(view);
                   if (window.innerWidth < 768) {
@@ -563,7 +585,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
             <AutomationDashboard />
           ) : activeView === 'build' ? (
             <>
-              {messages.length > 0 ? (
+              {(messages.length > 0 || activeProject) ? (
                 <AgenticWorkbench
                   messages={messages}
                   isLoading={isLoading}
@@ -571,6 +593,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                   changedFiles={[]}
                   mode={executionMode}
                   onModeChange={setExecutionMode}
+                  activeProject={activeProject}
                 />
               ) : (
                 <EmptyState

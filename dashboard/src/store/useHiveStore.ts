@@ -8,7 +8,7 @@ interface HiveState {
   isOrchestratorActive: boolean;
   lastEvent: string | null;
   socket: any | null; // Mark as any to avoid persistence issues with Socket instance
-  
+
   // Actions
   initSocket: () => void;
   setProjects: (projects: any[]) => void;
@@ -21,8 +21,8 @@ export const useHiveStore = create<HiveState>()(
   persist(
     (set, get) => ({
       projects: [
-        { id: 'bj', name: 'Blackjack Advisor', agents: [], type: 'local' },
-        { id: 'vos', name: 'visionOS MCP', agents: [], type: 'local' }
+        { id: 'bj', name: 'Blackjack Advisor', agents: [], threads: [], type: 'local' },
+        { id: 'vos', name: 'visionOS MCP', agents: [], threads: [], type: 'local' }
       ],
       activeAgents: [],
       isOrchestratorActive: false,
@@ -31,8 +31,10 @@ export const useHiveStore = create<HiveState>()(
 
       initSocket: () => {
         if (get().socket) return;
-        const socket = io('/api/logs/stream');
-        
+        const socket = io('http://localhost:3001', {
+          path: '/api/logs/stream'
+        });
+
         socket.on('UI_UPDATE', (data: any) => {
           if (data.action === 'SPAWN_AGENT_UI') {
             get().spawnAgent(data.payload.projectId, data.payload);
@@ -47,18 +49,18 @@ export const useHiveStore = create<HiveState>()(
 
       setProjects: (projects) => set({ projects }),
       addProject: (project) => set((state) => ({ projects: [...state.projects, project] })),
-      
+
       spawnAgent: (projectId, agent) => set((state) => ({
-        projects: state.projects.map(p => 
+        projects: state.projects.map(p =>
           p.id === projectId ? { ...p, agents: [...p.agents, agent] } : p
         )
       })),
 
       updateAgentStatus: (projectId, agentName, status) => set((state) => ({
-        projects: state.projects.map(p => 
-          p.id === projectId ? { 
-            ...p, 
-            agents: p.agents.map((a: any) => a.name === agentName ? { ...a, status } : a) 
+        projects: state.projects.map(p =>
+          p.id === projectId ? {
+            ...p,
+            agents: p.agents.map((a: any) => a.name === agentName ? { ...a, status } : a)
           } : p
         )
       }))
@@ -66,10 +68,10 @@ export const useHiveStore = create<HiveState>()(
     {
       name: 'hive-storage',
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ 
-        projects: state.projects, 
+      partialize: (state) => ({
+        projects: state.projects,
         activeAgents: state.activeAgents,
-        isOrchestratorActive: state.isOrchestratorActive 
+        isOrchestratorActive: state.isOrchestratorActive
       }), // Don't persist the socket instance!
     }
   )

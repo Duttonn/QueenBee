@@ -1,15 +1,20 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
+import { NativeFSManager } from './NativeFSManager';
+
+const nativeFS = new NativeFSManager();
 
 function createWindow() {
+  nativeFS.setupHandlers();
+
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     titleBarStyle: 'hiddenInset', // Apple Native Aesthetic
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      nodeIntegration: true,
-      contextIsolation: false
+      nodeIntegration: false,
+      contextIsolation: true
     }
   });
 

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bot,
   User,
@@ -11,9 +12,13 @@ import {
   File,
   Check,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Users,
+  Plus,
+  Sparkles
 } from 'lucide-react';
 import { type Message } from '../../services/api';
+import { useHiveStore } from '../../store/useHiveStore';
 
 interface AgenticWorkbenchProps {
   messages: Message[];
@@ -22,6 +27,7 @@ interface AgenticWorkbenchProps {
   changedFiles?: string[];
   mode: 'local' | 'worktree' | 'cloud';
   onModeChange: (mode: 'local' | 'worktree' | 'cloud') => void;
+  activeProject?: any;
 }
 
 const AgenticWorkbench = ({
@@ -30,10 +36,25 @@ const AgenticWorkbench = ({
   diffStats = { added: 0, removed: 0 },
   changedFiles = [],
   mode,
-  onModeChange
+  onModeChange,
+  activeProject
 }: AgenticWorkbenchProps) => {
   const [expandedThinking, setExpandedThinking] = useState<Record<number, boolean>>({});
+  const [isAgentMenuOpen, setIsAgentMenuOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { spawnAgent } = useHiveStore();
+
+  const handleAddAgent = (role: string) => {
+    if (!activeProject) return;
+    spawnAgent(activeProject.id, {
+      id: Date.now().toString(),
+      name: `${role} Bee`,
+      role: role,
+      status: 'idle',
+      avatar: '🐝'
+    });
+    setIsAgentMenuOpen(false);
+  };
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -44,11 +65,32 @@ const AgenticWorkbench = ({
     setExpandedThinking(prev => ({ ...prev, [index]: !prev[index] }));
   };
 
+  if (!activeProject && messages.length === 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-white text-zinc-400">
+        <div className="text-center">
+          <Bot size={48} className="mx-auto mb-4 opacity-20" />
+          <p className="text-sm font-medium">Select a thread or repository to start building</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div className="h-14 border-b border-gray-100 flex items-center justify-between px-4 flex-shrink-0 bg-white">
         <div className="flex items-center gap-3">
+          {/* Project Title */}
+          {activeProject && (
+            <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-zinc-50 border border-zinc-100 mr-2">
+              <div className="w-4 h-4 rounded bg-blue-500 flex items-center justify-center text-[10px] text-white font-bold">
+                {activeProject.name[0]}
+              </div>
+              <span className="text-xs font-semibold text-zinc-700">{activeProject.name}</span>
+            </div>
+          )}
+
           {/* Mode Selector */}
           <div className="flex items-center bg-gray-100 rounded-lg p-1">
             {(['local', 'worktree', 'cloud'] as const).map((m) => (
@@ -56,8 +98,8 @@ const AgenticWorkbench = ({
                 key={m}
                 onClick={() => onModeChange(m)}
                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${mode === m
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
                   }`}
               >
                 {m.charAt(0).toUpperCase() + m.slice(1)}
@@ -68,6 +110,76 @@ const AgenticWorkbench = ({
 
         {/* Actions */}
         <div className="flex items-center gap-2">
+          {/* Agent Assignment Button */}
+          <div className="relative">
+            <button
+              onClick={() => setIsAgentMenuOpen(!isAgentMenuOpen)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-xs font-medium ${activeProject?.agents?.length > 0
+                  ? 'bg-amber-50 border-amber-200 text-amber-700'
+                  : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+            >
+              <Users size={14} />
+              <span>{activeProject?.agents?.length || 0} Agents</span>
+              <ChevronDown size={12} className="opacity-50" />
+            </button>
+
+            <AnimatePresence>
+              {isAgentMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setIsAgentMenuOpen(false)} />
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute top-full right-0 mt-2 w-56 bg-white border border-gray-200 shadow-xl rounded-xl overflow-hidden z-20 p-1"
+                  >
+                    <div className="px-2 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                      Assigned Agents
+                    </div>
+                    <div className="max-h-40 overflow-y-auto mb-1">
+                      {activeProject?.agents?.length > 0 ? (
+                        activeProject.agents.map((agent: any) => (
+                          <div key={agent.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-zinc-700">
+                            <span className="text-base">{agent.avatar || '🐝'}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="truncate">{agent.name}</p>
+                              <p className="text-[10px] text-zinc-400">{agent.role}</p>
+                            </div>
+                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-sm" />
+                          </div>
+                        ))
+                      ) : (
+                        <div className="px-2 py-3 text-center text-[11px] text-zinc-400 italic">
+                          No agents active
+                        </div>
+                      )}
+                    </div>
+                    <div className="border-t border-zinc-50 pt-1">
+                      <div className="px-2 py-1 text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Spawn New</div>
+                      <button
+                        onClick={() => handleAddAgent('Architect')}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:bg-zinc-50 transition-colors text-left"
+                      >
+                        <Sparkles size={12} className="text-purple-500" />
+                        <span>Architect Bee</span>
+                      </button>
+                      <button
+                        onClick={() => handleAddAgent('Developer')}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:bg-zinc-50 transition-colors text-left"
+                      >
+                        <Terminal size={12} className="text-blue-500" />
+                        <span>Developer Bee</span>
+                      </button>
+                    </div>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <div className="w-px h-6 bg-gray-100 mx-1"></div>
+
           <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-gray-700 transition-colors">
             <Play size={16} />
           </button>

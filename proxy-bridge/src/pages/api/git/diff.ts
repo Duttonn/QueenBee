@@ -11,7 +11,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     // We call our Python extractor for the heavy lifting of parsing
-    import path from 'path';
     const scriptPath = path.join(process.cwd(), 'src/lib/git_diff_extractor.py');
     const output = execSync(`python3 ${scriptPath} ${projectPath} ${filePath || ''}`).toString();
     
