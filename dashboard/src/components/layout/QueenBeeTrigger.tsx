@@ -53,7 +53,7 @@ const QueenBeeTrigger = () => {
           <div className="w-2 h-2 rounded-full bg-blue-600 animate-ping mr-4" />
           <input 
             type="text"
-            placeholder="Command the Hive Orchestrator..."
+            placeholder="Search or command the Hive..."
             className="bg-transparent border-none outline-none w-full font-bold text-slate-900 text-sm placeholder:text-slate-300"
             value={command}
             onChange={(e) => setCommand(e.target.value)}
