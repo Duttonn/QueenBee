@@ -18,7 +18,7 @@ interface HiveState {
   addProject: (project: any) => void;
   spawnAgent: (projectId: string, agent: any) => void;
   updateAgentStatus: (projectId: string, agentName: string, status: string) => void;
-  
+
   // Thread Actions
   setActiveThread: (id: string | null) => void;
   addThread: (projectId: string, thread: any) => void;
@@ -39,8 +39,8 @@ export const useHiveStore = create<HiveState>()(
 
       initSocket: () => {
         if (get().socket) return;
-        const socket = io('http://localhost:3001', {
-          path: '/api/logs/stream' // This path will be corrected in TASK-02
+        const socket = io('http://localhost:3000', {
+          path: '/api/logs/stream'
         });
 
         // Listeners moved to useSocketEvents hook in TASK-03
@@ -70,14 +70,14 @@ export const useHiveStore = create<HiveState>()(
       setActiveThread: (activeThreadId) => set({ activeThreadId }),
 
       addThread: (projectId, thread) => set((state) => ({
-        projects: state.projects.map(p => 
+        projects: state.projects.map(p =>
           p.id === projectId ? { ...p, threads: [{ ...thread, messages: [] }, ...(p.threads || [])] } : p
         ),
         activeThreadId: thread.id
       })),
 
       updateThread: (projectId, threadId, updates) => set((state) => ({
-        projects: state.projects.map(p => 
+        projects: state.projects.map(p =>
           p.id === projectId ? {
             ...p,
             threads: p.threads.map((t: any) => t.id === threadId ? { ...t, ...updates } : t)
@@ -86,10 +86,10 @@ export const useHiveStore = create<HiveState>()(
       })),
 
       addMessage: (projectId, threadId, message) => set((state) => ({
-        projects: state.projects.map(p => 
+        projects: state.projects.map(p =>
           p.id === projectId ? {
             ...p,
-            threads: p.threads.map((t: any) => 
+            threads: p.threads.map((t: any) =>
               t.id === threadId ? { ...t, messages: [...(t.messages || []), message] } : t
             )
           } : p

@@ -210,7 +210,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                         <button
                           onClick={async () => {
                             try {
-                              const res = await fetch('http://localhost:3001/api/auth/github');
+                              const res = await fetch('http://localhost:3000/api/auth/github');
                               const data = await res.json();
                               if (data.url) window.location.href = data.url;
                             } catch (e) {

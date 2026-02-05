@@ -8,9 +8,11 @@ import {
   Maximize2
 } from 'lucide-react';
 import DiffViewer from './DiffViewer';
+import VisualUIDiff from './VisualUIDiff';
 
 const ReviewAndShip = () => {
   const [selectedFile, setSelectedFile] = useState('Sidebar.tsx');
+  const [viewMode, setViewMode] = useState<'code' | 'visual'>('code');
 
   return (
     <div className="flex h-full bg-[#0d0d0d]">
@@ -34,6 +36,20 @@ const ReviewAndShip = () => {
         </div>
 
         <div className="p-4 bg-[#1a1a1a] border-t border-gray-800 space-y-3">
+           <div className="grid grid-cols-2 gap-2 mb-4">
+              <button 
+                onClick={() => setViewMode('code')}
+                className={`py-1.5 rounded text-[10px] font-bold uppercase transition-all ${viewMode === 'code' ? 'bg-white text-black' : 'bg-white/5 text-gray-500 hover:bg-white/10'}`}
+              >
+                Code
+              </button>
+              <button 
+                onClick={() => setViewMode('visual')}
+                className={`py-1.5 rounded text-[10px] font-bold uppercase transition-all ${viewMode === 'visual' ? 'bg-white text-black' : 'bg-white/5 text-gray-500 hover:bg-white/10'}`}
+              >
+                Visual
+              </button>
+           </div>
            <div>
              <label className="text-[10px] text-gray-400 font-bold uppercase mb-1 block">Commit Message</label>
              <textarea 
@@ -79,9 +95,13 @@ const ReviewAndShip = () => {
             </div>
          </div>
 
-         {/* Diff Viewer */}
+         {/* Diff Viewer / Visual Diff */}
          <div className="flex-1 overflow-auto p-8 flex justify-center bg-[#0d0d0d]">
-             <DiffViewer />
+             {viewMode === 'code' ? (
+                <DiffViewer />
+             ) : (
+                <VisualUIDiff />
+             )}
          </div>
 
          {/* PR Intelligence Footer */}
