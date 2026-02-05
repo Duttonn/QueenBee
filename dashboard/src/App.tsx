@@ -6,17 +6,23 @@ import AuthCallback from './components/auth/AuthCallback';
 import OnboardingFlow from './components/auth/OnboardingFlow';
 import { useAuthStore } from './store/useAuthStore';
 import { useHiveStore } from './store/useHiveStore';
+import { useSocketEvents } from './hooks/useSocketEvents'; // Added for TASK-03
 
 function App() {
   const { isAuthenticated, isOnboarded, login, setOnboarded, connectForge, forges } = useAuthStore();
-  const initSocket = useHiveStore(state => state.initSocket);
+  const { initSocket } = useHiveStore(); // Destructure initSocket
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isCallback, setIsCallback] = useState(false);
 
-  // Initialize Socket.io connection on mount
+  // Initialize Socket.io connection if authenticated and onboarded
   useEffect(() => {
-    initSocket();
-  }, [initSocket]);
+    if (isAuthenticated && isOnboarded) {
+      initSocket();
+    }
+  }, [isAuthenticated, isOnboarded, initSocket]);
+
+  // Hook into socket events
+  useSocketEvents(); // Added for TASK-03
 
   // Check if this is an OAuth callback
   useEffect(() => {
