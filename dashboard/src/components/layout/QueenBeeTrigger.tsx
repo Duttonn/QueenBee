@@ -9,10 +9,28 @@ const QueenBeeTrigger = () => {
   const [isHovered, setIsHovered] = useState(false);
   const [command, setCommand] = useState('');
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+K or Ctrl+K to trigger the Queen Bee
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsHovered(true);
+      }
+      // ESC to close
+      if (e.key === 'Escape') {
+        setIsHovered(false);
+        setCommand('');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
     <div 
       className={`fixed top-6 left-1/2 -translate-x-1/2 z-[100] transition-all duration-500 ease-out
-        ${isHovered ? 'w-[600px]' : 'w-48'}
+        ${isHovered ? 'w-[600px] top-12' : 'w-48'}
       `}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => !command && setIsHovered(false)}
