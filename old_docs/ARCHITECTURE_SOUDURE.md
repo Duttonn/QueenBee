@@ -26,6 +26,39 @@
 15. [PRD DE CONVERGENCE](#15-prd-de-convergence)
 16. [PLAN D'EXÉCUTION](#16-plan-dexécution)
 17. [CHECKLIST DE DÉPLOIEMENT](#17-checklist-de-déploiement)
+18. [MEMORY STRATEGY](#18-memory-strategy)
+18. [MEMORY STRATEGY](#18-memory-strategy)
+
+---
+
+# 18. MEMORY STRATEGY
+
+## 18.1 Vision: The Layered Cortex
+Queen Bee utilise une approche hybride inspirée d'OpenClaw pour équilibrer **précision déterministe** (Markdown) et **passage à l'échelle** (Vector RAG).
+
+### Les Trois Couches de Mémoire :
+1.  **Couche 1 : Mémoire de Travail (Thread)**
+    *   **Scope** : Conversation actuelle.
+    *   **Isolation** : Cloisonnement strict par `threadId`.
+2.  **Couche 2 : Mémoire Partagée (Shared Cortex)**
+    *   **Fichier** : `MEMORY.md` à la racine du projet.
+    *   **Rôle** : Conventions, décisions d'architecture, découvertes majeures.
+    *   **Outil** : `write_memory`.
+3.  **Couche 3 : Mémoire Long-Terme (Library - Future)**
+    *   **Index** : `sqlite-vec` (Vector Database locale).
+    *   **Rôle** : Recherche sémantique dans l'historique massif et la documentation.
+
+## 18.2 Guidelines d'Utilisation
+*   **Read-Only par défaut** : L'agent ne modifie `MEMORY.md` que si une info est jugée cruciale pour la pérennité du projet.
+*   **Structure du MEMORY.md** :
+    *   `# Architecture` : Choix structurants.
+    *   `# Conventions` : Règles de nommage, patterns.
+    *   `# Findings` : Bugs résolus, pièges évités.
+
+## 18.3 Flux de Synchronisation
+1.  **Réveil de l'Agent** : Chargement automatique des 50 dernières lignes de `MEMORY.md` dans le système prompt.
+2.  **Action** : L'agent utilise `search_memory` (via vector index) s'il a besoin d'infos plus anciennes.
+3.  **Archivage** : À la fin d'un thread complexe, l'agent suggère de résumer les points clés dans `MEMORY.md`.
 
 ---
 

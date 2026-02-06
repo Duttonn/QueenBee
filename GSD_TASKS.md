@@ -46,7 +46,7 @@
   - **Validation**: Aucun appel direct à `fs` depuis Electron (preload.ts) ne doit contourner l'API.
   - **Worker**: BACKEND
 
-- [ ] `S-06`: [Backend] Migration vers Paths.ts pour tous les chemins de fichiers
+- [IN PROGRESS: SOUDURE-03] `S-06`: [Backend] Migration vers Paths.ts pour tous les chemins de fichiers
   - **Fichiers**: `proxy-bridge/src/lib/Paths.ts` et usages.
   - **Dépend de**: Rien
   - **Validation**: Plus aucun chemin "/Users/ndn18" ou "/home/fish" hardcodé.
@@ -58,7 +58,7 @@
   - **Validation**: Une erreur `run_shell` doit s'afficher en rouge dans le dashboard via un event socket.
   - **Worker**: INTEGRATION
 
-- [ ] `S-08`: [Backend] Réparer la boucle de FileWatcher (Backend -> Socket -> UI)
+- [IN PROGRESS: SOUDURE-04] `S-08`: [Backend] Réparer la boucle de FileWatcher (Backend -> Socket -> UI)
   - **Fichiers**: `proxy-bridge/src/lib/FileWatcher.ts`, `proxy-bridge/src/lib/EventLoopManager.ts`
   - **Dépend de**: Rien
   - **Validation**: Modifier un fichier trigger une mise à jour immédiate du Diff dans le dashboard sans boucle infinie.

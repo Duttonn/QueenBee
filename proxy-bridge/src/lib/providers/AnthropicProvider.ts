@@ -56,4 +56,68 @@ export class AnthropicProvider extends LLMProvider {
       }
     };
   }
+
+  async *chatStream(messages: LLMMessage[], options?: LLMProviderOptions): AsyncGenerator<LLMResponse> {
+    const model = options?.model || 'claude-3-opus-20240229';
+    const systemMessage = messages.find(m => m.role === 'system');
+    const otherMessages = messages.filter(m => m.role !== 'system').map(m => ({
+      role: m.role === 'assistant' ? 'assistant' : 'user',
+      content: m.content || ''
+    }));
+
+    const response = await fetch(`${this.apiBase}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': this.apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model,
+        system: systemMessage?.content,
+        messages: otherMessages,
+        max_tokens: options?.maxTokens || 4096,
+        temperature: options?.temperature,
+        stream: true
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Anthropic streaming failed: ${response.status} ${errorText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Response body is null');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const cleanedLine = line.trim();
+        if (!cleanedLine.startsWith('data: ')) continue;
+        
+        try {
+          const json = JSON.parse(cleanedLine.substring(6));
+          if (json.type === 'content_block_delta' && json.delta?.text) {
+            yield {
+              id: 'stream',
+              model,
+              content: json.delta.text
+            };
+          }
+        } catch (e) {
+          // Ignore parse errors for non-JSON lines
+        }
+      }
+    }
+  }
 }

@@ -1,5 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
+import 'highlight.js/styles/github.css';
 import {
   Bot,
   User,
@@ -15,7 +19,8 @@ import {
   AlertCircle,
   Users,
   Plus,
-  Sparkles
+  Sparkles,
+  Copy
 } from 'lucide-react';
 import { type Message, type ToolCall } from '../../services/api';
 import { useHiveStore } from '../../store/useHiveStore';
@@ -199,7 +204,7 @@ const AgenticWorkbench = ({
                   <User size={14} className="text-gray-600" />
                 </div>
                 <div className="flex-1 bg-gray-50 rounded-2xl rounded-tl-sm px-4 py-3">
-                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{msg.content}</p>
+                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{msg.content || ''}</p>
                 </div>
               </div>
             )}
@@ -215,13 +220,13 @@ const AgenticWorkbench = ({
                 <div className="flex-1 space-y-2">
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Assistant</span>
-                    {(msg.content.includes('```thinking') || (isLoading && index === messages.length - 1 && queenStatus === 'thinking')) && (
+                    {((msg.content?.includes('```thinking')) || (isLoading && index === messages.length - 1 && queenStatus === 'thinking')) && (
                       <button
                         onClick={() => toggleThinking(index)}
                         className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-[10px] font-bold text-blue-600 hover:bg-blue-100 transition-colors border border-blue-100"
                       >
                         <Sparkles size={10} className={isLoading && index === messages.length - 1 ? "animate-spin" : ""} />
-                        <span>{isLoading && index === messages.length - 1 && !msg.content.includes('```thinking') ? 'Pondering...' : 'View Thoughts'}</span>
+                        <span>{isLoading && index === messages.length - 1 && !msg.content?.includes('```thinking') ? 'Pondering...' : 'View Thoughts'}</span>
                         {expandedThinking[index] ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
                       </button>
                     )}
@@ -237,7 +242,7 @@ const AgenticWorkbench = ({
                         className="overflow-hidden"
                       >
                         <div className="pl-4 border-l-2 border-blue-200 bg-blue-50/30 py-2 my-1 rounded-r-lg space-y-1">
-                          {msg.content.includes('```thinking') ? (
+                          {msg.content?.includes('```thinking') ? (
                             msg.content
                               .match(/```thinking\n([\s\S]*?)```/)?.[1]
                               ?.split('\n')
@@ -291,7 +296,7 @@ const AgenticWorkbench = ({
                   ))}
 
                   {/* Render legacy tool calls (placeholders) */}
-                  {msg.content.includes('Called ') && !msg.toolCalls && (
+                  {msg.content?.includes('Called ') && !msg.toolCalls && (
                     <div className="flex items-center gap-2 text-xs text-gray-500 my-2">
                       <Terminal size={12} className="text-gray-400" />
                       <span className="font-mono">
@@ -306,15 +311,75 @@ const AgenticWorkbench = ({
                   )}
 
                   {/* Main content (filter out thinking blocks) */}
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                    {msg.content
-                      .replace(/```thinking[\s\S]*?```/g, '')
-                      .replace(/Called \w+ → Success\n?/g, '')
-                      .trim()}
-                  </p>
+                  {msg.content && (
+                    <div className="text-sm text-zinc-800 prose prose-sm max-w-none prose-zinc prose-pre:p-0 prose-pre:bg-transparent">
+                      <ReactMarkdown 
+                        remarkPlugins={[remarkGfm]} 
+                        rehypePlugins={[rehypeHighlight]}
+                        components={{
+                          pre: ({node, children, ...props}) => <>{children}</>,
+                          code: ({node, inline, className, children, ...props}) => {
+                            const match = /language-(\w+)/.exec(className || '');
+                            const lang = match ? match[1] : '';
+                            const [copied, setCopied] = useState(false);
+
+                            const handleCopy = () => {
+                              navigator.clipboard.writeText(String(children));
+                              setCopied(true);
+                              setTimeout(() => setCopied(false), 2000);
+                            };
+
+                            const content = String(children);
+                            const isShort = content.length < 40 && !content.includes('\n');
+
+                            if (inline) {
+                              return (
+                                <code className="px-1.5 py-0.5 rounded-md bg-zinc-100 text-zinc-900 font-mono text-[11px] border border-zinc-200" {...props}>
+                                  {children}
+                                </code>
+                              );
+                            }
+
+                            if (isShort && !lang) {
+                              return (
+                                <code className="block my-2 px-3 py-2 rounded-lg bg-zinc-50 text-zinc-700 font-mono text-[12px] border border-zinc-200" {...props}>
+                                  {children}
+                                </code>
+                              );
+                            }
+
+                            return (
+                              <div className="my-4 rounded-xl border border-zinc-200 bg-[#fbfcfd] overflow-hidden shadow-sm group">
+                                <div className="flex items-center justify-between px-4 py-2 bg-zinc-50/80 border-b border-zinc-100">
+                                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{lang || 'code'}</span>
+                                  <button 
+                                    onClick={handleCopy}
+                                    className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-400 hover:text-blue-600 transition-colors"
+                                  >
+                                    {copied ? <Check size={10} className="text-green-500" /> : <Copy size={10} />}
+                                    <span>{copied ? 'Copied!' : 'Copy code'}</span>
+                                  </button>
+                                </div>
+                                <div className="p-5 overflow-x-auto bg-white/50">
+                                  <code className={`${className} font-mono text-[12px] leading-relaxed !bg-transparent !p-0`} {...props}>
+                                    {children}
+                                  </code>
+                                </div>
+                              </div>
+                            );
+                          }
+                        }}
+                      >
+                        {msg.content
+                          .replace(/```thinking[\s\S]*?```/g, '')
+                          .replace(/Called \w+ → Success\n?/g, '')
+                          .trim()}
+                      </ReactMarkdown>
+                    </div>
+                  )}
 
                   {/* Error styling for error messages */}
-                  {msg.content.startsWith('Error:') && (
+                  {msg.content?.startsWith('Error:') && (
                     <div className="flex items-center gap-2 text-red-500 text-xs mt-2">
                       <AlertCircle size={12} />
                       <span>Request failed</span>

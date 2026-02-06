@@ -40,9 +40,11 @@ export interface LLMProviderOptions {
   stop?: string[];
   response_format?: { type: 'json_object' | 'text' };
   apiKey?: string;
+  tools?: any[];
 }
 
 export interface ILLMProvider {
   id: string;
   chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse>;
+  chatStream?(messages: LLMMessage[], options?: LLMProviderOptions): AsyncGenerator<LLMResponse>;
 }
