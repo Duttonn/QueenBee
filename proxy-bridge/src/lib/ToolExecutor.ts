@@ -5,6 +5,9 @@ import { broadcast } from './socket-instance';
 
 /**
  * ToolExecutor: Parses and executes tool calls from the LLM.
+ * IMPORTANT: This module is intended for SERVER-SIDE (Node.js backend) execution ONLY.
+ * It should NOT be imported or used directly within Electron main or renderer processes.
+ * All interactions from Electron should go through defined IPC channels.
  */
 export class ToolExecutor {
   async execute(tool: { name: string; arguments: any }, projectPath: string) {

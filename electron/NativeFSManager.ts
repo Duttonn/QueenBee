@@ -7,6 +7,9 @@ const path = require('path');
 /**
  * NativeFSManager: The IPC bridge for system-level operations.
  * This runs in the Electron Main process (Native side).
+ * IMPORTANT: This module should ONLY be used by the Electron main process.
+ * It should NOT import or directly interact with backend logic (e.g., ToolExecutor)
+ * that is meant for the Node.js proxy-bridge server.
  */
 export class NativeFSManager {
   setupHandlers() {
