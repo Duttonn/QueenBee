@@ -4,6 +4,7 @@ import {
   PenSquare,
   Clock,
   Plug,
+  Inbox,
   ChevronDown,
   ChevronRight,
   Folder,
@@ -22,8 +23,8 @@ import { useHiveStore } from '../../store/useHiveStore';
 import { SystemService } from '../../services/SystemService';
 
 interface SidebarProps {
-  activeView: 'build' | 'automations' | 'skills';
-  onViewChange: (view: 'build' | 'automations' | 'skills') => void;
+  activeView: 'build' | 'automations' | 'skills' | 'triage';
+  onViewChange: (view: 'build' | 'automations' | 'skills' | 'triage') => void;
   onOpenSettings?: () => void;
   onSearchClick?: () => void;
   selectedProjectId?: string | null;
@@ -198,6 +199,12 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
           label="Automations"
           active={activeView === 'automations'}
           onClick={() => onViewChange('automations')}
+        />
+        <NavItem
+          icon={<Inbox size={16} />}
+          label="Triage"
+          active={activeView === 'triage'}
+          onClick={() => onViewChange('triage')}
         />
         <NavItem
           icon={<Plug size={16} />}
