@@ -1,13 +1,12 @@
 # 🐝 QUEEN BEE - GLOBAL STATUS & DISPATCH (GSD)
 # Généré par : Architecte Agent
 # Date : 2026-02-06
-# Source : PRD v3 Ground Truth + Audit Forensique + Delta v3.1
+# Source : PRD v3 Ground Truth + Audit Forensique
 
 ## 📊 Status Global
 - **Blocker #1**: /api/chat ne stream pas (S-01, S-02)
-- **Blocker #2**: Boucle agentic loop déconnectée ou incomplète (S-03)
+- **Blocker #2**: Boucle agentique déconnectée (S-03, S-08)
 - **Claim API**: http://127.0.0.1:3000/api/tasks/claim
-- **System Health**: 🟡 Maintenance Mode (Phase 0 in progress)
 
 ## 🧠 Protocol Reminder (Pour les Agents)
 > **Règle d'Or** : Ne touchez PAS à ce fichier manuellement. Utilisez l'API claim.
@@ -17,10 +16,10 @@
 ## 🔧 PHASE 0: SOUDURE (Semaine 1) — Fix What's Broken
 > **Règle** : ZÉRO nouvelle feature. Uniquement réparer les connexions cassées.
 
-- [IN PROGRESS: ARCHITECT] `S-01`: [Backend] Ajouter `.chatStream()` AsyncGenerator à UnifiedLLMService.ts
+- [TESTED & VALIDATED: Antigravity] `S-01`: [Backend] Ajouter `.chatStream()` AsyncGenerator à UnifiedLLMService.ts
   - **Fichiers**: `proxy-bridge/src/lib/UnifiedLLMService.ts`
   - **Dépend de**: Rien
-  - **Validation**: Test unitaire `UnifiedLLMService.test.ts` vérifiant le yield des chunks.
+  - **Validation**: `const stream = service.chatStream(msgs, 'anthropic'); for await (const c of stream) console.log(c)`
   - **Worker**: BACKEND
 
 - [ ] `S-02`: [Backend] Convertir `/api/chat` de res.json() vers SSE streaming
@@ -29,44 +28,44 @@
   - **Validation**: `curl -N -X POST http://127.0.0.1:3000/api/chat ...` doit afficher les chunks en temps réel.
   - **Worker**: BACKEND
 
-- [ ] `S-03`: [Integration] Reconnecter AutonomousRunner à /api/chat et gérer le streaming agent
+- [ ] `S-03`: [Integration] Reconnecter AutonomousRunner à /api/chat et gérer le streaming agent (SSE)
   - **Fichiers**: `proxy-bridge/src/lib/AutonomousRunner.ts`, `proxy-bridge/src/pages/api/chat.ts`
   - **Dépend de**: `S-02`
-  - **Validation**: L'agent doit pouvoir envoyer des messages intermédiaires via Socket.io pendant que le SSE stream le texte final.
+  - **Validation**: L'agent doit pouvoir envoyer des messages intermédiaires via SSE pendant que le runner s'exécute.
   - **Worker**: INTEGRATION
 
-- [ ] `S-04`: [Frontend] Unifier API_BASE sur le port 3000 partout
-  - **Fichiers**: `dashboard/src/services/api.ts`, `dashboard/src/store/useAppStore.ts`, etc.
+- [ ] `S-04`: [Frontend] Unifier API_BASE sur le port 3000 partout et supprimer les URL hardcodées
+  - **Fichiers**: `dashboard/src/components/layout/Sidebar.tsx`, `dashboard/src/services/api.ts`
   - **Dépend de**: Rien
-  - **Validation**: `grep -r ":3001" dashboard/src` ne doit rien renvoyer.
+  - **Validation**: `grep -r "localhost:3000" dashboard/src` ne doit trouver que des usages de `API_BASE`.
   - **Worker**: FRONTEND
 
 - [ ] `S-05`: [Backend] Sécuriser ToolExecutor pour qu'il soit exclusivement server-side
   - **Fichiers**: `proxy-bridge/src/lib/ToolExecutor.ts`
   - **Dépend de**: Rien
-  - **Validation**: Vérifier qu'aucun appel direct à `fs` ou `child_process` n'est fait depuis Electron (preload.ts) sans passer par l'API.
+  - **Validation**: Aucun appel direct à `fs` depuis Electron (preload.ts) ne doit contourner l'API.
   - **Worker**: BACKEND
 
-- [ ] `S-06`: [Backend] Migration vers Paths.ts pour tous les chemins de fichiers (Finir TASK-ELEC-AUDIT)
+- [ ] `S-06`: [Backend] Migration vers Paths.ts pour tous les chemins de fichiers
   - **Fichiers**: `proxy-bridge/src/lib/Paths.ts` et usages.
   - **Dépend de**: Rien
-  - **Validation**: Suppression des chemins "/home/fish" hardcodés restants.
+  - **Validation**: Plus aucun chemin "/Users/ndn18" ou "/home/fish" hardcodé.
   - **Worker**: BACKEND
 
 - [ ] `S-07`: [Integration] Propagation des erreurs du ToolExecutor vers l'UI via Socket.io
   - **Fichiers**: `proxy-bridge/src/lib/ToolExecutor.ts`, `dashboard/src/hooks/useSocketEvents.ts`
   - **Dépend de**: Rien
-  - **Validation**: Une erreur `run_shell` doit s'afficher en rouge dans le dashboard.
+  - **Validation**: Une erreur `run_shell` doit s'afficher en rouge dans le dashboard via un event socket.
   - **Worker**: INTEGRATION
 
-- [ ] `S-08`: [Backend] Brancher FileWatcher (chokidar) sur le broadcast global
-  - **Fichiers**: `proxy-bridge/src/lib/FileWatcher.ts`
+- [ ] `S-08`: [Backend] Réparer la boucle de FileWatcher (Backend -> Socket -> UI)
+  - **Fichiers**: `proxy-bridge/src/lib/FileWatcher.ts`, `proxy-bridge/src/lib/EventLoopManager.ts`
   - **Dépend de**: Rien
-  - **Validation**: Modifier un fichier manuellement doit trigger un event `FILE_CHANGED` dans le dashboard.
+  - **Validation**: Modifier un fichier trigger une mise à jour immédiate du Diff dans le dashboard sans boucle infinie.
   - **Worker**: BACKEND
 
 ## 🚀 PHASE 1: SOLO MODE COMPLET (Semaines 2-4)
-- [ ] `P1-01`: [Frontend] Implémenter le streaming UI (Markdown partiel) dans le Composer
+- [IN PROGRESS: FRONTEND-01] `P1-01`: [Frontend] Implémenter le streaming UI (Markdown partiel) dans le Composer
 - [ ] `P1-02`: [Backend] Implémenter le résumé automatique de fin de session (Memory Flush)
 - [ ] `P1-03`: [Frontend] Améliorer le Diff Viewer (Split-pane + Synchronized scrolling)
 - [ ] `P1-04`: [Integration] Intégrer la dictée vocale Whisper (Ctrl+M)
