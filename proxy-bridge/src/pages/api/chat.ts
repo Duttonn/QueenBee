@@ -5,32 +5,9 @@ import { unifiedLLMService } from '../../lib/UnifiedLLMService';
 import { LLMMessage } from '../../lib/types/llm';
 import path from 'path';
 
-// Mock responses for testing without a real LLM
-function getMockResponse(messages: any[], prevError?: string): any {
-  const lastMessage = messages[messages.length - 1];
-  const userContent = lastMessage?.content || '';
-
-  const fallbackNote = prevError ? `\n\n*(Fallback active due to error: ${prevError})*` : '';
-
-  return {
-    id: `mock-${Date.now()}`,
-    object: 'chat.completion',
-    created: Math.floor(Date.now() / 1000),
-    model: 'mock-model',
-    choices: [{
-      index: 0,
-      message: {
-        role: 'assistant',
-        content: `I received your message: "${userContent.slice(0, 50)}..."\n\n**Mock Response**: The Queen Bee assistant is connected.${fallbackNote}`
-      },
-      finish_reason: 'stop'
-    }],
-    usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
-  };
-}
-
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST']);
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
@@ -40,50 +17,68 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   
   logger.info(`[Chat] Request received. Provider: ${providerId}, Model: ${model}, Stream: ${stream}, Path: ${rawPath}, Thread: ${threadId}, Mode: ${mode}, Agent: ${agentId}`);
 
-  // Resolve Project Context
-  const projectPath = rawPath 
-    ? (path.isAbsolute(rawPath) ? rawPath : path.resolve(process.cwd(), '..', rawPath))
-    : process.cwd();
-  
+  if (stream) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    try {
+      const streamGenerator = unifiedLLMService.chatStream(providerId, messages, { model, apiKey });
+      let chunkCounter = 0;
+      for await (const chunk of streamGenerator) {
+        chunkCounter++;
+        res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+      }
+      logger.info(`[Chat] Stream ended after ${chunkCounter} chunks.`);
+      res.end();
+    } catch (error: any) {
+      logger.error(`[Chat] Streaming Error: ${error.message}`);
+      res.write(`data: ${JSON.stringify({ error: { message: error.message, type: 'STREAM_ERROR' } })}\n\n`);
+      res.end();
+    }
+    return;
+  }
+
+  // Fallback to non-streaming for agentic loops or specific requests
   try {
-    const runner = new AutonomousRunner((res as any).socket, projectPath, providerId, threadId, apiKey, mode, agentId);
+    const projectPath = rawPath 
+      ? (path.isAbsolute(rawPath) ? rawPath : path.resolve(process.cwd(), '..', rawPath))
+      : process.cwd();
     
-    const lastMessage = messages[messages.length - 1];
-    
-    if (lastMessage.role === 'user') {
-      // Use the new agentic loop
-      const history = messages.slice(0, -1);
-      const finalAssistantMessage = await runner.executeLoop(lastMessage.content, history, { model, stream });
-      
-      return res.status(200).json({
-        id: `queen-${Date.now()}`,
-        object: 'chat.completion',
-        created: Math.floor(Date.now() / 1000),
-        model: model || 'queen-bee-agent',
-        choices: [{
-          index: 0,
-          message: finalAssistantMessage,
-          finish_reason: 'stop'
-        }],
-        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
-      });
-    } else {
-        // Fallback for non-user messages
-        const response = await unifiedLLMService.chat(providerId, messages, { model, stream });
-        return res.status(200).json({
-            choices: [{
-                message: {
-                    role: 'assistant',
-                    content: response.content,
-                    tool_calls: response.tool_calls
-                }
-            }]
-        });
+    // The AutonomousRunner is not designed for streaming back to the client in this way yet.
+    // It uses its own socket events.
+    if (mode === 'autonomous' || mode === 'local') {
+        const runner = new AutonomousRunner((res as any).socket, projectPath, providerId, threadId, apiKey, mode, agentId);
+        const lastMessage = messages[messages.length - 1];
+        
+        if (lastMessage.role === 'user') {
+          const history = messages.slice(0, -1);
+          // Run in background, don't await
+          runner.executeLoop(lastMessage.content, history, { model, stream }).catch(e => logger.error(`[Chat] Autonomous Runner failed: ${e.message}`));
+          
+          return res.status(202).json({
+            status: 'processing',
+            message: 'Autonomous agent started. Monitor socket events for updates.',
+            threadId: threadId,
+          });
+        }
     }
 
+    // Standard non-streaming call
+    const response = await unifiedLLMService.chat(providerId, messages, { model, apiKey });
+    return res.status(200).json({
+        choices: [{
+            message: {
+                role: 'assistant',
+                content: response.content,
+                tool_calls: response.tool_calls
+            }
+        }]
+    });
+
   } catch (error: any) {
-    logger.error(`[Chat] Error: ${error.message}`);
-    // If it's a critical failure, we return the mock response to keep the UI from crashing
-    return res.status(200).json(getMockResponse(messages, error.message));
+    logger.error(`[Chat] Non-Streaming Error: ${error.message}`);
+    return res.status(500).json({ error: error.message });
   }
 }

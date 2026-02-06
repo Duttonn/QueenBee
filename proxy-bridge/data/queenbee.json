@@ -55,6 +55,21 @@
       "type": "local",
       "threads": [],
       "agents": []
+    },
+    {
+      "id": "c9fdd30d-01e0-4cde-93eb-96ea0ee6750f",
+      "name": "Fitch",
+      "path": "/Users/ndn18/.codex/workspaces/cloud-c9fdd30d-01e0-4cde-93eb-96ea0ee6750f",
+      "type": "cloud",
+      "threads": [
+        {
+          "id": "cloud-c9fdd30d-01e0-4cde-93eb-96ea0ee6750f",
+          "title": "Cloud Workspace Initialized",
+          "diff": "+0 -0",
+          "time": "2026-02-06T16:46:09.744Z"
+        }
+      ],
+      "agents": []
     }
   ]
 }

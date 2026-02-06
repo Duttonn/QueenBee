@@ -22,7 +22,7 @@
   - **Validation**: `const stream = service.chatStream(msgs, 'anthropic'); for await (const c of stream) console.log(c)`
   - **Worker**: BACKEND
 
-- [ ] `S-02`: [Backend] Convertir `/api/chat` de res.json() vers SSE streaming
+- [IN PROGRESS: INTEG-01] `S-02`: [Backend] Convertir `/api/chat` de res.json() vers SSE streaming
   - **Fichiers**: `proxy-bridge/src/pages/api/chat.ts`
   - **Dépend de**: `S-01`
   - **Validation**: `curl -N -X POST http://127.0.0.1:3000/api/chat ...` doit afficher les chunks en temps réel.
@@ -67,7 +67,7 @@
 ## 🚀 PHASE 1: SOLO MODE COMPLET (Semaines 2-4)
 - [IN PROGRESS: FRONTEND-01] `P1-01`: [Frontend] Implémenter le streaming UI (Markdown partiel) dans le Composer
 - [ ] `P1-02`: [Backend] Implémenter le résumé automatique de fin de session (Memory Flush)
-- [ ] `P1-03`: [Frontend] Améliorer le Diff Viewer (Split-pane + Synchronized scrolling)
+- [IN PROGRESS: FRONTEND-01] `P1-03`: [Frontend] Améliorer le Diff Viewer (Split-pane + Synchronized scrolling)
 - [ ] `P1-04`: [Integration] Intégrer la dictée vocale Whisper (Ctrl+M)
 - [ ] `P1-05`: [Frontend] Ajouter les Security Approvals UI pour les actions sensibles
 
