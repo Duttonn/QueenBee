@@ -3,6 +3,7 @@ import { unifiedLLMService } from './UnifiedLLMService';
 import { ToolExecutor } from './ToolExecutor';
 import { broadcast } from './socket-instance';
 import { AGENT_TOOLS } from './ToolDefinitions';
+import { MemoryManager } from './MemoryManager';
 
 export interface AgentSessionEvents {
   onStepStart?: (step: number) => void;
@@ -10,7 +11,9 @@ export interface AgentSessionEvents {
   onToolStart?: (toolName: string, args: any) => void;
   onToolEnd?: (toolName: string, result: any) => void;
   onToolError?: (toolName: string, error: any) => void;
+  onSummary?: (summary: string) => void;
 }
+
 
 /**
  * AgentSession encapsulates the agentic loop (Think -> Act -> Observe).
@@ -169,6 +172,15 @@ export class AgentSession {
       } else {
         broadcast('QUEEN_STATUS', { status: 'idle' });
       }
+
+      // Generate and broadcast summary
+      const summary = await MemoryManager.generateSummary(this.messages);
+      this.events.onSummary?.(summary);
+      broadcast('UI_UPDATE', { 
+        action: 'SESSION_SUMMARY', 
+        payload: { summary, threadId: this.threadId } 
+      });
+
     } catch (error: any) {
       console.error('[AgentSession] Error in runLoop:', error);
       broadcast('QUEEN_STATUS', { status: 'error', message: error.message });
