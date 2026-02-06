@@ -6,6 +6,7 @@ import { broadcast } from './socket-instance';
 import { exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { FileWatcher } from './FileWatcher';
 
 /**
  * EventLoopManager: The "Nervous System" of Queen Bee.
@@ -17,6 +18,7 @@ export class EventLoopManager {
   private dispatcher: UniversalDispatcher;
   private toolExecutor: ToolExecutor;
   private appLogPath: string;
+  private fileWatcher: FileWatcher;
 
   constructor(socket: Socket) {
     this.socket = socket;
@@ -24,6 +26,7 @@ export class EventLoopManager {
     this.dispatcher = new UniversalDispatcher(socket);
     this.toolExecutor = new ToolExecutor();
     this.appLogPath = path.join(process.cwd(), '..', 'app.log');
+    this.fileWatcher = new FileWatcher();
     this.setupListeners();
   }
 
@@ -38,6 +41,16 @@ export class EventLoopManager {
       } catch (e) {
         console.error('Failed to write to app.log', e);
       }
+    });
+
+    /**
+     * Scenario: User selects a project to work on
+     * This starts the file watcher for that project.
+     */
+    this.socket.on('PROJECT_SELECT', ({ projectPath }) => {
+      console.log(`[EventLoop] Project selected: ${projectPath}. Starting file watcher.`);
+      this.fileWatcher.stop(); // Stop any previous watcher
+      this.fileWatcher.start(projectPath);
     });
 
     /**
@@ -90,29 +103,8 @@ export class EventLoopManager {
                     toolCallId
                 });
 
-                // ToolExecutor now broadcasts the result internally, but we keep this for redundancy if needed
-                // or we could remove it to avoid double-events. 
-                // For now, let's trust ToolExecutor's broadcast which now includes IDs.
-                /* 
-                broadcast('TOOL_RESULT', {
-                    projectId,
-                    threadId,
-                    toolCallId,
-                    status: 'success',
-                    result
-                });
-                */
             } catch (error: any) {
                 // ToolExecutor already broadcasts error with context
-                /*
-                broadcast('TOOL_RESULT', {
-                    projectId,
-                    threadId,
-                    toolCallId,
-                    status: 'error',
-                    error: error.message
-                });
-                */
             }
         } else {
             broadcast('TOOL_RESULT', {
@@ -126,14 +118,14 @@ export class EventLoopManager {
 
     /**
      * Scenario: Agent modified a file
-     * This is triggered by the FileWatcher inside AutoContextManager
+     * This is triggered by the FileWatcher.
      */
-    this.socket.on('FILE_CHANGE_DETECTED', async ({ projectId, filePath, treePath }) => {
+    this.fileWatcher.on('file-change', async ({ filePath, projectPath }) => {
       console.log(`[EventLoop] File change detected in ${filePath}. Calculating Diff.`);
       
       try {
         const scriptPath = path.join(__dirname, 'git_diff_extractor.py');
-        const diffProcess = exec(`python3 "${scriptPath}" "${treePath}" "${filePath}"`);
+        const diffProcess = exec(`python3 "${scriptPath}" "${projectPath}" "${filePath}"`);
         let diffOutput = '';
         diffProcess.stdout?.on('data', (data) => {
           diffOutput += data.toString();
@@ -154,8 +146,10 @@ export class EventLoopManager {
 
         const diffJson = JSON.parse(diffOutput);
         
+        // Find which project this belongs to
+        // For now, we assume one active project, but this should be more robust
+        
         broadcast('DIFF_UPDATE', {
-          projectId,
           file: filePath,
           added: diffJson.diff.filter((l: any) => l.type === 'add').length,
           removed: diffJson.diff.filter((l: any) => l.type === 'del').length
@@ -164,7 +158,6 @@ export class EventLoopManager {
         broadcast('UI_UPDATE', {
           action: 'UPDATE_LIVE_DIFF',
           payload: {
-            projectId,
             filePath,
             diff: diffJson.diff // Send the full structured diff
           }
