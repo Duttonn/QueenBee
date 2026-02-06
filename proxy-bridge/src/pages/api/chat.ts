@@ -47,11 +47,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   
   try {
     const runner = new AutonomousRunner((res as any).socket, projectPath, providerId, threadId, apiKey);
-    
     const lastMessage = messages[messages.length - 1];
-    
+
+    if (stream) {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+
+      // SSE Stream Loop
+      // Note: S-03 will integrate AutonomousRunner for agentic streaming
+      const streamGenerator = unifiedLLMService.chatStream(providerId, messages, { model, apiKey });
+      for await (const chunk of streamGenerator) {
+        res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+      }
+      
+      res.write('data: [DONE]\n\n');
+      res.end();
+      return;
+    }
+
     if (lastMessage.role === 'user') {
-      // Use the new agentic loop
+      // Use the new agentic loop (Non-streaming)
       const finalAssistantMessage = await runner.executeLoop(lastMessage.content, { model, stream });
       
       return res.status(200).json({
@@ -82,6 +100,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   } catch (error: any) {
     logger.error(`[Chat] Error: ${error.message}`);
+    
+    if (stream && res.headersSent) {
+      res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+      res.end();
+      return;
+    }
+
     // If it's a critical failure, we return the mock response to keep the UI from crashing
     return res.status(200).json(getMockResponse(messages, error.message));
   }
