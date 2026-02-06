@@ -8,6 +8,7 @@ const PROJECT_ROOT = Paths.getProxyBridgeRoot();
 const ALLOWED_ROOTS = [
     PROJECT_ROOT,
     Paths.getWorkspaceRoot(),
+    Paths.getCloudWorkspacesDir(),
 ];
 
 /**

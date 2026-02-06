@@ -16,13 +16,15 @@ export class AgentSession extends EventEmitter {
   private providerId: string;
   private threadId: string | null;
   private apiKey: string | null;
+  private mode: string;
 
   constructor(projectPath: string, options: { 
     systemPrompt?: string, 
     maxSteps?: number,
     providerId?: string,
     threadId?: string,
-    apiKey?: string
+    apiKey?: string,
+    mode?: string
   } = {}) {
     super();
     this.executor = new ToolExecutor();
@@ -31,6 +33,7 @@ export class AgentSession extends EventEmitter {
     this.providerId = options.providerId || 'auto';
     this.threadId = options.threadId || null;
     this.apiKey = options.apiKey || null;
+    this.mode = options.mode || 'local';
 
     if (options.systemPrompt) {
       this.messages.push({ role: 'system', content: options.systemPrompt });
@@ -101,7 +104,8 @@ export class AgentSession extends EventEmitter {
               projectPath: this.projectPath,
               threadId: this.threadId || undefined,
               agentId: this.threadId,
-              toolCallId: toolCall.id
+              toolCallId: toolCall.id,
+              mode: this.mode
             });
 
             this.emit('event', { type: 'tool_end', data: { toolName, result, toolCallId: toolCall.id } });

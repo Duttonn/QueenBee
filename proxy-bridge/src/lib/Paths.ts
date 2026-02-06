@@ -74,6 +74,13 @@ export class Paths {
   }
 
   /**
+   * Resolves the cloud workspaces directory (~/.codex/workspaces).
+   */
+  static getCloudWorkspacesDir(): string {
+    return path.join(this.getCodexHome(), 'workspaces');
+  }
+
+  /**
    * Resolves the workspace root (parent of proxy-bridge).
    */
   static getWorkspaceRoot(): string {

@@ -9,7 +9,7 @@ export class RepoClonerService {
 
   constructor() {
     // Jail workspaces in ~/.codex/workspaces
-    this.baseDir = path.join(Paths.getCodexHome(), 'workspaces');
+    this.baseDir = Paths.getCloudWorkspacesDir();
     fs.ensureDirSync(this.baseDir);
   }
 

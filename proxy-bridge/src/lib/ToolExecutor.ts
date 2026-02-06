@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { broadcast } from './socket-instance';
 import { Paths } from './Paths';
+import { CloudFSManager } from './CloudFSManager';
 
 // Simple Mutex for concurrent file writes
 class Mutex {
@@ -36,7 +37,7 @@ export class ToolExecutor {
 
   async execute(
     tool: { name: string; arguments: any; id?: string },
-    contextOrPath: string | { projectPath: string; agentId?: string | null; threadId?: string; projectId?: string; toolCallId?: string },
+    contextOrPath: string | { projectPath: string; agentId?: string | null; threadId?: string; projectId?: string; toolCallId?: string; mode?: string },
     legacyAgentId?: string | null
   ) {
     let projectPath: string;
@@ -44,6 +45,7 @@ export class ToolExecutor {
     let threadId: string | undefined;
     let projectId: string | undefined;
     let toolCallId: string | undefined = tool.id;
+    let mode: string = 'local';
 
     if (typeof contextOrPath === 'string') {
       projectPath = contextOrPath;
@@ -53,8 +55,11 @@ export class ToolExecutor {
       agentId = contextOrPath.agentId || 'unknown';
       threadId = contextOrPath.threadId;
       projectId = contextOrPath.projectId;
+      mode = contextOrPath.mode || 'local';
       if (contextOrPath.toolCallId) toolCallId = contextOrPath.toolCallId;
     }
+
+    const cloudFS = mode === 'cloud' ? new CloudFSManager(projectPath) : null;
 
     broadcast('TOOL_EXECUTION', { 
       tool: tool.name, 
@@ -69,20 +74,28 @@ export class ToolExecutor {
       let result = null;
       switch (tool.name) {
         case 'write_file':
-          const filePath = this.validatePath(projectPath, tool.arguments.path);
-          await fs.ensureDir(path.dirname(filePath));
-          await fs.writeFile(filePath, tool.arguments.content);
-          result = { success: true, path: filePath };
+          if (cloudFS) {
+            await cloudFS.writeFile(tool.arguments.path, tool.arguments.content);
+            result = { success: true, path: tool.arguments.path };
+          } else {
+            const filePath = this.validatePath(projectPath, tool.arguments.path);
+            await fs.ensureDir(path.dirname(filePath));
+            await fs.writeFile(filePath, tool.arguments.content);
+            result = { success: true, path: filePath };
+          }
           break;
           
         case 'run_shell':
-          // Potential additional security: sanitize or restrict commands here
           result = await this.runShellCommand(tool.arguments.command, projectPath);
           break;
           
         case 'read_file':
-          const readPath = this.validatePath(projectPath, tool.arguments.path);
-          result = await fs.readFile(readPath, 'utf-8');
+          if (cloudFS) {
+            result = await cloudFS.readFile(tool.arguments.path);
+          } else {
+            const readPath = this.validatePath(projectPath, tool.arguments.path);
+            result = await fs.readFile(readPath, 'utf-8');
+          }
           break;
 
         case 'create_worktree':
@@ -104,11 +117,11 @@ export class ToolExecutor {
           break;
 
         case 'write_memory':
-          result = await this.handleWriteMemory(projectPath, tool.arguments.category, tool.arguments.content, agentId);
+          result = await this.handleWriteMemory(projectPath, tool.arguments.category, tool.arguments.content, agentId, cloudFS);
           break;
 
         case 'read_memory':
-          result = await this.handleReadMemory(projectPath, tool.arguments.category);
+          result = await this.handleReadMemory(projectPath, tool.arguments.category, cloudFS);
           break;
 
         case 'spawn_worker':
@@ -185,10 +198,11 @@ export class ToolExecutor {
     };
   }
 
-  private async handleWriteMemory(projectPath: string, category: string, content: string, agentId: string | null) {
+  private async handleWriteMemory(projectPath: string, category: string, content: string, agentId: string | null, cloudFS?: CloudFSManager | null) {
     const unlock = await memoryMutex.lock();
     try {
-      const memoryPath = this.validatePath(projectPath, 'MEMORY.md');
+      const memoryFileName = 'MEMORY.md';
+      
       const sectionHeaders: Record<string, string> = {
         architecture: '# 🏗 Architecture',
         conventions: '# 📏 Conventions & patterns',
@@ -196,12 +210,22 @@ export class ToolExecutor {
         issues: '# 🛑 Known Issues'
       };
 
-      if (!await fs.pathExists(memoryPath)) {
-        const initialContent = Object.values(sectionHeaders).join('\n\n\n') + '\n';
-        await fs.writeFile(memoryPath, initialContent);
+      let fileContent = '';
+      if (cloudFS) {
+        if (await cloudFS.exists(memoryFileName)) {
+          fileContent = await cloudFS.readFile(memoryFileName);
+        }
+      } else {
+        const memoryPath = this.validatePath(projectPath, memoryFileName);
+        if (await fs.pathExists(memoryPath)) {
+          fileContent = await fs.readFile(memoryPath, 'utf-8');
+        }
       }
 
-      let fileContent = await fs.readFile(memoryPath, 'utf-8');
+      if (!fileContent) {
+        fileContent = Object.values(sectionHeaders).join('\n\n\n') + '\n';
+      }
+
       const header = sectionHeaders[category];
       const entry = `\n- [${new Date().toISOString()}] (Agent: ${agentId}): ${content}`;
 
@@ -212,21 +236,33 @@ export class ToolExecutor {
         fileContent += `\n\n${header}${entry}`;
       }
 
-      await fs.writeFile(memoryPath, fileContent);
+      if (cloudFS) {
+        await cloudFS.writeFile(memoryFileName, fileContent);
+      } else {
+        const memoryPath = this.validatePath(projectPath, memoryFileName);
+        await fs.writeFile(memoryPath, fileContent);
+      }
+      
       return { success: true, category, message: `Recorded in ${category}` };
     } finally {
       unlock();
     }
   }
 
-  private async handleReadMemory(projectPath: string, category?: string) {
-    const memoryPath = this.validatePath(projectPath, 'MEMORY.md');
-    if (!await fs.pathExists(memoryPath)) {
-      return "MEMORY.md does not exist yet.";
+  private async handleReadMemory(projectPath: string, category?: string, cloudFS?: CloudFSManager | null) {
+    const memoryFileName = 'MEMORY.md';
+    let fileContent = '';
+
+    if (cloudFS) {
+      if (!await cloudFS.exists(memoryFileName)) return "MEMORY.md does not exist yet.";
+      fileContent = await cloudFS.readFile(memoryFileName);
+    } else {
+      const memoryPath = this.validatePath(projectPath, memoryFileName);
+      if (!await fs.pathExists(memoryPath)) return "MEMORY.md does not exist yet.";
+      fileContent = await fs.readFile(memoryPath, 'utf-8');
     }
 
-    const content = await fs.readFile(memoryPath, 'utf-8');
-    if (!category) return content;
+    if (!category) return fileContent;
 
     const sectionHeaders: Record<string, string> = {
       architecture: '# 🏗 Architecture',
@@ -236,21 +272,21 @@ export class ToolExecutor {
     };
 
     const header = sectionHeaders[category];
-    if (!content.includes(header)) return `Section ${category} not found.`;
+    if (!fileContent.includes(header)) return `Section ${category} not found.`;
 
     const sections = Object.values(sectionHeaders);
-    const startIdx = content.indexOf(header);
-    let endIdx = content.length;
+    const startIdx = fileContent.indexOf(header);
+    let endIdx = fileContent.length;
 
     for (const otherHeader of sections) {
       if (otherHeader === header) continue;
-      const idx = content.indexOf(otherHeader, startIdx + 1);
+      const idx = fileContent.indexOf(otherHeader, startIdx + 1);
       if (idx !== -1 && idx < endIdx) {
         endIdx = idx;
       }
     }
 
-    return content.substring(startIdx, endIdx).trim();
+    return fileContent.substring(startIdx, endIdx).trim();
   }
 
   private runShellCommand(command: string, cwd: string): Promise<any> {
