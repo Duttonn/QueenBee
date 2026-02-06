@@ -5,6 +5,7 @@ import { GeminiProvider } from './providers/GeminiProvider';
 import { MistralProvider } from './providers/MistralProvider';
 import { LLMMessage, LLMProviderOptions, LLMResponse } from './types/llm';
 import { AuthProfileStore } from './auth-profile-store';
+import { ConfigManager, ModelConfig } from './config-manager';
 
 export class UnifiedLLMService {
   private providers: Map<string, LLMProvider> = new Map();
@@ -15,19 +16,26 @@ export class UnifiedLLMService {
   }
 
   private async initializeProviders() {
-    const profiles = await AuthProfileStore.listProfiles();
-    
-    // 1. Initialize from Environment Variables (Priority)
+    // 1. Initialize from Environment Variables (Low Priority)
     this.initFromEnv();
 
-    // 2. Initialize from Stored Profiles
+    // 2. Initialize from Stored Profiles (Medium Priority)
+    const profiles = await AuthProfileStore.listProfiles();
     for (const profile of profiles) {
       this.initFromProfile(profile);
     }
 
-    // 3. Defaults / Locals
+    // 3. Initialize from Global Config (High Priority - Overrides everything)
+    const config = await ConfigManager.getConfig();
+    if (config.models) {
+      for (const modelConfig of config.models) {
+        this.initFromModelConfig(modelConfig);
+      }
+    }
+
+    // 4. Defaults / Locals
     if (!this.providers.has('ollama')) {
-        this.providers.set('ollama', new OpenAIProvider('ollama', '', 'http://localhost:11434/v1'));
+        this.providers.set('ollama', new OpenAIProvider('ollama', '', 'http://127.0.0.1:11434/v1'));
     }
   }
 
@@ -62,21 +70,42 @@ export class UnifiedLLMService {
     const key = profile.apiKey || profile.access || profile.token;
     if (!key) return;
 
-    if (this.providers.has(profile.provider)) return; // Don't override ENV
+    // Use provider ID or custom name
+    const id = profile.id || profile.provider;
 
     switch (profile.provider) {
       case 'openai':
-        this.providers.set('openai', new OpenAIProvider('openai', key));
+        this.providers.set(id, new OpenAIProvider(id, key, profile.apiBase));
         break;
       case 'anthropic':
-        this.providers.set('anthropic', new AnthropicProvider(key));
+        this.providers.set(id, new AnthropicProvider(key));
         break;
       case 'google':
       case 'gemini':
-        this.providers.set('gemini', new GeminiProvider(key));
+        this.providers.set(id, new GeminiProvider(key));
         break;
       case 'mistral':
-        this.providers.set('mistral', new MistralProvider(key));
+        this.providers.set(id, new MistralProvider(key));
+        break;
+    }
+  }
+
+  private initFromModelConfig(config: ModelConfig) {
+    const key = config.requestOptions?.headers?.Authorization?.replace('Bearer ', '') || '';
+    const id = config.name; // Use model name as provider ID for now
+
+    switch (config.provider) {
+      case 'openai':
+      case 'mistral':
+      case 'ollama':
+        // Most enterprise/local models follow OpenAI format
+        this.providers.set(id, new OpenAIProvider(id, key, config.apiBase));
+        break;
+      case 'anthropic':
+        this.providers.set(id, new AnthropicProvider(key));
+        break;
+      case 'gemini':
+        this.providers.set(id, new GeminiProvider(key));
         break;
     }
   }
