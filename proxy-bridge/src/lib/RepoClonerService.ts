@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { Paths } from './Paths';
+import { broadcast } from './socket-instance';
 
 export class RepoClonerService {
   private baseDir: string;
@@ -17,8 +18,9 @@ export class RepoClonerService {
    * Clones a repository to a temporary server directory.
    * @param repoUrl The GitHub URL (https://github.com/user/repo)
    * @param accessToken Optional OAuth token for private repos
+   * @param branch Optional branch to clone
    */
-  async clone(repoUrl: string, accessToken?: string): Promise<{ path: string; id: string }> {
+  async clone(repoUrl: string, accessToken?: string, branch?: string): Promise<{ path: string; id: string }> {
     const sessionId = uuidv4();
     const targetPath = path.join(this.baseDir, `cloud-${sessionId}`);
     
@@ -28,12 +30,40 @@ export class RepoClonerService {
       authenticatedUrl = repoUrl.replace('https://', `https://${accessToken}@`);
     }
 
-    console.log(`[CloudClone] Cloning ${repoUrl} to ${targetPath}`);
+    console.log(`[CloudClone] Cloning ${repoUrl} to ${targetPath} (branch: ${branch || 'default'})`);
     
     const git: SimpleGit = simpleGit();
-    await git.clone(authenticatedUrl, targetPath);
+    
+    try {
+      await git.clone(authenticatedUrl, targetPath, {
+        '--progress': null,
+        ...(branch ? { '--branch': branch } : {})
+      }, (err, data) => {
+        if (err) {
+          console.error(`[CloudClone] Progress error:`, err);
+        }
+      });
 
-    return { path: targetPath, id: sessionId };
+      broadcast('UI_UPDATE', {
+        action: 'NOTIFY',
+        payload: {
+          title: 'Cloud Clone Success',
+          message: `Repository cloned to ${targetPath}`,
+          type: 'success'
+        }
+      });
+
+      return { path: targetPath, id: sessionId };
+    } catch (error: any) {
+      console.error(`[CloudClone] Failed to clone ${repoUrl}:`, error);
+      
+      // Cleanup partially created directory
+      if (await fs.pathExists(targetPath)) {
+        await fs.remove(targetPath);
+      }
+      
+      throw new Error(`Git clone failed: ${error.message}`);
+    }
   }
 
   async cleanup(sessionId: string) {

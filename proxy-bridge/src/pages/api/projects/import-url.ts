@@ -11,14 +11,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  const { repoUrl, accessToken, projectName } = req.body;
+  const { repoUrl, accessToken, projectName, branch } = req.body;
 
   if (!repoUrl) {
     return res.status(400).json({ error: 'repoUrl is required' });
   }
 
   try {
-    const { path: targetPath, id: sessionId } = await cloner.clone(repoUrl, accessToken);
+    const { path: targetPath, id: sessionId } = await cloner.clone(repoUrl, accessToken, branch);
     
     const db = getDb();
     const name = projectName || repoUrl.split('/').pop() || 'Imported Cloud Project';
