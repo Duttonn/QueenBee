@@ -76,7 +76,7 @@
 - [IN PROGRESS: SOUDURE-05] `P1-02`: [Backend] Implémenter le résumé automatique de fin de session (Memory Flush)
 - [ ] `P1-03`: [Frontend] Améliorer le Diff Viewer (Split-pane + Synchronized scrolling)
 - [ ] `P1-04`: [Integration] Intégrer la dictée vocale Whisper (Ctrl+M)
-- [ ] `P1-05`: [Frontend] Ajouter les Security Approvals UI pour les actions sensibles
+- [IN PROGRESS: FRONTEND-01] `P1-05`: [Frontend] Ajouter les Security Approvals UI pour les actions sensibles
 
 ## 📂 PHASE 2: FILESYSTEM & IPC (Abstraction Couche)
 - [ ] `P2-01`: [Integration] Finaliser l'Hybridation (SystemService switch entre Electron/Web)
