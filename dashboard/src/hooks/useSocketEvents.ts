@@ -43,41 +43,53 @@ export const useSocketEvents = () => {
       }
     };
 
-    const onToolExecution = (data: any) => {
-      console.log(`[SocketHook] Tool Execution:`, data);
-      if (activeThreadId) {
-        const projectId = data.projectId || (projects.length > 0 ? projects[0].id : null);
-        if (projectId) {
-          const project = projects.find(p => p.id === projectId);
-          const thread = project?.threads?.find((t: any) => t.id === activeThreadId);
-          if (thread) {
-            const messageIndex = thread.messages.length - 1;
-            updateToolCall(projectId, activeThreadId, messageIndex, data.toolCallId || data.tool, {
-              status: data.status,
-              arguments: data.args
-            });
-          }
+    const handleToolUpdate = (data: any, isResult: boolean) => {
+      let targetProjectId = data.projectId;
+      let targetThreadId = data.threadId || activeThreadId;
+
+      // Locate Project if missing
+      if (!targetProjectId && targetThreadId) {
+        const p = projects.find(p => p.threads?.some((t: any) => t.id === targetThreadId));
+        if (p) targetProjectId = p.id;
+      }
+      if (!targetProjectId && projects.length > 0) targetProjectId = projects[0].id;
+
+      if (targetProjectId && targetThreadId) {
+        const project = projects.find(p => p.id === targetProjectId);
+        const thread = project?.threads?.find((t: any) => t.id === targetThreadId);
+        
+        if (thread) {
+           let messageIndex = -1;
+           // Try to find the message containing this toolCallId
+           if (data.toolCallId) {
+               messageIndex = thread.messages.findIndex((m: any) => m.toolCalls?.some((tc: any) => tc.id === data.toolCallId));
+           }
+           // Fallback to last message if not found (brittle but backward compatible)
+           if (messageIndex === -1) messageIndex = thread.messages.length - 1;
+
+           if (messageIndex !== -1) {
+             const updates: any = { status: data.status };
+             if (isResult) {
+               updates.result = data.result;
+               updates.error = data.error;
+             } else {
+               updates.arguments = data.args;
+             }
+             
+             updateToolCall(targetProjectId, targetThreadId, messageIndex, data.toolCallId || data.tool, updates);
+           }
         }
       }
     };
 
+    const onToolExecution = (data: any) => {
+      console.log(`[SocketHook] Tool Execution:`, data);
+      handleToolUpdate(data, false);
+    };
+
     const onToolResult = (data: any) => {
       console.log(`[SocketHook] Tool Result:`, data);
-      if (activeThreadId) {
-        const projectId = data.projectId || (projects.length > 0 ? projects[0].id : null);
-        if (projectId) {
-          const project = projects.find(p => p.id === projectId);
-          const thread = project?.threads?.find((t: any) => t.id === activeThreadId);
-          if (thread) {
-            const messageIndex = thread.messages.length - 1;
-            updateToolCall(projectId, activeThreadId, messageIndex, data.toolCallId || data.tool, {
-              status: data.status,
-              result: data.result,
-              error: data.error
-            });
-          }
-        }
-      }
+      handleToolUpdate(data, true);
     };
 
     const onProjectListUpdate = (data: { projects: any[] }) => {
