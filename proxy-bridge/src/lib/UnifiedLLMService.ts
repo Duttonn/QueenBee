@@ -157,6 +157,39 @@ export class UnifiedLLMService {
     return await provider.chat(messages, safeOptions);
   }
 
+  async *chatStream(providerId: string, messages: LLMMessage[], options?: LLMProviderOptions): AsyncGenerator<LLMResponse> {
+    await this.ready;
+    
+    // 1. Try to find the provider
+    let provider = await this.getOrLoadProvider(providerId, options);
+    
+    // 2. Fallback if not found
+    if (!provider) {
+      const firstAvailable = Array.from(this.providers.entries())[0];
+      if (firstAvailable) {
+        provider = firstAvailable[1];
+      }
+    }
+
+    if (!provider) {
+      throw new Error(`No AI providers configured for streaming.`);
+    }
+
+    // Safety: Same as chat()
+    const safeOptions = { ...options };
+    const requestedModel = options?.model?.toLowerCase() || '';
+    
+    if (requestedModel.includes('gemini') && provider.id !== 'gemini' && !provider.id.includes('google')) {
+      safeOptions.model = undefined;
+    } else if (requestedModel.includes('gpt') && provider.id !== 'openai') {
+      safeOptions.model = undefined;
+    } else if (requestedModel.includes('claude') && provider.id !== 'anthropic') {
+      safeOptions.model = undefined;
+    }
+
+    yield* provider.chatStream(messages, safeOptions);
+  }
+
   private async getOrLoadProvider(providerId: string, options?: LLMProviderOptions): Promise<LLMProvider | undefined> {
     // 1. Check existing providers
     let provider = this.providers.get(providerId);
