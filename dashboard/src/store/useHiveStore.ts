@@ -72,7 +72,12 @@ export const useHiveStore = create<HiveState>()(
 
       setQueenStatus: (status) => set({ queenStatus: status }),
       setProjects: (projects) => set({ projects }),
-      addProject: (project) => set((state) => ({ projects: [...state.projects, project] })),
+      addProject: (project) => set((state) => {
+        if (state.projects.some(p => p.name === project.name)) {
+          return state; // Do not add duplicate
+        }
+        return { projects: [...state.projects, project] };
+      }),
 
       spawnAgent: (projectId, agent) => set((state) => ({
         projects: state.projects.map(p =>

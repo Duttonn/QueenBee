@@ -1,53 +1,114 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Allotment } from 'allotment';
+import 'allotment/dist/style.css';
+import { getGitDiff, type DiffStats } from '../../services/api';
+import { parseDiff } from '../../services/diffParser';
 
-const DiffLine = ({ type, content, lineNo }: any) => {
-  const bgColor = type === 'add' ? 'bg-green-500/20' : type === 'del' ? 'bg-red-500/20' : '';
-  const prefix = type === 'add' ? '+' : type === 'del' ? '-' : ' ';
-  const prefixColor = type === 'add' ? 'text-[#22C55E]' : type === 'del' ? 'text-red-400' : 'text-slate-500';
+const DiffLine = ({ type, content, lineNo, side }: { type: 'add' | 'del' | 'neutral', content: string, lineNo?: number, side: 'left' | 'right' }) => {
+  const isAdd = type === 'add';
+  const isDel = type === 'del';
+  
+  const bgColor = isAdd ? 'bg-green-500/10' : isDel ? 'bg-red-500/10' : 'bg-zinc-800/20';
+  const prefix = isAdd ? '+' : isDel ? '-' : ' ';
+  const prefixColor = isAdd ? 'text-green-400' : isDel ? 'text-red-400' : 'text-zinc-500';
+  const lineNoColor = 'text-zinc-600';
+
+  if (side === 'left' && isAdd) {
+    return <div className="flex font-mono text-xs py-0.5 bg-zinc-800/20"><div className="w-10 text-right pr-4 select-none text-zinc-700"></div><div className="w-6 flex-shrink-0"></div><div className="text-zinc-800/10 break-all">-</div></div>;
+  }
+  if (side === 'right' && isDel) {
+    return <div className="flex font-mono text-xs py-0.5 bg-zinc-800/20"><div className="w-10 text-right pr-4 select-none text-zinc-700"></div><div className="w-6 flex-shrink-0"></div><div className="text-zinc-800/10 break-all">-</div></div>;
+  }
 
   return (
-    <div className={`flex font-mono text-xs py-0.5 ${bgColor} border-l-4 ${type === 'add' ? 'border-green-500' : type === 'del' ? 'border-red-500' : 'border-transparent'}`}>
-      <div className="w-10 text-right pr-4 text-slate-600 select-none">{lineNo}</div>
+    <div className={`flex font-mono text-xs py-0.5 ${bgColor}`}>
+      <div className={`w-10 text-right pr-4 select-none ${lineNoColor}`}>{lineNo}</div>
       <div className={`w-6 flex-shrink-0 font-bold ${prefixColor}`}>{prefix}</div>
-      <div className="text-slate-300 break-all">{content}</div>
+      <div className="text-zinc-300 break-all">{content}</div>
     </div>
   );
 };
 
-const DiffViewer = () => {
-  const mockDiff = [
-    { line: 40, type: 'neutral', content: '  const handleAuth = () => {' },
-    { line: 41, type: 'del', content: '    console.log("Starting Auth...");' },
-    { line: 42, type: 'add', content: '    logger.info("Initiating secure OAuth flow...");' },
-    { line: 43, type: 'neutral', content: '    openBrowser(url);' },
-  ];
+interface DiffViewerProps {
+  projectPath: string;
+  filePath: string;
+}
+
+const DiffViewer = ({ projectPath, filePath }: DiffViewerProps) => {
+  const [diff, setDiff] = useState<DiffStats | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const leftPaneRef = useRef<HTMLDivElement>(null);
+  const rightPaneRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const fetchDiff = async () => {
+      try {
+        const diffData = await getGitDiff(projectPath, filePath);
+        setDiff(diffData);
+      } catch (err: any) {
+        setError(err.message);
+      }
+    };
+    fetchDiff();
+  }, [projectPath, filePath]);
+
+  const handleScroll = (pane: 'left' | 'right') => (event: React.UIEvent<HTMLDivElement>) => {
+    const target = event.currentTarget;
+    if (pane === 'left' && rightPaneRef.current) {
+      rightPaneRef.current.scrollTop = target.scrollTop;
+    } else if (pane === 'right' && leftPaneRef.current) {
+      leftPaneRef.current.scrollTop = target.scrollTop;
+    }
+  };
+
+  if (error) {
+    return <div className="text-red-400">Error: {error}</div>;
+  }
+
+  if (!diff) {
+    return <div>Loading diff...</div>;
+  }
+
+  const fileDiff = diff.files[0];
+  if (!fileDiff) {
+    return <div>No changes for this file.</div>;
+  }
+  
+  const { leftLines, rightLines } = parseDiff(fileDiff.hunks);
 
   return (
-    <div className="bg-slate-950 rounded-2xl border border-slate-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 w-full max-w-4xl">
-      <div className="bg-[#0F172A] px-4 py-2 flex justify-between items-center border-b border-slate-800">
+    <div className="bg-zinc-950/90 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden w-full max-w-4xl my-8">
+      <div className="bg-zinc-900/50 px-4 py-2 flex justify-between items-center border-b border-white/5">
         <div className="flex items-center gap-2">
-          <span className="text-[#3B82F6]">📄</span>
-          <span className="text-xs font-bold text-slate-200 uppercase tracking-widest">Sidebar.tsx</span>
+          <span className="text-blue-400">📄</span>
+          <span className="text-xs font-bold text-zinc-200 uppercase tracking-widest">{filePath}</span>
         </div>
-        <div className="flex gap-2">
-          <div className="w-3 h-3 rounded-full bg-red-500/20 border border-red-500/50"></div>
-          <div className="w-3 h-3 rounded-full bg-green-500/20 border border-green-500/50"></div>
+        <div className="text-xs text-zinc-400">
+          <span className="text-green-400 font-mono">+{fileDiff.stats.added}</span>, <span className="text-red-400 font-mono">-{fileDiff.stats.removed}</span>
         </div>
       </div>
       
-      <div className="p-4 bg-[#0d1117]">
-        <div className="mb-4 bg-blue-500/10 border-l-2 border-blue-500 p-2 text-[10px] text-blue-300 italic">
-          "Queen Bee: Swapped console.log for a structured logger for better production tracking."
-        </div>
-        <div className="rounded-lg border border-slate-800/50 overflow-hidden">
-          {mockDiff.map((d, i) => (
-            <DiffLine key={i} type={d.type} content={d.content} lineNo={d.line} />
-          ))}
-        </div>
+      <div className="p-4">
+        <Allotment>
+          <Allotment.Pane>
+            <div ref={leftPaneRef} onScroll={handleScroll('left')} className="overflow-auto h-full rounded-l-lg border border-white/5 bg-zinc-900/50">
+              {leftLines.map((d: any, i: number) => (
+                <DiffLine key={i} type={d.type} content={d.content} lineNo={d.line} side="left" />
+              ))}
+            </div>
+          </Allotment.Pane>
+          <Allotment.Pane>
+            <div ref={rightPaneRef} onScroll={handleScroll('right')} className="overflow-auto h-full rounded-r-lg border border-white/5 bg-zinc-900/50">
+              {rightLines.map((d: any, i: number) => (
+                <DiffLine key={i} type={d.type} content={d.content} lineNo={d.line} side="right" />
+              ))}
+            </div>
+          </Allotment.Pane>
+        </Allotment>
       </div>
 
-      <div className="bg-[#0F172A]/50 p-3 flex justify-end gap-3 border-t border-slate-800">
-        <button className="px-4 py-1.5 bg-[#1E293B] text-slate-300 text-[10px] font-bold rounded-lg hover:text-white transition-colors">Discard</button>
+      <div className="bg-zinc-900/30 p-3 flex justify-end gap-3 border-t border-white/5">
+        <button className="px-4 py-1.5 bg-zinc-800 text-zinc-300 text-[10px] font-bold rounded-lg hover:text-white transition-colors">Discard</button>
         <button className="px-4 py-1.5 bg-blue-600 text-white text-[10px] font-bold rounded-lg hover:bg-blue-500 transition-all">Stage Changes</button>
       </div>
     </div>
