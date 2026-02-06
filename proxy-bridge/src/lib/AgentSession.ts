@@ -1,26 +1,18 @@
 import { LLMMessage, LLMProviderOptions, LLMResponse } from './types/llm';
 import { unifiedLLMService } from './UnifiedLLMService';
 import { ToolExecutor } from './ToolExecutor';
-import { broadcast } from './socket-instance';
-
-export interface AgentSessionEvents {
-  onStepStart?: (step: number) => void;
-  onStepEnd?: (step: number, response: LLMResponse) => void;
-  onToolStart?: (toolName: string, args: any) => void;
-  onToolEnd?: (toolName: string, result: any) => void;
-  onToolError?: (toolName: string, error: any) => void;
-}
+import { AGENT_TOOLS } from './ToolDefinitions';
+import { EventEmitter } from 'events';
 
 /**
  * AgentSession encapsulates the agentic loop (Think -> Act -> Observe).
- * Inspired by OpenClaw's AgentSession.
+ * It now emits events to allow for streaming of its internal state via SSE.
  */
-export class AgentSession {
+export class AgentSession extends EventEmitter {
   public messages: LLMMessage[] = [];
   private executor: ToolExecutor;
   private projectPath: string;
   private maxSteps: number;
-  private events: AgentSessionEvents;
   private providerId: string;
   private threadId: string | null;
   private apiKey: string | null;
@@ -28,15 +20,14 @@ export class AgentSession {
   constructor(projectPath: string, options: { 
     systemPrompt?: string, 
     maxSteps?: number,
-    events?: AgentSessionEvents,
     providerId?: string,
     threadId?: string,
     apiKey?: string
   } = {}) {
+    super();
     this.executor = new ToolExecutor();
     this.projectPath = projectPath;
     this.maxSteps = options.maxSteps || 10;
-    this.events = options.events || {};
     this.providerId = options.providerId || 'auto';
     this.threadId = options.threadId || null;
     this.apiKey = options.apiKey || null;
@@ -52,147 +43,8 @@ export class AgentSession {
   async prompt(text: string, options?: LLMProviderOptions): Promise<LLMMessage> {
     const userMessage: LLMMessage = { role: 'user', content: text };
     this.messages.push(userMessage);
-    // Broadcast user message to ensure UI is in sync if it wasn't already
-    broadcast('UI_UPDATE', { 
-      action: 'ADD_MESSAGE', 
-      payload: { ...userMessage, threadId: this.threadId } 
-    });
+    this.emit('event', { type: 'message', data: { ...userMessage, threadId: this.threadId } });
     return this.runLoop(options);
-  }
-
-  /**
-   * Streaming version of prompt
-   */
-  async *promptStream(text: string, options?: LLMProviderOptions): AsyncGenerator<LLMResponse> {
-    const userMessage: LLMMessage = { role: 'user', content: text };
-    this.messages.push(userMessage);
-    broadcast('UI_UPDATE', { 
-      action: 'ADD_MESSAGE', 
-      payload: { ...userMessage, threadId: this.threadId } 
-    });
-
-    let stepCount = 0;
-
-    try {
-      while (stepCount < this.maxSteps) {
-        stepCount++;
-        
-        // 1. THINK Phase
-        this.events.onStepStart?.(stepCount);
-        broadcast('QUEEN_STATUS', { status: 'thinking', step: stepCount });
-
-        const streamGenerator = unifiedLLMService.chatStream(this.providerId, this.messages, {
-          ...options,
-          apiKey: this.apiKey || undefined
-        });
-
-        let fullContent = '';
-        let toolCalls: any[] = [];
-
-        for await (const chunk of streamGenerator) {
-          if (chunk.content) fullContent += chunk.content;
-          if (chunk.tool_calls) toolCalls = chunk.tool_calls; // In streaming, we usually get them at once or build them. 
-          // For now assume full tool_calls object is yielded eventually.
-          
-          yield chunk;
-        }
-
-        const response: LLMResponse = {
-          id: `step-${stepCount}`,
-          model: options?.model || 'agent',
-          content: fullContent,
-          tool_calls: toolCalls
-        };
-        
-        this.events.onStepEnd?.(stepCount, response);
-
-        const assistantMessage: LLMMessage = { 
-          role: 'assistant', 
-          content: response.content, 
-          tool_calls: response.tool_calls 
-        };
-        
-        this.messages.push(assistantMessage);
-        
-        broadcast('UI_UPDATE', { 
-          action: 'ADD_MESSAGE', 
-          payload: { ...assistantMessage, threadId: this.threadId } 
-        });
-
-        // If no tool calls, we are done
-        if (!response.tool_calls || response.tool_calls.length === 0) {
-          break;
-        }
-
-        // 2. ACT Phase: Execute tools
-        for (const toolCall of response.tool_calls) {
-          const toolName = toolCall.function.name;
-          let args = {};
-          try {
-            args = JSON.parse(toolCall.function.arguments);
-          } catch (e) {
-            console.error(`Failed to parse arguments for tool ${toolName}`, toolCall.function.arguments);
-          }
-
-          this.events.onToolStart?.(toolName, args);
-          
-          try {
-            const result = await this.executor.execute({
-              name: toolName,
-              arguments: args
-            }, this.projectPath);
-
-            this.events.onToolEnd?.(toolName, result);
-
-            const toolMessage: LLMMessage = {
-              role: 'tool',
-              tool_call_id: toolCall.id,
-              name: toolName,
-              content: JSON.stringify(result)
-            };
-            
-            this.messages.push(toolMessage);
-            broadcast('UI_UPDATE', { 
-              action: 'ADD_MESSAGE', 
-              payload: { ...toolMessage, threadId: this.threadId } 
-            });
-
-            // Signal tool completion back to the stream so UI knows tool finished
-            yield {
-              id: `tool-${toolCall.id}`,
-              model: 'agent',
-              content: `\n> **Executed ${toolName}**\n`,
-            };
-
-          } catch (error: any) {
-            this.events.onToolError?.(toolName, error);
-            const toolErrorMessage: LLMMessage = {
-              role: 'tool',
-              tool_call_id: toolCall.id,
-              name: toolName,
-              content: JSON.stringify({ error: error.message })
-            };
-            this.messages.push(toolErrorMessage);
-            broadcast('UI_UPDATE', { 
-              action: 'ADD_MESSAGE', 
-              payload: { ...toolErrorMessage, threadId: this.threadId } 
-            });
-
-            yield {
-              id: `tool-err-${toolCall.id}`,
-              model: 'agent',
-              content: `\n> **Error in ${toolName}: ${error.message}**\n`,
-            };
-          }
-        }
-      }
-
-      broadcast('QUEEN_STATUS', { status: stepCount >= this.maxSteps ? 'warning' : 'idle' });
-    } catch (error: any) {
-      console.error('[AgentSession] Error in promptStream:', error);
-      broadcast('QUEEN_STATUS', { status: 'error', message: error.message });
-      throw error;
-    }
   }
 
   /**
@@ -205,17 +57,14 @@ export class AgentSession {
       while (stepCount < this.maxSteps) {
         stepCount++;
         
-        // 1. THINK Phase
-        this.events.onStepStart?.(stepCount);
-        broadcast('QUEEN_STATUS', { status: 'thinking', step: stepCount });
+        this.emit('event', { type: 'step_start', data: { step: stepCount, status: 'thinking' } });
 
         const response: LLMResponse = await unifiedLLMService.chat(this.providerId, this.messages, {
           ...options,
-          apiKey: this.apiKey || undefined
+          apiKey: this.apiKey || undefined,
+          tools: AGENT_TOOLS
         });
         
-        this.events.onStepEnd?.(stepCount, response);
-
         const assistantMessage: LLMMessage = { 
           role: 'assistant', 
           content: response.content, 
@@ -223,19 +72,12 @@ export class AgentSession {
         };
         
         this.messages.push(assistantMessage);
-        
-        // Broadcast assistant response immediately
-        broadcast('UI_UPDATE', { 
-          action: 'ADD_MESSAGE', 
-          payload: { ...assistantMessage, threadId: this.threadId } 
-        });
+        this.emit('event', { type: 'message', data: { ...assistantMessage, threadId: this.threadId } });
 
-        // If no tool calls, we are done
         if (!response.tool_calls || response.tool_calls.length === 0) {
-          break;
+          break; // End of loop
         }
 
-        // 2. ACT Phase: Execute tools
         for (const toolCall of response.tool_calls) {
           const toolName = toolCall.function.name;
           let args = {};
@@ -245,17 +87,22 @@ export class AgentSession {
             console.error(`Failed to parse arguments for tool ${toolName}`, toolCall.function.arguments);
           }
 
-          this.events.onToolStart?.(toolName, args);
+          this.emit('event', { type: 'tool_start', data: { toolName, args, toolCallId: toolCall.id } });
           
           try {
             const result = await this.executor.execute({
               name: toolName,
-              arguments: args
-            }, this.projectPath);
+              arguments: args,
+              id: toolCall.id
+            }, {
+              projectPath: this.projectPath,
+              threadId: this.threadId || undefined,
+              agentId: this.threadId,
+              toolCallId: toolCall.id
+            });
 
-            this.events.onToolEnd?.(toolName, result);
+            this.emit('event', { type: 'tool_end', data: { toolName, result, toolCallId: toolCall.id } });
 
-            // 3. OBSERVE Phase: Push result back
             const toolMessage: LLMMessage = {
               role: 'tool',
               tool_call_id: toolCall.id,
@@ -264,14 +111,10 @@ export class AgentSession {
             };
             
             this.messages.push(toolMessage);
-            
-            // Broadcast tool result
-            broadcast('UI_UPDATE', { 
-              action: 'ADD_MESSAGE', 
-              payload: { ...toolMessage, threadId: this.threadId } 
-            });
+            this.emit('event', { type: 'message', data: { ...toolMessage, threadId: this.threadId } });
           } catch (error: any) {
-            this.events.onToolError?.(toolName, error);
+            this.emit('event', { type: 'tool_error', data: { toolName, error: error.message, toolCallId: toolCall.id } });
+            
             const toolErrorMessage: LLMMessage = {
               role: 'tool',
               tool_call_id: toolCall.id,
@@ -279,34 +122,26 @@ export class AgentSession {
               content: JSON.stringify({ error: error.message })
             };
             this.messages.push(toolErrorMessage);
-            
-            broadcast('UI_UPDATE', { 
-              action: 'ADD_MESSAGE', 
-              payload: { ...toolErrorMessage, threadId: this.threadId } 
-            });
+            this.emit('event', { type: 'message', data: { ...toolErrorMessage, threadId: this.threadId } });
           }
         }
       }
 
       if (stepCount >= this.maxSteps) {
-        broadcast('QUEEN_STATUS', { status: 'warning', message: 'Maximum agentic steps reached' });
+        this.emit('event', { type: 'agent_status', data: { status: 'warning', message: 'Maximum agentic steps reached' } });
       } else {
-        broadcast('QUEEN_STATUS', { status: 'idle' });
+        this.emit('event', { type: 'agent_status', data: { status: 'idle' } });
       }
     } catch (error: any) {
       console.error('[AgentSession] Error in runLoop:', error);
-      broadcast('QUEEN_STATUS', { status: 'error', message: error.message });
+      this.emit('event', { type: 'agent_status', data: { status: 'error', message: error.message } });
       
-      // Also add the error to the chat so the user sees it
       const errorMessage: LLMMessage = {
         role: 'assistant',
         content: `Error: ${error.message}\n\nPlease check your provider configuration in Settings.`
       };
       this.messages.push(errorMessage);
-      broadcast('UI_UPDATE', { 
-        action: 'ADD_MESSAGE', 
-        payload: { ...errorMessage, threadId: this.threadId } 
-      });
+      this.emit('event', { type: 'message', data: { ...errorMessage, threadId: this.threadId } });
       
       throw error;
     }
@@ -314,9 +149,6 @@ export class AgentSession {
     return this.messages[this.messages.length - 1];
   }
 
-  /**
-   * Reset the session messages (keeping system prompt if present)
-   */
   reset() {
     const systemMessage = this.messages.find(m => m.role === 'system');
     this.messages = systemMessage ? [systemMessage] : [];

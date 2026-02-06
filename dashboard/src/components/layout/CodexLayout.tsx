@@ -448,6 +448,10 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     const providerToUse = activeProvider?.id || 'mock';
     const modelToUse = selectedModel || activeProvider?.models?.[0] || 'mock-model';
     const apiKey = activeProvider?.apiKey;
+    
+    // Find active thread to get its agentId
+    const currentActiveThread = activeProject?.threads?.find((t: any) => t.id === currentThreadId);
+    const agentId = currentActiveThread?.agentId;
 
     try {
       await sendChatMessageStream(
@@ -457,8 +461,10 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           provider: providerToUse as any,
           apiKey: apiKey,
           projectPath: activeProject?.path, // Pass the path for context injection
-          threadId: currentThreadId
-        } as any,
+          threadId: currentThreadId,
+          mode: executionMode,
+          agentId: agentId
+        },
         (chunk) => {
           updateLastMessage(selectedProjectId, currentThreadId!, chunk);
         },
@@ -481,6 +487,51 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           console.error('Chat error:', error);
           updateLastMessage(selectedProjectId, currentThreadId!, `\n\nError: ${error.message}`);
           setIsLoading(false);
+        },
+        (event) => {
+          // Handle vertical Agent events
+          if (event.type === 'step_start' || event.type === 'agent_status') {
+            if (event.data.status) {
+              useHiveStore.getState().setQueenStatus(event.data.status);
+            }
+          }
+          
+          if (event.type === 'tool_start') {
+            const msgIndex = useHiveStore.getState().projects
+              .find(p => p.id === selectedProjectId)
+              ?.threads?.find((t: any) => t.id === currentThreadId)
+              ?.messages.length! - 1;
+              
+            useHiveStore.getState().updateToolCall(selectedProjectId, currentThreadId!, msgIndex, event.data.toolCallId, {
+              status: 'running',
+              name: event.data.toolName,
+              arguments: event.data.args
+            });
+          }
+
+          if (event.type === 'tool_end') {
+            const msgIndex = useHiveStore.getState().projects
+              .find(p => p.id === selectedProjectId)
+              ?.threads?.find((t: any) => t.id === currentThreadId)
+              ?.messages.length! - 1;
+
+            useHiveStore.getState().updateToolCall(selectedProjectId, currentThreadId!, msgIndex, event.data.toolCallId, {
+              status: 'success',
+              result: event.data.result
+            });
+          }
+
+          if (event.type === 'tool_error') {
+            const msgIndex = useHiveStore.getState().projects
+              .find(p => p.id === selectedProjectId)
+              ?.threads?.find((t: any) => t.id === currentThreadId)
+              ?.messages.length! - 1;
+
+            useHiveStore.getState().updateToolCall(selectedProjectId, currentThreadId!, msgIndex, event.data.toolCallId, {
+              status: 'error',
+              error: event.data.error
+            });
+          }
         }
       );
     } catch (error) {

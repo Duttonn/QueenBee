@@ -2,117 +2,90 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { AutonomousRunner } from '../../lib/AutonomousRunner';
 import { logger } from '../../lib/logger';
 import { unifiedLLMService } from '../../lib/UnifiedLLMService';
-import { LLMMessage } from '../../lib/types/llm';
 import path from 'path';
-
-// Mock responses for testing without a real LLM
-function getMockResponse(messages: any[], prevError?: string): any {
-  const lastMessage = messages[messages.length - 1];
-  const userContent = lastMessage?.content || '';
-
-  const fallbackNote = prevError ? `\n\n*(Fallback active due to error: ${prevError})*` : '';
-
-  return {
-    id: `mock-${Date.now()}`,
-    object: 'chat.completion',
-    created: Math.floor(Date.now() / 1000),
-    model: 'mock-model',
-    choices: [{
-      index: 0,
-      message: {
-        role: 'assistant',
-        content: `I received your message: "${userContent.slice(0, 50)}..."\n\n**Mock Response**: The Queen Bee assistant is connected.${fallbackNote}`
-      },
-      finish_reason: 'stop'
-    }],
-    usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
-  };
-}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST']);
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { model, messages, stream, projectPath: rawPath, threadId, mode } = req.body;
+  const { model, messages, stream, projectPath: rawPath, threadId, mode, agentId } = req.body;
   const providerId = (req.headers['x-codex-provider'] as string) || 'auto';
   const apiKey = req.headers['authorization']?.replace('Bearer ', '') || null;
   
-  logger.info(`[Chat] Request received. Provider: ${providerId}, Model: ${model}, Stream: ${stream}, Path: ${rawPath}, Thread: ${threadId}, Mode: ${mode}`);
+  logger.info(`[Chat] Request received. Provider: ${providerId}, Model: ${model}, Stream: ${stream}, Path: ${rawPath}, Thread: ${threadId}, Mode: ${mode}, Agent: ${agentId}`);
 
-  // Resolve Project Context
   const projectPath = rawPath 
     ? (path.isAbsolute(rawPath) ? rawPath : path.resolve(process.cwd(), '..', rawPath))
     : process.cwd();
-  
-  // Set headers for SSE
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
 
-  const sendEvent = (data: any) => {
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
-  };
+  // Handle agentic streaming
+  if (stream && (mode === 'autonomous' || mode === 'local' || mode === 'solo' || mode === 'agent')) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
 
-  try {
-    const lastMessage = messages[messages.length - 1];
-    
-    if (lastMessage.role === 'user' && mode === 'agent') {
-      const runner = new AutonomousRunner((res as any).socket, projectPath, providerId, threadId, apiKey);
-      const streamGenerator = runner.executeLoopStream(lastMessage.content, { model, stream: true });
+    try {
+      const runner = new AutonomousRunner(
+        (res as any).socket, 
+        projectPath,
+        providerId,
+        threadId,
+        apiKey,
+        mode,
+        agentId
+      );
+      runner.setWritable(res); // Pass the response stream to the runner
       
+      const lastMessage = messages[messages.length - 1];
+      await runner.streamIntermediateSteps(lastMessage.content, { model, apiKey });
+      
+      res.end();
+    } catch (error: any) {
+      logger.error(`[Chat] Agent Streaming Error: ${error.message}`);
+      res.write(`data: ${JSON.stringify({ error: { message: error.message, type: 'AGENT_STREAM_ERROR' } })}\n\n`);
+      res.end();
+    }
+    return;
+  }
+
+  // Handle standard LLM streaming
+  if (stream) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    try {
+      const streamGenerator = unifiedLLMService.chatStream(providerId, messages, { model, apiKey });
       for await (const chunk of streamGenerator) {
-        sendEvent({
-          id: chunk.id,
-          object: 'chat.completion.chunk',
-          choices: [{
-            index: 0,
-            delta: { 
-              content: chunk.content,
-              tool_calls: chunk.tool_calls 
-            },
-            finish_reason: chunk.finish_reason
-          }],
-          usage: chunk.usage
-        });
+        res.write(`data: ${JSON.stringify(chunk)}\n\n`);
       }
       res.end();
-    } else {
-        // Direct streaming from LLM
-        const streamGenerator = unifiedLLMService.chatStream(providerId, messages, { 
-          model, 
-          stream: true, 
-          apiKey: apiKey || undefined 
-        });
-        
-        for await (const chunk of streamGenerator) {
-          sendEvent({
-            id: chunk.id,
-            object: 'chat.completion.chunk',
-            choices: [{
-              index: 0,
-              delta: { 
-                content: chunk.content,
-                tool_calls: chunk.tool_calls 
-              },
-              finish_reason: chunk.finish_reason
-            }],
-            usage: chunk.usage
-          });
-        }
-        res.end();
+    } catch (error: any) {
+      logger.error(`[Chat] LLM Streaming Error: ${error.message}`);
+      res.write(`data: ${JSON.stringify({ error: { message: error.message, type: 'LLM_STREAM_ERROR' } })}\n\n`);
+      res.end();
     }
+    return;
+  }
 
-  } catch (error: any) {
-    logger.error(`[Chat] Error: ${error.message}`);
-    sendEvent({
-      error: error.message,
-      choices: [{
-        delta: { content: `Error: ${error.message}` },
-        finish_reason: 'error'
-      }]
+  // Fallback to standard non-streaming call
+  try {
+    const response = await unifiedLLMService.chat(providerId, messages, { model, apiKey });
+    return res.status(200).json({
+        choices: [{
+            message: {
+                role: 'assistant',
+                content: response.content,
+                tool_calls: response.tool_calls
+            }
+        }]
     });
-    res.end();
+  } catch (error: any) {
+    logger.error(`[Chat] Non-Streaming Error: ${error.message}`);
+    return res.status(500).json({ error: error.message });
   }
 }

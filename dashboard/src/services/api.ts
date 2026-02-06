@@ -39,6 +39,8 @@ export interface ChatRequest {
     apiKey?: string;
     projectPath?: string;
     threadId?: string;
+    mode?: 'local' | 'worktree' | 'cloud' | 'autonomous' | 'solo';
+    agentId?: string;
 }
 
 /**
@@ -63,7 +65,9 @@ export async function sendChatMessage(request: ChatRequest): Promise<any> {
             messages: request.messages,
             stream: request.stream || false,
             projectPath: request.projectPath,
-            threadId: request.threadId
+            threadId: request.threadId,
+            mode: request.mode,
+            agentId: request.agentId
         }),
     });
 
@@ -82,7 +86,8 @@ export async function sendChatMessageStream(
     request: ChatRequest,
     onChunk: (text: string) => void,
     onComplete: (fullText: string) => void,
-    onError: (error: Error) => void
+    onError: (error: Error) => void,
+    onEvent?: (event: { type: string; data: any }) => void
 ): Promise<void> {
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -102,7 +107,9 @@ export async function sendChatMessageStream(
                 messages: request.messages,
                 stream: true,
                 projectPath: request.projectPath,
-                threadId: request.threadId
+                threadId: request.threadId,
+                mode: request.mode,
+                agentId: request.agentId
             }),
         });
 
@@ -125,20 +132,31 @@ export async function sendChatMessageStream(
 
             const chunk = decoder.decode(value, { stream: true });
             
-            // SSE parsing (simplified)
-            // Expected format: data: {"choices": [{"delta": {"content": "..."}}]}
+            // SSE parsing
             const lines = chunk.split('\n');
             for (const line of lines) {
                 if (line.startsWith('data: ')) {
                     try {
                         const data = JSON.parse(line.substring(6));
-                        const content = data.choices?.[0]?.delta?.content || '';
-                        if (content) {
-                            fullText += content;
-                            onChunk(content);
+                        
+                        // Handle standard OpenAI-like chunks
+                        if (data.choices?.[0]?.delta?.content !== undefined) {
+                            const content = data.choices[0].delta.content || '';
+                            if (content) {
+                                fullText += content;
+                                onChunk(content);
+                            }
+                        } 
+                        // Handle vertical Agent events
+                        else if (data.type && onEvent) {
+                            onEvent(data);
+                        }
+                        // Handle legacy or direct error messages
+                        else if (data.error) {
+                            throw new Error(data.error.message || 'Stream error');
                         }
                     } catch (e) {
-                        // Not JSON, might be raw text or partial
+                        // Not JSON or parse error, skip
                     }
                 }
             }
