@@ -21,10 +21,32 @@ const memoryMutex = new Mutex();
 // Registry to track workers in this process (for the prototype)
 const workerRegistry = new Map<string, { status: string; prUrl?: string }>();
 
+const SENSITIVE_TOOLS = ['write_file', 'run_shell', 'create_worktree'];
+
+interface ApprovalRequest {
+  resolve: (value: any) => void;
+  reject: (reason: any) => void;
+}
+
+const approvalMap = new Map<string, ApprovalRequest>();
+
 /**
  * ToolExecutor: Parses and executes tool calls from the LLM.
  */
 export class ToolExecutor {
+  // Static method to resolve pending approvals (called by EventLoopManager)
+  static resolveApproval(toolCallId: string, approved: boolean, error?: string) {
+    const request = approvalMap.get(toolCallId);
+    if (request) {
+      if (approved) {
+        request.resolve(true);
+      } else {
+        request.reject(new Error(error || 'User rejected the action.'));
+      }
+      approvalMap.delete(toolCallId);
+    }
+  }
+
   async execute(
     tool: { name: string; arguments: any; id?: string },
     contextOrPath: string | { projectPath: string; agentId?: string | null; threadId?: string; projectId?: string; toolCallId?: string },
@@ -34,7 +56,7 @@ export class ToolExecutor {
     let agentId: string | null = 'unknown';
     let threadId: string | undefined;
     let projectId: string | undefined;
-    let toolCallId: string | undefined = tool.id;
+    let toolCallId: string | undefined = tool.id || `call_${Date.now()}`;
 
     if (typeof contextOrPath === 'string') {
       projectPath = contextOrPath;
@@ -45,6 +67,27 @@ export class ToolExecutor {
       threadId = contextOrPath.threadId;
       projectId = contextOrPath.projectId;
       if (contextOrPath.toolCallId) toolCallId = contextOrPath.toolCallId;
+    }
+
+    // Check if approval is required
+    if (SENSITIVE_TOOLS.includes(tool.name)) {
+      console.log(`[ToolExecutor] Approval required for ${tool.name} (${toolCallId})`);
+      
+      broadcast('TOOL_RESULT', { 
+        tool: tool.name, 
+        status: 'pending', 
+        args: tool.arguments,
+        projectId,
+        threadId,
+        toolCallId
+      });
+
+      // Wait for approval
+      await new Promise((resolve, reject) => {
+        approvalMap.set(toolCallId!, { resolve, reject });
+      });
+      
+      console.log(`[ToolExecutor] Approval received for ${toolCallId}`);
     }
 
     broadcast('TOOL_EXECUTION', { 

@@ -76,57 +76,10 @@ export class EventLoopManager {
     /**
      * Scenario: Human-in-the-loop Tool Approval
      */
-    this.socket.on('TOOL_APPROVAL', async ({ projectId, threadId, toolCallId, approved, tool, args, projectPath }) => {
-            console.log(`[EventLoop] Tool approval received for ${toolCallId}: ${approved ? 'APPROVED' : 'REJECTED'}`);
-            
-            if (approved) {
-                try {
-                    // We need to know which tool to execute. 
-                    // If the client sends back the full tool info:
-                    const result = await this.toolExecutor.execute({
-                        name: tool,
-                        arguments: args,
-                        id: toolCallId
-                    }, {
-                        projectPath: projectPath || process.cwd(),
-                        projectId,
-                        threadId,
-                        toolCallId
-                    });
-    
-                    // ToolExecutor now broadcasts the result internally, but we keep this for redundancy if needed
-                    // or we could remove it to avoid double-events. 
-                    // For now, let's trust ToolExecutor's broadcast which now includes IDs.
-                    /* 
-                    broadcast('TOOL_RESULT', {
-                        projectId,
-                        threadId,
-                        toolCallId,
-                        status: 'success',
-                        result
-                    });
-                    */
-                } catch (error: any) {
-                    // ToolExecutor already broadcasts error with context
-                    /*
-                    broadcast('TOOL_RESULT', {
-                        projectId,
-                        threadId,
-                        toolCallId,
-                        status: 'error',
-                        error: error.message
-                    });
-                    */
-                }
-            } else {
-                broadcast('TOOL_RESULT', {
-                    projectId,
-                    threadId,
-                    toolCallId,
-                    status: 'rejected'
-                });
-            }
-        });
+    this.socket.on('TOOL_APPROVAL', async ({ toolCallId, approved }) => {
+      console.log(`[EventLoop] Tool approval received for ${toolCallId}: ${approved ? 'APPROVED' : 'REJECTED'}`);
+      ToolExecutor.resolveApproval(toolCallId, approved);
+    });
     
         this.fileWatcher.on('file-change', async ({ filePath, projectPath, eventType, timestamp }) => {
             console.log(`[EventLoop] File change detected in ${filePath}. Calculating Diff.`);
