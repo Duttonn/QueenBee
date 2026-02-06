@@ -34,7 +34,7 @@
   - **Validation**: L'agent doit pouvoir envoyer des messages intermédiaires via SSE pendant que le runner s'exécute.
   - **Worker**: INTEGRATION
 
-- [ ] `S-04`: [Frontend] Unifier API_BASE sur le port 3000 partout et supprimer les URL hardcodées
+- [IN PROGRESS: SOUDURE-11] `S-04`: [Frontend] Unifier API_BASE sur le port 3000 partout et supprimer les URL hardcodées
   - **Fichiers**: `dashboard/src/components/layout/Sidebar.tsx`, `dashboard/src/services/api.ts`
   - **Dépend de**: Rien
   - **Validation**: `grep -r "localhost:3000" dashboard/src` ne doit trouver que des usages de `API_BASE`.
