@@ -144,10 +144,15 @@ export class UnifiedLLMService {
 
     // Safety: If the requested model is clearly for another provider, don't pass it
     const safeOptions = { ...options };
-    const requestedModel = options?.model?.toLowerCase() || '';
+    if (!safeOptions.model) {
+      safeOptions.model = 'gemini-2.5-flash-lite';
+    }
+    const requestedModel = safeOptions.model.toLowerCase();
     
     if (requestedModel.includes('gemini') && provider.id !== 'gemini' && !provider.id.includes('google')) {
-      safeOptions.model = undefined; // Let the provider use its own default
+      if (!options?.model) {
+        safeOptions.model = undefined; // Let the provider use its own default
+      }
     } else if (requestedModel.includes('gpt') && provider.id !== 'openai') {
       safeOptions.model = undefined;
     } else if (requestedModel.includes('claude') && provider.id !== 'anthropic') {
@@ -163,11 +168,14 @@ export class UnifiedLLMService {
     let provider = await this.getOrLoadProvider(providerId, options);
     
     if (!provider && providerId === 'auto') {
-      // For auto mode in streaming, we'll use the first available provider from priority list
-      const priority = ['nvidia', 'gemini', 'ollama'];
-      for (const id of priority) {
-        provider = this.providers.get(id);
-        if (provider) break;
+      // Priority: use gemini if available for gemini-2.5-flash-lite
+      provider = this.providers.get('gemini') || this.providers.get('google');
+      if (!provider) {
+        const priority = ['nvidia', 'ollama'];
+        for (const id of priority) {
+          provider = this.providers.get(id);
+          if (provider) break;
+        }
       }
     }
 
@@ -183,9 +191,16 @@ export class UnifiedLLMService {
     }
 
     const safeOptions = { ...options };
-    const requestedModel = options?.model?.toLowerCase() || '';
+    if (!safeOptions.model) {
+      safeOptions.model = 'gemini-2.5-flash-lite';
+    }
+    const requestedModel = safeOptions.model.toLowerCase();
+    
     if (requestedModel.includes('gemini') && provider.id !== 'gemini' && !provider.id.includes('google')) {
-      safeOptions.model = undefined;
+      // If we enforced gemini-2.5-flash-lite but provider isn't gemini, let provider use its default
+      if (!options?.model) {
+        safeOptions.model = undefined; 
+      }
     } else if (requestedModel.includes('gpt') && provider.id !== 'openai') {
       safeOptions.model = undefined;
     }
@@ -262,15 +277,20 @@ export class UnifiedLLMService {
   private async autoChat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
     await this.ready;
     // Simple priority list for auto selection
-    const priority = ['nvidia', 'gemini', 'ollama'];
+    const priority = ['gemini', 'google', 'nvidia', 'ollama'];
     let lastError: Error | null = null;
+
+    const safeOptions = { ...options };
+    if (!safeOptions.model) {
+      safeOptions.model = 'gemini-2.5-flash-lite';
+    }
 
     for (const id of priority) {
       const provider = this.providers.get(id);
       if (provider) {
         try {
-          console.log(`[AutoChat] Trying provider: ${id}`);
-          return await provider.chat(messages, options);
+          console.log(`[AutoChat] Trying provider: ${id} with model: ${safeOptions.model}`);
+          return await provider.chat(messages, safeOptions);
         } catch (e: any) {
           lastError = e;
           console.warn(`[AutoChat] Fallback: ${id} failed:`, e.message);
