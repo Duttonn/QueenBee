@@ -3,6 +3,7 @@ import { AutonomousRunner } from '../../lib/AutonomousRunner';
 import { logger } from '../../lib/logger';
 import { unifiedLLMService } from '../../lib/UnifiedLLMService';
 import path from 'path';
+import { Paths } from '../../lib/Paths';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -17,11 +18,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   logger.info(`[Chat] Request received. Provider: ${providerId}, Model: ${model}, Stream: ${stream}, Path: ${rawPath}, Thread: ${threadId}, Mode: ${mode}, Agent: ${agentId}`);
 
   const projectPath = rawPath 
-    ? (path.isAbsolute(rawPath) ? rawPath : path.resolve(process.cwd(), '..', rawPath))
-    : process.cwd();
+    ? (path.isAbsolute(rawPath) ? rawPath : path.resolve(Paths.getWorkspaceRoot(), rawPath))
+    : Paths.getProxyBridgeRoot();
 
   // Handle agentic streaming
-  if (stream && (mode === 'autonomous' || mode === 'local' || mode === 'solo')) {
+  if (stream && (mode === 'autonomous' || mode === 'local' || mode === 'solo' || mode === 'worktree' || mode === 'cloud')) {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -29,7 +30,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     try {
       const runner = new AutonomousRunner(
-        (res as any).socket, // still needed for some fallback logic
+        (res as any).socket,
         projectPath,
         providerId,
         threadId,
@@ -37,12 +38,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         mode,
         agentId
       );
-      runner.setWritable(res); // Pass the response stream to the runner
+      runner.setWritable(res);
       
       const lastMessage = messages[messages.length - 1];
       const history = messages.slice(0, -1);
 
-      await runner.streamIntermediateSteps(lastMessage.content, { model, apiKey });
+      await runner.streamIntermediateSteps(lastMessage.content, history, { model, apiKey });
       
       res.end();
     } catch (error: any) {

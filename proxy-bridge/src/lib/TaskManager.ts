@@ -1,7 +1,8 @@
 import fs from 'fs-extra';
 import path from 'path';
+import { Paths } from './Paths';
 
-const TASKS_FILE = path.join(process.cwd(), '../GSD_TASKS.md');
+const TASKS_FILE = Paths.getGSDTasksPath();
 
 export class TaskManager {
   static async getTasks() {

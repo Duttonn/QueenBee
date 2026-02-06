@@ -2,9 +2,10 @@
 import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
+import { Paths } from './Paths';
 
-const CONFIG_DIR = path.join(os.homedir(), '.queenbee');
-const TOKEN_FILE = path.join(CONFIG_DIR, 'github-token.json');
+const CONFIG_DIR = Paths.getCodexHome();
+const TOKEN_FILE = Paths.getGitHubTokenPath();
 
 export async function saveToken(token: string) {
     await fs.ensureDir(CONFIG_DIR);

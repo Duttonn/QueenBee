@@ -1,12 +1,13 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import fs from 'fs/promises';
 import path from 'path';
+import { Paths } from '../../lib/Paths';
 
 const ALLOWED_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.css', '.json', '.md', '.html'];
-const PROJECT_ROOT = process.cwd();
+const PROJECT_ROOT = Paths.getProxyBridgeRoot();
 const ALLOWED_ROOTS = [
     PROJECT_ROOT,
-    path.join(PROJECT_ROOT, '..'), // Allow parent to reach dashboard if running from proxy-bridge
+    Paths.getWorkspaceRoot(),
 ];
 
 /**

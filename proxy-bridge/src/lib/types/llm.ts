@@ -40,7 +40,7 @@ export interface LLMProviderOptions {
   stop?: string[];
   response_format?: { type: 'json_object' | 'text' };
   apiKey?: string;
-  tools?: any[];
+  tools?: any[]; // Add tools property to support tool calls
 }
 
 export interface ILLMProvider {

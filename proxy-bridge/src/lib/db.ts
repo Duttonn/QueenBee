@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import { Paths } from './Paths';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = Paths.getProxyBridgeDataDir();
 const DB_PATH = path.join(DATA_DIR, 'queenbee.json');
 
 console.log('Database path:', DB_PATH);

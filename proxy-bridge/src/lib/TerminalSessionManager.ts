@@ -1,11 +1,12 @@
 import fs from 'fs-extra';
 import path from 'path';
+import { Paths } from './Paths';
 
 /**
  * TerminalSessionManager: Ensures terminal panes persist their state and history.
  */
 export class TerminalSessionManager {
-  private historyDir = path.join(process.cwd(), '../data/terminal_history');
+  private historyDir = path.join(Paths.getDataDir(), 'terminal_history');
 
   constructor() {
     fs.ensureDirSync(this.historyDir);

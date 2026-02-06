@@ -2,6 +2,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import fs from 'fs-extra';
 import path from 'path';
+import { Paths } from '../../../../lib/Paths';
 
 /**
  * Validates and saves GitHub OAuth credentials to the .env.local file
@@ -18,7 +19,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
-        const envPath = path.join(process.cwd(), '.env.local');
+        const envPath = path.join(Paths.getProxyBridgeRoot(), '.env.local');
 
         // Read existing env file if it exists
         let envContent = '';

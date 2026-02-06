@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import simpleGit from 'simple-git';
 import fs from 'fs';
 import path from 'path';
+import { Paths } from '../../../lib/Paths';
 
 /**
  * Git Worktree Management API
@@ -23,7 +24,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const repoPath = path.isAbsolute(rawRepoPath) 
         ? rawRepoPath 
-        : path.resolve(process.cwd(), '..', rawRepoPath);
+        : path.resolve(Paths.getWorkspaceRoot(), rawRepoPath);
 
     if (!fs.existsSync(repoPath)) {
         return res.status(400).json({ error: `Repository path does not exist: ${repoPath}` });
@@ -51,13 +52,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (req.method === 'POST') {
             if (!worktreeName) return res.status(400).json({ error: 'Worktree name required' });
 
-            // Define path structure for worktrees
-            // Usually we might want them in a .worktrees folder or sibling directories
-            // For now, let's put them in a .worktrees directory inside the repo root to avoid clutter
-            // BUT standard practice is often parallel folders. 
-            // Let's go with: repo_root/worktrees/name
-
-            const worktreePath = path.join(repoPath, 'worktrees', worktreeName);
+            const worktreePath = path.join(Paths.getWorktreesDir(), worktreeName);
 
             // Check if branch exists or create new
             const branchName = `experiment/${worktreeName}`;
@@ -75,9 +70,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // DELETE: Remove worktree
         if (req.method === 'DELETE') {
             if (!worktreeName) return res.status(400).json({ error: 'Worktree name required' });
-            // We need to know the path or find it. 
-            // Assuming the standard path we used above
-            const worktreePath = path.join(repoPath, 'worktrees', worktreeName);
+            
+            const worktreePath = path.join(Paths.getWorktreesDir(), worktreeName);
 
             await git.raw(['worktree', 'remove', worktreePath]);
 

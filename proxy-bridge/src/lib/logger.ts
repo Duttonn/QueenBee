@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import { Paths } from './Paths';
 
-const LOG_DIR = path.join(process.cwd(), 'logs');
+const LOG_DIR = Paths.getLogsDir();
 const LOG_FILE = path.join(LOG_DIR, 'server.log');
 
 if (!fs.existsSync(LOG_DIR)) {
