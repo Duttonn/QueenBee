@@ -1,7 +1,7 @@
 import { Socket } from 'socket.io';
-import { ToolExecutor } from './ToolExecutor';
 import { ProjectTaskManager } from './ProjectTaskManager';
-import { broadcast } from './socket-instance';
+import { AgentSession } from './AgentSession';
+import { LLMProviderOptions } from './types/llm';
 import fs from 'fs-extra';
 import path from 'path';
 
@@ -23,15 +23,29 @@ export const AUTONOMOUS_SYSTEM_PROMPT_INJECT = `
 
 export class AutonomousRunner {
   private socket: Socket;
-  private executor: ToolExecutor;
   private projectPath: string;
   private tm: ProjectTaskManager;
+  private session: AgentSession | null = null;
 
   constructor(socket: Socket, projectPath: string) {
     this.socket = socket;
-    this.executor = new ToolExecutor();
     this.projectPath = projectPath;
     this.tm = new ProjectTaskManager(projectPath);
+  }
+
+  /**
+   * Main agentic loop: Think -> Act -> Observe
+   */
+  async executeLoop(userPrompt: string, options?: LLMProviderOptions) {
+    if (!this.session) {
+      const systemPrompt = await this.getEnhancedContext();
+      this.session = new AgentSession(this.projectPath, {
+        systemPrompt,
+        maxSteps: 15
+      });
+    }
+
+    return await this.session.prompt(userPrompt, options);
   }
 
   /**
@@ -56,11 +70,14 @@ ${AUTONOMOUS_SYSTEM_PROMPT_INJECT}
 
   private async scanFiles(dir: string, depth = 0): Promise<string[]> {
     if (depth > 3) return []; // Limit depth for tokens
+    if (!fs.existsSync(dir)) return [];
+
     const entries = await fs.readdir(dir, { withFileTypes: true });
     let results: string[] = [];
 
     for (const entry of entries) {
-      if (entry.name === 'node_modules' || entry.name === '.git') continue;
+      if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'dist') continue;
+
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         results.push(`DIR: ${entry.name}`);
@@ -69,14 +86,7 @@ ${AUTONOMOUS_SYSTEM_PROMPT_INJECT}
         results.push(`FILE: ${entry.name}`);
       }
     }
-    return results;
-  }
 
-  /**
-   * Executes a single step in the agentic loop
-   */
-  async runStep(toolName: string, args: any) {
-    broadcast('QUEEN_STATUS', { status: 'working', tool: toolName });
-    return await this.executor.execute({ name: toolName, arguments: args }, this.projectPath);
+    return results;
   }
 }
