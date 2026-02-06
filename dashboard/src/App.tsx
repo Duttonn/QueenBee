@@ -9,10 +9,15 @@ import { useHiveStore } from './store/useHiveStore';
 import { useSocketEvents } from './hooks/useSocketEvents'; // Added for TASK-03
 
 function App() {
-  const { isAuthenticated, isOnboarded, login, setOnboarded, connectForge, forges } = useAuthStore();
+  const { isAuthenticated, isOnboarded, login, setOnboarded, connectForge, forges, loadApiKeys } = useAuthStore();
   const { initSocket, fetchProjects } = useHiveStore(); // Destructure initSocket and fetchProjects
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isCallback, setIsCallback] = useState(false);
+
+  // Load secure API keys once on mount
+  useEffect(() => {
+    loadApiKeys();
+  }, [loadApiKeys]);
 
   // Initialize Socket.io connection if authenticated and onboarded
   useEffect(() => {

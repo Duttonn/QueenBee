@@ -21,5 +21,5 @@ def tail_logs(log_path):
 
 if __name__ == "__main__":
     # Example: tailing the Blackjack data generation logs
-    target_log = sys.argv[1] if len(sys.argv) > 1 else "/home/fish/BlackJackAdvisor/logs/generation.log"
+    target_log = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.getcwd(), "logs/generation.log")
     tail_logs(target_log)

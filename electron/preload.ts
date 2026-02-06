@@ -28,6 +28,11 @@ contextBridge.exposeInMainWorld('electron', {
     showMessage: (options: any) => ipcRenderer.invoke('dialog:showMessage', options),
   },
 
+  storage: {
+    encrypt: (plainText: string) => ipcRenderer.invoke('storage:encrypt', plainText),
+    decrypt: (encryptedBase64: string) => ipcRenderer.invoke('storage:decrypt', encryptedBase64),
+  },
+
   onAuthSuccess: (callback: any) => {
     const listener = (event: any, data: any) => callback(data);
     ipcRenderer.on('GITHUB_AUTH_SUCCESS', listener);

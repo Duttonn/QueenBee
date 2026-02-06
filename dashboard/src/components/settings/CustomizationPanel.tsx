@@ -50,14 +50,7 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
     const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
     const [githubUser, setGithubUser] = useState<any>(null); // Placeholder for auth store integration
 
-    // API Keys state (mocked for now, would likely come from backend)
-    const [apiKeys, setApiKeys] = useState<{ [key: string]: string }>({
-        nvidia: '**************************', // Masked
-        openai: '',
-        anthropic: ''
-    });
-
-    const { forges } = useAuthStore();
+    const { forges, providers, saveApiKey } = useAuthStore();
     const githubForge = forges.find(f => f.id === 'github');
 
     // Appearance settings
@@ -345,8 +338,8 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
 
                                 {activeTab === 'integrations' && (
                                     <IntegrationsTab
-                                        apiKeys={apiKeys}
-                                        setApiKeys={setApiKeys}
+                                        providers={providers}
+                                        onSaveKey={saveApiKey}
                                         githubForge={githubForge}
                                     />
                                 )}
@@ -874,7 +867,7 @@ const PluginCard = ({ name, description, installed, author }: any) => (
     </div>
 );
 
-const IntegrationsTab = ({ apiKeys, setApiKeys, githubForge }: any) => {
+const IntegrationsTab = ({ providers, onSaveKey, githubForge }: any) => {
     const [newRepoUrl, setNewRepoUrl] = useState('');
 
     const handleConnectGithub = async () => {
@@ -979,64 +972,77 @@ const IntegrationsTab = ({ apiKeys, setApiKeys, githubForge }: any) => {
                 </div>
 
                 <div className="space-y-4">
-                    <ProviderCard
-                        name="NVIDIA NIM (Kimi)"
-                        icon={<Cpu size={20} className="text-[#22C55E]" />}
-                        status="Connected"
-                        apiKey={apiKeys.nvidia}
-                        onChange={(val: string) => setApiKeys({ ...apiKeys, nvidia: val })}
-                    />
-                    <ProviderCard
-                        name="OpenAI"
-                        icon={<Cpu size={20} className="text-[#3B82F6]" />}
-                        status={apiKeys.openai ? "Connected" : "Not Configured"}
-                        apiKey={apiKeys.openai}
-                        onChange={(val: string) => setApiKeys({ ...apiKeys, openai: val })}
-                    />
-                    <ProviderCard
-                        name="Anthropic"
-                        icon={<Cpu size={20} className="text-amber-500" />}
-                        status={apiKeys.anthropic ? "Connected" : "Not Configured"}
-                        apiKey={apiKeys.anthropic}
-                        onChange={(val: string) => setApiKeys({ ...apiKeys, anthropic: val })}
-                    />
+                    {providers.map((provider: any) => (
+                        <ProviderCard
+                            key={provider.id}
+                            id={provider.id}
+                            name={provider.name}
+                            icon={<span>{provider.icon}</span>}
+                            status={provider.connected ? "Connected" : "Not Configured"}
+                            apiKey={provider.apiKey || ''}
+                            onSave={(val: string) => onSaveKey(provider.id, val)}
+                        />
+                    ))}
                 </div>
             </div>
         </motion.div>
     );
 };
 
-const ProviderCard = ({ name, icon, status, apiKey, onChange }: any) => (
-    <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl">
-        <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center border border-slate-100 shadow-sm">
-                    {icon}
+const ProviderCard = ({ name, icon, status, apiKey: initialApiKey, onSave }: any) => {
+    const [apiKey, setApiKey] = useState(initialApiKey);
+    const [isSaving, setIsSaving] = useState(false);
+
+    useEffect(() => {
+        setApiKey(initialApiKey);
+    }, [initialApiKey]);
+
+    const handleSave = async () => {
+        setIsSaving(true);
+        try {
+            await onSave(apiKey);
+        } catch (e) {
+            console.error('Failed to save API key', e);
+        }
+        setIsSaving(false);
+    };
+
+    return (
+        <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl">
+            <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center border border-slate-100 shadow-sm">
+                        {icon}
+                    </div>
+                    <div>
+                        <h5 className="text-sm font-medium text-[#1E293B]">{name}</h5>
+                        <p className={`text-[10px] font-bold uppercase ${status === 'Connected' ? 'text-[#22C55E]' : 'text-slate-400'}`}>
+                            {status}
+                        </p>
+                    </div>
                 </div>
-                <div>
-                    <h5 className="text-sm font-medium text-[#1E293B]">{name}</h5>
-                    <p className={`text-[10px] font-bold uppercase ${status === 'Connected' ? 'text-[#22C55E]' : 'text-slate-400'}`}>
-                        {status}
-                    </p>
+            </div>
+            <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">API Key</label>
+                <div className="flex gap-2">
+                    <input
+                        type="password"
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        placeholder="sk-..."
+                        className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-[#1E293B] focus:outline-none focus:border-[#3B82F6] transition-colors font-mono"
+                    />
+                    <button
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-600 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-colors disabled:opacity-50"
+                    >
+                        {isSaving ? 'Saving...' : 'Save'}
+                    </button>
                 </div>
             </div>
         </div>
-        <div>
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">API Key</label>
-            <div className="flex gap-2">
-                <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => onChange(e.target.value)}
-                    placeholder="sk-..."
-                    className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-[#1E293B] focus:outline-none focus:border-[#3B82F6] transition-colors font-mono"
-                />
-                <button className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-600 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-colors">
-                    Save
-                </button>
-            </div>
-        </div>
-    </div>
-);
+    );
+};
 
 export default CustomizationPanel;

@@ -1,14 +1,15 @@
 import fs from 'fs-extra';
 import path from 'path';
 import crypto from 'crypto';
+import { Paths } from './Paths';
 
 /**
  * PortableConfigManager: Handles offline-first config snapshots.
  * No centralized DB needed. Just pure data portability.
  */
 export class PortableConfigManager {
-  private configPath = '/home/fish/.codex/hive_state.json';
-  private backupDir = '/home/fish/clawd/backups';
+  private configPath = Paths.getHiveStatePath();
+  private backupDir = Paths.getBackupDir();
 
   constructor() {
     fs.ensureDirSync(this.backupDir);

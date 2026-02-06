@@ -18,5 +18,5 @@ def synthesize_prompt(user_intent, project_data):
 
 if __name__ == "__main__":
     # Mocking a Queen Bee discovery turn
-    target_project = sys.argv[1] if len(sys.argv) > 1 else "/home/fish/clawd/projects/codex-clone/dashboard"
+    target_project = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
     peek_project(target_project)

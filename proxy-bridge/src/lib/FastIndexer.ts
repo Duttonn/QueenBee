@@ -1,13 +1,14 @@
 import { execSync } from 'child_process';
 import fs from 'fs-extra';
 import path from 'path';
+import { Paths } from './Paths';
 
 /**
  * FastIndexer: High-performance codebase indexing using ripgrep (rg) and fzf patterns.
  * Provides sub-millisecond search results for the Queen Bee bar.
  */
 export class FastIndexer {
-  private indexPath = '/home/fish/.codex/search_index.json';
+  private indexPath = Paths.getSearchIndexPath();
 
   /**
    * Performs a rapid search across the project.

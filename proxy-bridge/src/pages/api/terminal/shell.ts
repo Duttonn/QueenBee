@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { Server } from 'socket.io';
 import { spawn } from 'node-pty';
+import os from 'os';
 
 /**
  * Terminal Bridge Service (Xterm.js <-> PTY)
@@ -26,7 +27,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       name: 'xterm-color',
       cols: 80,
       rows: 24,
-      cwd: '/home/fish/clawd',
+      cwd: os.homedir(),
       env: process.env
     });
 

@@ -3,7 +3,8 @@ import json
 import os
 import time
 
-RELAY_CACHE = "/home/fish/clawd/projects/codex-clone/sessions/relay_cache.json"
+CODEX_HOME = os.environ.get('CODEX_HOME', os.path.expanduser('~/.codex'))
+RELAY_CACHE = os.path.join(CODEX_HOME, "sessions/relay_cache.json")
 
 def create_snapshot(project_id, agent_id, summary, files_touched):
     """Captures the essence of a session before a model swap."""
