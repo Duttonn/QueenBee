@@ -74,11 +74,17 @@ export const useSocketEvents = () => {
       }
     };
 
+    const onProjectListUpdate = (data: { projects: any[] }) => {
+      console.log(`[SocketHook] Project List Update:`, data);
+      useHiveStore.getState().setProjects(data.projects);
+    };
+
     socket.on('QUEEN_STATUS', onQueenStatus);
     socket.on('UI_UPDATE', onUIUpdate);
     socket.on('NATIVE_NOTIFICATION', onNativeNotification);
     socket.on('TOOL_EXECUTION', onToolExecution);
     socket.on('TOOL_RESULT', onToolResult);
+    socket.on('PROJECT_LIST_UPDATE', onProjectListUpdate);
 
     return () => {
       socket.off('QUEEN_STATUS', onQueenStatus);
@@ -86,6 +92,7 @@ export const useSocketEvents = () => {
       socket.off('NATIVE_NOTIFICATION', onNativeNotification);
       socket.off('TOOL_EXECUTION', onToolExecution);
       socket.off('TOOL_RESULT', onToolResult);
+      socket.off('PROJECT_LIST_UPDATE', onProjectListUpdate);
     };
   }, [socket, setQueenStatus, updateAgentStatus, spawnAgent, updateToolCall, activeThreadId, projects]);
 };

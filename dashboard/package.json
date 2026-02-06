@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "vite",
+    "prebuild": "rm -rf dist-electron",
     "build": "tsc && vite build",
+    "postbuild": "sed -i '' 's/export default //g' dist-electron/*.cjs",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },

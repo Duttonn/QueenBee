@@ -217,10 +217,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             repoCount,
         });
 
-        return res.redirect(`http://localhost:5173/auth/callback?auth_data=${encodeURIComponent(authData)}&state=${state}`);
+        // Check if we should redirect to the custom protocol (Electron)
+        let isElectron = false;
+        try {
+            if (state) {
+                const decodedState = JSON.parse(Buffer.from(state as string, 'base64').toString());
+                isElectron = decodedState.mode === 'electron';
+            }
+        } catch (e) {
+            console.error('[Auth] Failed to decode state:', e);
+            // Fallback to user-agent check
+            isElectron = req.headers['user-agent']?.includes('Electron') || false;
+        }
+        
+        // Use custom protocol if it looks like an electron request
+        const redirectBase = isElectron ? 'queenbee://auth/callback' : 'http://localhost:5173/auth/callback';
+
+        return res.redirect(`${redirectBase}?auth_data=${encodeURIComponent(authData)}&state=${state}`);
 
     } catch (error: any) {
         console.error('[Auth] GitHub OAuth error:', error);
-        return res.redirect(`http://localhost:5173/auth/callback?error=${encodeURIComponent(error.message || 'Unknown error')}`);
+        // Fallback error redirect
+        const isElectron = state?.toString().includes('electron');
+        const redirectBase = isElectron ? 'queenbee://auth/callback' : 'http://localhost:5173/auth/callback';
+        return res.redirect(`${redirectBase}?error=${encodeURIComponent(error.message || 'Unknown error')}`);
     }
 }

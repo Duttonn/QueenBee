@@ -3,9 +3,10 @@ import fs from 'fs/promises';
 import path from 'path';
 
 const ALLOWED_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.css', '.json', '.md', '.html'];
+const PROJECT_ROOT = process.cwd();
 const ALLOWED_ROOTS = [
-    '/Users/ndn18/PersonalProjects/QueenBee/dashboard',
-    '/Users/ndn18/PersonalProjects/QueenBee/proxy-bridge',
+    PROJECT_ROOT,
+    path.join(PROJECT_ROOT, '..'), // Allow parent to reach dashboard if running from proxy-bridge
 ];
 
 /**
@@ -28,19 +29,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ error: 'File path is required' });
     }
 
+    // Security: Resolve path relative to PROJECT_ROOT and normalize
+    const absolutePath = path.isAbsolute(filePath) 
+        ? path.normalize(filePath) 
+        : path.resolve(PROJECT_ROOT, filePath);
+    
     // Security: Validate path is within allowed directories
-    const normalizedPath = path.normalize(filePath);
-    const isAllowed = ALLOWED_ROOTS.some(root => normalizedPath.startsWith(root));
+    const isAllowed = ALLOWED_ROOTS.some(root => absolutePath.startsWith(path.normalize(root)));
 
     if (!isAllowed) {
         return res.status(403).json({
             error: 'Access denied',
-            message: 'File path must be within allowed project directories'
+            message: `File path must be within allowed project directories. Resolved: ${absolutePath}`
         });
     }
 
     // Security: Validate file extension
-    const ext = path.extname(normalizedPath).toLowerCase();
+    const ext = path.extname(absolutePath).toLowerCase();
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
         return res.status(403).json({
             error: 'Invalid file type',
@@ -48,19 +53,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
     }
 
-    // Security: Prevent path traversal
-    if (normalizedPath.includes('..')) {
-        return res.status(403).json({ error: 'Path traversal not allowed' });
+    // Security: Prevent path traversal (extra check)
+    if (absolutePath.includes('..') && !absolutePath.startsWith(PROJECT_ROOT)) {
+         return res.status(403).json({ error: 'Path traversal not allowed' });
     }
 
     try {
         if (req.method === 'GET') {
             // Read file
-            const content = await fs.readFile(normalizedPath, 'utf-8');
-            const stats = await fs.stat(normalizedPath);
+            const content = await fs.readFile(absolutePath, 'utf-8');
+            const stats = await fs.stat(absolutePath);
 
             return res.status(200).json({
-                path: normalizedPath,
+                path: absolutePath,
                 content,
                 size: stats.size,
                 modified: stats.mtime.toISOString()
@@ -76,22 +81,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
 
             // Create backup before writing
-            const backupPath = `${normalizedPath}.backup`;
+            const backupPath = `${absolutePath}.backup`;
             try {
-                const existing = await fs.readFile(normalizedPath, 'utf-8');
+                const existing = await fs.readFile(absolutePath, 'utf-8');
                 await fs.writeFile(backupPath, existing);
             } catch {
                 // File might not exist yet, that's ok
             }
 
             // Write new content
-            await fs.writeFile(normalizedPath, content, 'utf-8');
+            await fs.writeFile(absolutePath, content, 'utf-8');
 
-            console.log(`[Files] Updated: ${normalizedPath}`);
+            console.log(`[Files] Updated: ${absolutePath}`);
 
             return res.status(200).json({
                 success: true,
-                path: normalizedPath,
+                path: absolutePath,
                 message: 'File saved successfully',
                 backup: backupPath
             });
@@ -105,7 +110,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (error.code === 'ENOENT') {
             return res.status(404).json({
                 error: 'File not found',
-                path: normalizedPath
+                path: absolutePath
             });
         }
 

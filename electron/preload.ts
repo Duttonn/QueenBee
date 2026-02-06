@@ -1,8 +1,6 @@
 import type { IpcRendererEvent } from 'electron';
 const { contextBridge, ipcRenderer } = require('electron');
 
-export {}; // Treat as module
-
 
 contextBridge.exposeInMainWorld('electron', {
   clone: (repoUrl: string, targetDir: string) => ipcRenderer.invoke('fs:clone', { repoUrl, targetDir }),
@@ -24,6 +22,21 @@ contextBridge.exposeInMainWorld('electron', {
     status: (projectPath: string) => ipcRenderer.invoke('git:status', projectPath),
     diff: (projectPath: string, filePath?: string) => ipcRenderer.invoke('git:diff', { projectPath, filePath }),
   },
+
+  dialog: {
+    showOpen: (options: any) => ipcRenderer.invoke('dialog:showOpen', options),
+    showMessage: (options: any) => ipcRenderer.invoke('dialog:showMessage', options),
+  },
+
+  onAuthSuccess: (callback: any) => {
+    const listener = (event: any, data: any) => callback(data);
+    ipcRenderer.on('GITHUB_AUTH_SUCCESS', listener);
+    return () => ipcRenderer.removeListener('GITHUB_AUTH_SUCCESS', listener);
+  },
+
+  getCachedAuth: () => ipcRenderer.invoke('auth:get-cached'),
+
+  log: (level: string, message: string) => ipcRenderer.send('app:log', { level, message }),
 
   getNativeContext: () => {
     return new Promise((resolve) => {

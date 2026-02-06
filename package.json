@@ -2,7 +2,7 @@
   "name": "queen-bee",
   "version": "0.1.0",
   "private": true,
-  "main": "dashboard/dist-electron/main.js",
+  "main": "dashboard/dist-electron/main.cjs",
   "scripts": {
     "postinstall": "npm install --prefix dashboard && npm install --prefix proxy-bridge",
     "dev": "npm run dev --prefix dashboard",

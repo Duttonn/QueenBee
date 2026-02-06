@@ -13,6 +13,7 @@ interface HiveState {
 
   // Actions
   initSocket: () => void;
+  fetchProjects: () => Promise<void>;
   setQueenStatus: (status: string) => void;
   setProjects: (projects: any[]) => void;
   addProject: (project: any) => void;
@@ -41,11 +42,23 @@ export const useHiveStore = create<HiveState>()(
 
       initSocket: () => {
         if (get().socket) return;
-        const socket = io('http://localhost:3000', {
+        const socket = io('http://127.0.0.1:3000', {
           path: '/api/logs/stream',
           transports: ['websocket', 'polling']
         });
         set({ socket });
+      },
+
+      fetchProjects: async () => {
+        try {
+          const res = await fetch('http://localhost:3000/api/projects');
+          if (res.ok) {
+            const projects = await res.json();
+            set({ projects });
+          }
+        } catch (error) {
+          console.error('[HiveStore] Failed to fetch projects:', error);
+        }
       },
 
       setQueenStatus: (status) => set({ queenStatus: status }),
@@ -69,12 +82,52 @@ export const useHiveStore = create<HiveState>()(
 
       setActiveThread: (activeThreadId) => set({ activeThreadId }),
 
-      addThread: (projectId, thread) => set((state) => ({
-        projects: state.projects.map(p =>
-          p.id === projectId ? { ...p, threads: [{ ...thread, messages: [] }, ...(p.threads || [])] } : p
-        ),
-        activeThreadId: thread.id
-      })),
+      addThread: async (projectId, thread) => {
+        // 1. Optimistically update UI
+        set((state) => ({
+          projects: state.projects.map(p =>
+            p.id === projectId ? { ...p, threads: [{ ...thread, messages: [] }, ...(p.threads || [])] } : p
+          )
+        }));
+
+        // 2. Select thread
+        queueMicrotask(() => set({ activeThreadId: thread.id }));
+
+        // 3. Create real worktree if possible
+        const project = get().projects.find(p => p.id === projectId);
+        if (project && project.path) {
+          try {
+            console.log(`[HiveStore] Requesting worktree for ${project.name}...`);
+            const response = await fetch('http://localhost:3000/api/git/worktree', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                path: project.path,
+                name: `thread-${thread.id}`
+              }),
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              console.log(`[HiveStore] Worktree created at: ${data.path}`);
+              
+              // Update thread with worktree path and branch info
+              set((state) => ({
+                projects: state.projects.map(p =>
+                  p.id === projectId ? {
+                    ...p,
+                    threads: p.threads.map((t: any) => 
+                      t.id === thread.id ? { ...t, worktreePath: data.path, branch: data.branch } : t
+                    )
+                  } : p
+                )
+              }));
+            }
+          } catch (error) {
+            console.error('[HiveStore] Failed to create worktree:', error);
+          }
+        }
+      },
 
       updateThread: (projectId, threadId, updates) => set((state) => ({
         projects: state.projects.map(p =>

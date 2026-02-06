@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useHiveStore } from './useHiveStore';
 
 // Types derived from backend structures
 export interface Automation {
@@ -39,13 +40,12 @@ export interface ExecutionResult {
     code?: number;
 }
 
-const API_BASE = 'http://localhost:3000/api';
+const API_BASE = 'http://127.0.0.1:3000/api';
 
 interface AppState {
     // Data
     automations: Automation[];
     skills: { installed: Skill[]; available: Skill[] };
-    projects: Project[];
 
     // Actions
     fetchData: () => Promise<void>;
@@ -70,19 +70,19 @@ interface AppState {
 export const useAppStore = create<AppState>((set, get) => ({
     automations: [],
     skills: { installed: [], available: [] },
-    projects: [],
 
     fetchData: async () => {
         try {
-            const [authRes, skillsRes, projectsRes] = await Promise.all([
+            const [authRes, skillsRes] = await Promise.all([
                 fetch(`${API_BASE}/automations`),
-                fetch(`${API_BASE}/skills`),
-                fetch(`${API_BASE}/projects`)
+                fetch(`${API_BASE}/skills`)
             ]);
 
             if (authRes.ok) set({ automations: await authRes.json() });
             if (skillsRes.ok) set({ skills: await skillsRes.json() });
-            if (projectsRes.ok) set({ projects: await projectsRes.json() });
+            
+            // Trigger HiveStore projects fetch
+            useHiveStore.getState().fetchProjects();
 
         } catch (e) {
             console.error("Failed to fetch app data", e);
@@ -153,7 +153,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
         if (res.ok) {
             const newProj = await res.json();
-            set(state => ({ projects: [...state.projects, newProj] }));
+            useHiveStore.getState().addProject(newProj);
         }
     },
 

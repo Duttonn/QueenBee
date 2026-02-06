@@ -17,6 +17,10 @@ export interface NativeBridge {
     status: (path: string) => Promise<string>;
     diff: (path: string, filePath?: string) => Promise<string>;
   };
+  dialog: {
+    showOpen: (options: any) => Promise<any>;
+    showMessage: (options: any) => Promise<any>;
+  };
   notify: (title: string, body: string) => void;
 }
 
@@ -64,6 +68,18 @@ export const NativeService: NativeBridge = {
     diff: async (path: string, filePath?: string) => {
       if (isElectron()) return getElectron().git.diff(path, filePath);
       return 'Web Mode - Diff Unavailable';
+    }
+  },
+  dialog: {
+    showOpen: async (options: any) => {
+      if (isElectron()) return getElectron().dialog.showOpen(options);
+      console.warn('[NativeService] showOpen: Web Mode - Feature Unavailable');
+      return { canceled: true };
+    },
+    showMessage: async (options: any) => {
+      if (isElectron()) return getElectron().dialog.showMessage(options);
+      alert(options.message);
+      return { response: 0 };
     }
   },
   notify: (title: string, body: string) => {

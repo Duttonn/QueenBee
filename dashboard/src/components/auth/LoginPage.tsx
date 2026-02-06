@@ -6,42 +6,105 @@ interface LoginPageProps {
     onLoginComplete: (data: any) => void;
 }
 
-const API_BASE = 'http://localhost:3000';
+const API_BASE = 'http://127.0.0.1:3000';
 
 const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [waitingMessage, setWaitingMessage] = useState<string | null>(null);
     const [setupInstructions, setSetupInstructions] = useState<any>(null);
     const [isBackendOffline, setIsBackendOffline] = useState(false);
 
     const [deviceFlowData, setDeviceFlowData] = useState<any>(null);
 
-    // Check backend status on mount
+    // Initial mount log
+    React.useEffect(() => {
+        if (window.electron && (window.electron as any).log) {
+            (window.electron as any).log('info', 'LoginPage: Component Mounted');
+        }
+    }, []);
+
+    // Heartbeat for Loading State
+    React.useEffect(() => {
+        if (!isLoading) return;
+        const interval = setInterval(() => {
+            if (window.electron && (window.electron as any).log) {
+                (window.electron as any).log('info', `LoginPage: Still loading... (State: ${waitingMessage ? 'Waiting for Browser' : 'Connecting to Backend'})`);
+            }
+        }, 5000);
+        return () => clearInterval(interval);
+    }, [isLoading, waitingMessage]);
+
+    // Listen for auth success from deep link (Electron)
+    React.useEffect(() => {
+        if (window.electron && (window.electron as any).onAuthSuccess) {
+            (window.electron as any).log('info', 'LoginPage: Registering onAuthSuccess listener');
+            return (window.electron as any).onAuthSuccess((data: any) => {
+                (window.electron as any).log('info', 'LoginPage: Received push auth data');
+                onLoginComplete(data);
+            });
+        }
+    }, [onLoginComplete]);
+
+    // Check for cached auth on mount (if push was missed)
+    React.useEffect(() => {
+        if (window.electron && (window.electron as any).getCachedAuth) {
+            (window.electron as any).log('info', 'LoginPage: Checking for cached auth');
+            (window.electron as any).getCachedAuth().then((data: any) => {
+                if (data) {
+                    (window.electron as any).log('info', 'LoginPage: Found cached auth data');
+                    onLoginComplete(data);
+                }
+            });
+        }
+    }, [onLoginComplete]);
+
+    // Check backend status on mount and poll
     React.useEffect(() => {
         const checkBackend = async () => {
             try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 2000);
-                await fetch(`${API_BASE}/api/config`, { signal: controller.signal });
+                const response = await fetch(`${API_BASE}/api/health`, { signal: controller.signal });
                 clearTimeout(timeoutId);
-                setIsBackendOffline(false);
+                
+                if (response.ok) {
+                    setIsBackendOffline(false);
+                } else {
+                    setIsBackendOffline(true);
+                }
             } catch (err) {
                 setIsBackendOffline(true);
             }
         };
+
         checkBackend();
+        const interval = setInterval(checkBackend, 5000);
+        return () => clearInterval(interval);
     }, []);
 
     const handleGitHubLogin = async () => {
+        if (window.electron && (window.electron as any).log) {
+            (window.electron as any).log('info', 'LoginPage: handleGitHubLogin clicked');
+        }
         setIsLoading(true);
         setError(null);
+        setWaitingMessage(null);
         setSetupInstructions(null);
         setDeviceFlowData(null);
 
         try {
+            if (window.electron && (window.electron as any).log) {
+                (window.electron as any).log('info', `LoginPage: Fetching strategy from ${API_BASE}/api/auth/github`);
+            }
+            
             // Get Auth Strategy from backend
             const response = await fetch(`${API_BASE}/api/auth/github`);
             const data = await response.json();
+
+            if (window.electron && (window.electron as any).log) {
+                (window.electron as any).log('info', `LoginPage: Strategy received: ${data.type || 'web'}`);
+            }
 
             if (!response.ok) {
                 if (data.setup) {
@@ -56,15 +119,33 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
                 setIsLoading(false);
                 startPolling(data.device_code, data.interval);
             } else {
-                // Handle Web Flow (Default for Mac)
+                // Handle Web Flow
                 sessionStorage.setItem('oauth_state', data.state);
-                window.location.href = data.url;
+                
+                // If in Electron, open in external browser
+                if (window.electron) {
+                    if (data.url) {
+                        (window.electron as any).log('info', `LoginPage: Opening URL: ${data.url.substring(0, 50)}...`);
+                        (window.electron as any).shell.openExternal(data.url);
+                        setWaitingMessage('Please complete login in your browser...');
+                    } else {
+                        throw new Error('Backend did not return an authorization URL');
+                    }
+                    setIsLoading(false);
+                } else {
+                    window.location.href = data.url;
+                }
             }
 
         } catch (err: any) {
             const message = err.message === 'Failed to fetch' 
-                ? 'Could not connect to Proxy Bridge (localhost:3000). Is the backend running?'
+                ? `Could not connect to Proxy Bridge (${API_BASE}). Is the backend running?`
                 : err.message;
+            
+            if (window.electron && (window.electron as any).log) {
+                (window.electron as any).log('error', `LoginPage: Login failed: ${message}`);
+            }
+            
             setError(message);
             setIsLoading(false);
         }
@@ -192,7 +273,20 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
                     </div>
 
                     {/* Device Flow UI */}
-                    {deviceFlowData ? (
+                    {waitingMessage ? (
+                        <div className="py-10 text-center space-y-4">
+                            <div className="w-16 h-16 mx-auto bg-blue-500/10 rounded-full flex items-center justify-center">
+                                <Loader2 className="text-[#3B82F6] animate-spin" size={32} />
+                            </div>
+                            <p className="text-sm text-slate-300 font-medium">{waitingMessage}</p>
+                            <button 
+                                onClick={() => setWaitingMessage(null)}
+                                className="text-xs text-slate-500 hover:text-slate-400"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    ) : deviceFlowData ? (
                         <div className="space-y-6 text-center">
                             <div className="p-6 bg-[#1E293B]/50 rounded-xl border border-white/10">
                                 <h3 className="text-sm text-slate-400 mb-2">Device Activation Code</h3>
