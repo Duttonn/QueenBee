@@ -1,8 +1,9 @@
 import fs from 'fs-extra';
 import path from 'path';
+import { Paths } from './Paths';
 
 export class MultiAccountKeyring {
-  private storagePath = '/home/fish/.codex/auth.json';
+  private storagePath = Paths.getAuthPath();
 
   async getCredentials(provider: string, accountId: string) {
     if (!fs.existsSync(this.storagePath)) return null;

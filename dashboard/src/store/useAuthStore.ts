@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { NativeService } from '../services/NativeService';
 
 export interface AIProvider {
     id: string;
@@ -54,6 +55,8 @@ interface AuthState {
     removeProvider: (id: string) => void;
     setActiveProvider: (id: string) => void;
     reorderProviders: (fromIndex: number, toIndex: number) => void;
+    saveApiKey: (id: string, key: string) => Promise<void>;
+    loadApiKeys: () => Promise<void>;
 
     // Forge Actions
     connectForge: (forge: GitForge) => void;
@@ -128,6 +131,31 @@ export const useAuthStore = create<AuthState>()(
                 };
             }),
 
+            saveApiKey: async (id, key) => {
+                const encrypted = await NativeService.storage.encrypt(key);
+                localStorage.setItem(`queen-bee-sec-${id}`, encrypted);
+                set((state) => ({
+                    providers: state.providers.map(p => p.id === id ? { ...p, apiKey: key, connected: true } : p)
+                }));
+            },
+
+            loadApiKeys: async () => {
+                const { providers } = get();
+                const updatedProviders = await Promise.all(providers.map(async (p) => {
+                    const encrypted = localStorage.getItem(`queen-bee-sec-${p.id}`);
+                    if (encrypted) {
+                        try {
+                            const decrypted = await NativeService.storage.decrypt(encrypted);
+                            return { ...p, apiKey: decrypted, connected: true };
+                        } catch (e) {
+                            console.error(`Failed to decrypt key for ${p.id}`, e);
+                        }
+                    }
+                    return p;
+                }));
+                set({ providers: updatedProviders });
+            },
+
             connectForge: (forge) => set((state) => ({
                 forges: state.forges.map((f) =>
                     f.id === forge.id ? { ...f, ...forge, connected: true } : f
@@ -146,11 +174,10 @@ export const useAuthStore = create<AuthState>()(
                 user: state.user,
                 isAuthenticated: state.isAuthenticated,
                 isOnboarded: state.isOnboarded,
-                providers: state.providers.map(p => ({
-                    ...p,
-                    // Don't persist API keys in localStorage for security
-                    // In production, use secure storage or server-side sessions
-                })),
+                providers: state.providers.map(p => {
+                    const { apiKey, ...rest } = p;
+                    return rest;
+                }),
                 forges: state.forges,
                 activeProviderId: state.activeProviderId,
             }),

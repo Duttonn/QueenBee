@@ -1,11 +1,12 @@
 import fs from 'fs-extra';
 import path from 'path';
+import { Paths } from './Paths';
 
 /**
  * AccountStateManager: Handles saving and loading Hive states per user.
  */
 export class AccountStateManager {
-  private baseDir = '/home/fish/.codex/user_states';
+  private baseDir = Paths.getUserStatesDir();
 
   constructor() {
     fs.ensureDirSync(this.baseDir);

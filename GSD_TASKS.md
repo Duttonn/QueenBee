@@ -23,6 +23,7 @@
 ### 📂 PHASE 2: FILESYSTEM & IPC
 - [TESTED & VALIDATED: Antigravity] `TASK-05` (B-05): **Electron Bridge** - Exposer `fs` et `shell` dans `preload.ts`.
 - [TESTED & VALIDATED: Antigravity] `TASK-06` (F-05): **Native Service** - Créer wrapper `NativeService.ts` (avec fallback Web).
+- [TESTED & VALIDATED: VOLT] `TASK-ELEC-AUDIT`: **Electron Security & Portability** - Implémenter `safeStorage` pour API keys, supprimer les chemins hardcodés (/home/fish) et unifier la gestion des paths via `Paths.ts`.
 
 ### 🛠 PHASE 3: AGENTIC CAPABILITIES
 - [TESTED & VALIDATED: Antigravity] `TASK-07` (B-03): **Tool Executor** - Implémenter le switch/case pour `write_file` et `run_shell`.
@@ -56,7 +57,7 @@
 - [IN PROGRESS: Worker-Bee-AI] `TASK-31`: **Enterprise/Local Gateway** - Permettre l'override des baseURL (Ollama, LocalAI) et le support des "Custom Network URL" pour les modèles internes.
 - [IN PROGRESS: WORKER-BEE-LLM-EXPERT] `TASK-32`: **UnifiedLLMService Implementation** - Implémenter le service central dans `proxy-bridge/src/lib/UnifiedLLMService.ts` capable de router les requêtes selon le provider.
 - [IN PROGRESS: WORKER-BEE-LLM-EXPERT] `TASK-33`: **OAuth & Key Bridge** - Adapter la logique OAuth d'OpenClaw pour stocker les tokens dans `AccountStateManager` de Queen Bee, tout en respectant les clés `.env`.
-- [ ] `TASK-34`: **Agentic Loop Extraction** - Extraire la boucle "Think -> Act -> Observe" d'OpenClaw (`AgentSession`) et l'intégrer dans `AutonomousRunner.ts`.
+- [IN PROGRESS: Worker-Bee-AI] `TASK-34`: **Agentic Loop Extraction** - Extraire la boucle "Think -> Act -> Observe" d'OpenClaw (`AgentSession`) et l'intégrer dans `AutonomousRunner.ts`.
 - [ ] `TASK-35`: **I/O Standardization** - Assurer la normalisation des réponses LLM (JSON/Structuré) pour tous les providers afin de garantir la compatibilité avec HiveOrchestrator.
 
 ### ⚡️ PHASE 9: INTERNAL COMBUSTION ENGINE (Recursion)

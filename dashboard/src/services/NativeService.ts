@@ -21,6 +21,10 @@ export interface NativeBridge {
     showOpen: (options: any) => Promise<any>;
     showMessage: (options: any) => Promise<any>;
   };
+  storage: {
+    encrypt: (plainText: string) => Promise<string>;
+    decrypt: (encryptedBase64: string) => Promise<string>;
+  };
   notify: (title: string, body: string) => void;
 }
 
@@ -80,6 +84,18 @@ export const NativeService: NativeBridge = {
       if (isElectron()) return getElectron().dialog.showMessage(options);
       alert(options.message);
       return { response: 0 };
+    }
+  },
+  storage: {
+    encrypt: async (plainText: string) => {
+      if (isElectron()) return getElectron().storage.encrypt(plainText);
+      console.warn('[NativeService] storage.encrypt: Web Mode - Fallback to plain text');
+      return btoa(plainText); // Simple base64 fallback for web (not secure!)
+    },
+    decrypt: async (encryptedBase64: string) => {
+      if (isElectron()) return getElectron().storage.decrypt(encryptedBase64);
+      console.warn('[NativeService] storage.decrypt: Web Mode - Fallback to plain text');
+      return atob(encryptedBase64);
     }
   },
   notify: (title: string, body: string) => {

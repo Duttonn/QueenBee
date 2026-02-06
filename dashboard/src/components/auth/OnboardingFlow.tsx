@@ -24,7 +24,7 @@ type Step = 'welcome' | 'providers' | 'forges' | 'complete';
 
 const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     const [currentStep, setCurrentStep] = useState<Step>('welcome');
-    const { providers, updateProvider, forges, connectForge, reorderProviders, setOnboarded } = useAuthStore();
+    const { providers, updateProvider, saveApiKey, forges, connectForge, reorderProviders, setOnboarded } = useAuthStore();
 
     const steps: Step[] = ['welcome', 'providers', 'forges', 'complete'];
     const currentIndex = steps.indexOf(currentStep);
@@ -78,6 +78,7 @@ const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
                                 key="providers"
                                 providers={providers}
                                 onUpdate={updateProvider}
+                                onSaveKey={saveApiKey}
                                 onReorder={reorderProviders}
                             />
                         )}
@@ -183,10 +184,12 @@ interface TestResult {
 const ProvidersStep = ({
     providers,
     onUpdate,
+    onSaveKey,
     onReorder,
 }: {
     providers: AIProvider[];
     onUpdate: (id: string, updates: Partial<AIProvider>) => void;
+    onSaveKey: (id: string, key: string) => Promise<void>;
     onReorder: (from: number, to: number) => void;
 }) => {
     const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -196,6 +199,11 @@ const ProvidersStep = ({
     const handleTestConnection = async (provider: AIProvider) => {
         setTestingId(provider.id);
         setTestResults(prev => ({ ...prev, [provider.id]: { success: false, message: 'Testing connection...' } }));
+
+        // Ensure key is saved securely before testing if it's changed
+        if (provider.apiKey) {
+            await onSaveKey(provider.id, provider.apiKey);
+        }
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
