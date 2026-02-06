@@ -40,6 +40,12 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
             return res.status(400).json({ error: 'Path does not exist on server' });
         }
 
+        // Prevent duplicate projects by path
+        const existing = db.projects.find(p => p.path === projectPath);
+        if (existing) {
+            return res.status(200).json(existing); // Return existing instead of error for idempotency
+        }
+
         const newProject: Project = {
             id: uuidv4(),
             name,

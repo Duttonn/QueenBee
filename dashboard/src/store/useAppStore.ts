@@ -146,6 +146,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     },
 
     addProject: async (name, path) => {
+        // Prevent duplicate local projects before calling the API
+        const existing = useHiveStore.getState().projects.find(p => p.path === path);
+        if (existing) {
+            console.log(`[AppStore] Project already exists at ${path}`);
+            return;
+        }
+
         const res = await fetch(`${API_BASE}/projects`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
