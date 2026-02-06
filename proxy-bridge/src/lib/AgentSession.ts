@@ -61,6 +61,141 @@ export class AgentSession {
   }
 
   /**
+   * Streaming version of prompt
+   */
+  async *promptStream(text: string, options?: LLMProviderOptions): AsyncGenerator<LLMResponse> {
+    const userMessage: LLMMessage = { role: 'user', content: text };
+    this.messages.push(userMessage);
+    broadcast('UI_UPDATE', { 
+      action: 'ADD_MESSAGE', 
+      payload: { ...userMessage, threadId: this.threadId } 
+    });
+
+    let stepCount = 0;
+
+    try {
+      while (stepCount < this.maxSteps) {
+        stepCount++;
+        
+        // 1. THINK Phase
+        this.events.onStepStart?.(stepCount);
+        broadcast('QUEEN_STATUS', { status: 'thinking', step: stepCount });
+
+        const streamGenerator = unifiedLLMService.chatStream(this.providerId, this.messages, {
+          ...options,
+          apiKey: this.apiKey || undefined
+        });
+
+        let fullContent = '';
+        let toolCalls: any[] = [];
+
+        for await (const chunk of streamGenerator) {
+          if (chunk.content) fullContent += chunk.content;
+          if (chunk.tool_calls) toolCalls = chunk.tool_calls; // In streaming, we usually get them at once or build them. 
+          // For now assume full tool_calls object is yielded eventually.
+          
+          yield chunk;
+        }
+
+        const response: LLMResponse = {
+          id: `step-${stepCount}`,
+          model: options?.model || 'agent',
+          content: fullContent,
+          tool_calls: toolCalls
+        };
+        
+        this.events.onStepEnd?.(stepCount, response);
+
+        const assistantMessage: LLMMessage = { 
+          role: 'assistant', 
+          content: response.content, 
+          tool_calls: response.tool_calls 
+        };
+        
+        this.messages.push(assistantMessage);
+        
+        broadcast('UI_UPDATE', { 
+          action: 'ADD_MESSAGE', 
+          payload: { ...assistantMessage, threadId: this.threadId } 
+        });
+
+        // If no tool calls, we are done
+        if (!response.tool_calls || response.tool_calls.length === 0) {
+          break;
+        }
+
+        // 2. ACT Phase: Execute tools
+        for (const toolCall of response.tool_calls) {
+          const toolName = toolCall.function.name;
+          let args = {};
+          try {
+            args = JSON.parse(toolCall.function.arguments);
+          } catch (e) {
+            console.error(`Failed to parse arguments for tool ${toolName}`, toolCall.function.arguments);
+          }
+
+          this.events.onToolStart?.(toolName, args);
+          
+          try {
+            const result = await this.executor.execute({
+              name: toolName,
+              arguments: args
+            }, this.projectPath);
+
+            this.events.onToolEnd?.(toolName, result);
+
+            const toolMessage: LLMMessage = {
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              name: toolName,
+              content: JSON.stringify(result)
+            };
+            
+            this.messages.push(toolMessage);
+            broadcast('UI_UPDATE', { 
+              action: 'ADD_MESSAGE', 
+              payload: { ...toolMessage, threadId: this.threadId } 
+            });
+
+            // Signal tool completion back to the stream so UI knows tool finished
+            yield {
+              id: `tool-${toolCall.id}`,
+              model: 'agent',
+              content: `\n> **Executed ${toolName}**\n`,
+            };
+
+          } catch (error: any) {
+            this.events.onToolError?.(toolName, error);
+            const toolErrorMessage: LLMMessage = {
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              name: toolName,
+              content: JSON.stringify({ error: error.message })
+            };
+            this.messages.push(toolErrorMessage);
+            broadcast('UI_UPDATE', { 
+              action: 'ADD_MESSAGE', 
+              payload: { ...toolErrorMessage, threadId: this.threadId } 
+            });
+
+            yield {
+              id: `tool-err-${toolCall.id}`,
+              model: 'agent',
+              content: `\n> **Error in ${toolName}: ${error.message}**\n`,
+            };
+          }
+        }
+      }
+
+      broadcast('QUEEN_STATUS', { status: stepCount >= this.maxSteps ? 'warning' : 'idle' });
+    } catch (error: any) {
+      console.error('[AgentSession] Error in promptStream:', error);
+      broadcast('QUEEN_STATUS', { status: 'error', message: error.message });
+      throw error;
+    }
+  }
+
+  /**
    * Core Agentic Loop
    */
   private async runLoop(options?: LLMProviderOptions): Promise<LLMMessage> {

@@ -57,6 +57,21 @@ export class AutonomousRunner {
     return await this.session.prompt(userPrompt, options);
   }
 
+  async *executeLoopStream(userPrompt: string, options?: LLMProviderOptions) {
+    if (!this.session) {
+      const systemPrompt = await this.getEnhancedContext();
+      this.session = new AgentSession(this.projectPath, {
+        systemPrompt,
+        maxSteps: 15,
+        providerId: this.providerId,
+        threadId: this.threadId,
+        apiKey: this.apiKey || undefined
+      });
+    }
+
+    yield* this.session.promptStream(userPrompt, options);
+  }
+
   /**
    * Generates a context-rich prompt for the agent
    */

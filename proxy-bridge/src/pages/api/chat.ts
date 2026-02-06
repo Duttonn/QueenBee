@@ -34,55 +34,85 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { model, messages, stream, projectPath: rawPath, threadId } = req.body;
+  const { model, messages, stream, projectPath: rawPath, threadId, mode } = req.body;
   const providerId = (req.headers['x-codex-provider'] as string) || 'auto';
   const apiKey = req.headers['authorization']?.replace('Bearer ', '') || null;
   
-  logger.info(`[Chat] Request received. Provider: ${providerId}, Model: ${model}, Stream: ${stream}, Path: ${rawPath}, Thread: ${threadId}`);
+  logger.info(`[Chat] Request received. Provider: ${providerId}, Model: ${model}, Stream: ${stream}, Path: ${rawPath}, Thread: ${threadId}, Mode: ${mode}`);
 
   // Resolve Project Context
   const projectPath = rawPath 
     ? (path.isAbsolute(rawPath) ? rawPath : path.resolve(process.cwd(), '..', rawPath))
     : process.cwd();
   
+  // Set headers for SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const sendEvent = (data: any) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
   try {
-    const runner = new AutonomousRunner((res as any).socket, projectPath, providerId, threadId, apiKey);
-    
     const lastMessage = messages[messages.length - 1];
     
-    if (lastMessage.role === 'user') {
-      // Use the new agentic loop
-      const finalAssistantMessage = await runner.executeLoop(lastMessage.content, { model, stream });
+    if (lastMessage.role === 'user' && mode === 'agent') {
+      const runner = new AutonomousRunner((res as any).socket, projectPath, providerId, threadId, apiKey);
+      const streamGenerator = runner.executeLoopStream(lastMessage.content, { model, stream: true });
       
-      return res.status(200).json({
-        id: `queen-${Date.now()}`,
-        object: 'chat.completion',
-        created: Math.floor(Date.now() / 1000),
-        model: model || 'queen-bee-agent',
-        choices: [{
-          index: 0,
-          message: finalAssistantMessage,
-          finish_reason: 'stop'
-        }],
-        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
-      });
-    } else {
-        // Fallback for non-user messages
-        const response = await unifiedLLMService.chat(providerId, messages, { model, stream });
-        return res.status(200).json({
-            choices: [{
-                message: {
-                    role: 'assistant',
-                    content: response.content,
-                    tool_calls: response.tool_calls
-                }
-            }]
+      for await (const chunk of streamGenerator) {
+        sendEvent({
+          id: chunk.id,
+          object: 'chat.completion.chunk',
+          choices: [{
+            index: 0,
+            delta: { 
+              content: chunk.content,
+              tool_calls: chunk.tool_calls 
+            },
+            finish_reason: chunk.finish_reason
+          }],
+          usage: chunk.usage
         });
+      }
+      res.end();
+    } else {
+        // Direct streaming from LLM
+        const streamGenerator = unifiedLLMService.chatStream(providerId, messages, { 
+          model, 
+          stream: true, 
+          apiKey: apiKey || undefined 
+        });
+        
+        for await (const chunk of streamGenerator) {
+          sendEvent({
+            id: chunk.id,
+            object: 'chat.completion.chunk',
+            choices: [{
+              index: 0,
+              delta: { 
+                content: chunk.content,
+                tool_calls: chunk.tool_calls 
+              },
+              finish_reason: chunk.finish_reason
+            }],
+            usage: chunk.usage
+          });
+        }
+        res.end();
     }
 
   } catch (error: any) {
     logger.error(`[Chat] Error: ${error.message}`);
-    // If it's a critical failure, we return the mock response to keep the UI from crashing
-    return res.status(200).json(getMockResponse(messages, error.message));
+    sendEvent({
+      error: error.message,
+      choices: [{
+        delta: { content: `Error: ${error.message}` },
+        finish_reason: 'error'
+      }]
+    });
+    res.end();
   }
 }
