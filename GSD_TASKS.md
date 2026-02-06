@@ -22,7 +22,7 @@
   - **Validation**: `const stream = service.chatStream(msgs, 'anthropic'); for await (const c of stream) console.log(c)`
   - **Worker**: BACKEND
 
-- [IN PROGRESS: INTEG-01] `S-02`: [Backend] Convertir `/api/chat` de res.json() vers SSE streaming
+- [ ] `S-02`: [Backend] Convertir `/api/chat` de res.json() vers SSE streaming
   - **Fichiers**: `proxy-bridge/src/pages/api/chat.ts`
   - **Dépend de**: `S-01`
   - **Validation**: `curl -N -X POST http://127.0.0.1:3000/api/chat ...` doit afficher les chunks en temps réel.
@@ -46,7 +46,7 @@
   - **Validation**: Aucun appel direct à `fs` depuis Electron (preload.ts) ne doit contourner l'API.
   - **Worker**: BACKEND
 
-- [IN PROGRESS: SOUDURE-03] `S-06`: [Backend] Migration vers Paths.ts pour tous les chemins de fichiers
+- [ ] `S-06`: [Backend] Migration vers Paths.ts pour tous les chemins de fichiers
   - **Fichiers**: `proxy-bridge/src/lib/Paths.ts` et usages.
   - **Dépend de**: Rien
   - **Validation**: Plus aucun chemin "/Users/ndn18" ou "/home/fish" hardcodé.
@@ -58,16 +58,23 @@
   - **Validation**: Une erreur `run_shell` doit s'afficher en rouge dans le dashboard via un event socket.
   - **Worker**: INTEGRATION
 
-- [IN PROGRESS: SOUDURE-04] `S-08`: [Backend] Réparer la boucle de FileWatcher (Backend -> Socket -> UI)
+- [ ] `S-08`: [Backend] Réparer la boucle de FileWatcher (Backend -> Socket -> UI)
   - **Fichiers**: `proxy-bridge/src/lib/FileWatcher.ts`, `proxy-bridge/src/lib/EventLoopManager.ts`
   - **Dépend de**: Rien
   - **Validation**: Modifier un fichier trigger une mise à jour immédiate du Diff dans le dashboard sans boucle infinie.
   - **Worker**: BACKEND
 
+- [ ] `S-09`: [Frontend] Bugfix: Empêcher l'ajout de projets en double dans le Sidebar
+  - **Fichiers**: `dashboard/src/store/useHiveStore.ts`
+  - **Dépend de**: Rien
+  - **Validation**: L'ajout d'un projet existant via l'UI ne crée pas de doublon dans la liste.
+  - **Worker**: FRONTEND
+
+
 ## 🚀 PHASE 1: SOLO MODE COMPLET (Semaines 2-4)
-- [IN PROGRESS: FRONTEND-01] `P1-01`: [Frontend] Implémenter le streaming UI (Markdown partiel) dans le Composer
-- [ ] `P1-02`: [Backend] Implémenter le résumé automatique de fin de session (Memory Flush)
-- [IN PROGRESS: FRONTEND-01] `P1-03`: [Frontend] Améliorer le Diff Viewer (Split-pane + Synchronized scrolling)
+- [ ] `P1-01`: [Frontend] Implémenter le streaming UI (Markdown partiel) dans le Composer
+- [IN PROGRESS: SOUDURE-05] `P1-02`: [Backend] Implémenter le résumé automatique de fin de session (Memory Flush)
+- [ ] `P1-03`: [Frontend] Améliorer le Diff Viewer (Split-pane + Synchronized scrolling)
 - [ ] `P1-04`: [Integration] Intégrer la dictée vocale Whisper (Ctrl+M)
 - [ ] `P1-05`: [Frontend] Ajouter les Security Approvals UI pour les actions sensibles
 
