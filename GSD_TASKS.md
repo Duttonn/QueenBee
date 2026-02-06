@@ -16,7 +16,7 @@
 ## 🔧 PHASE 0: SOUDURE (Semaine 1) — Fix What's Broken
 > **Règle** : ZÉRO nouvelle feature. Uniquement réparer les connexions cassées.
 
-- [TESTED & VALIDATED: Antigravity] `S-01`: [Backend] Ajouter `.chatStream()` AsyncGenerator à UnifiedLLMService.ts
+- [TESTED & VALIDATED: ARCHITECT-QA] `S-01`: [Backend] Ajouter `.chatStream()` AsyncGenerator à UnifiedLLMService.ts
   - **Fichiers**: `proxy-bridge/src/lib/UnifiedLLMService.ts`
   - **Dépend de**: Rien
   - **Validation**: `const stream = service.chatStream(msgs, 'anthropic'); for await (const c of stream) console.log(c)`
