@@ -22,7 +22,8 @@ import {
     Loader2,
     Link as LinkIcon,
     Github,
-    Cpu
+    Cpu,
+    ExternalLink
 } from 'lucide-react';
 import yaml from 'js-yaml';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -981,6 +982,7 @@ const IntegrationsTab = ({ providers, onSaveKey, githubForge }: any) => {
                             status={provider.connected ? "Connected" : "Not Configured"}
                             apiKey={provider.apiKey || ''}
                             onSave={(val: string) => onSaveKey(provider.id, val)}
+                            authType={provider.authType}
                         />
                     ))}
                 </div>
@@ -989,7 +991,7 @@ const IntegrationsTab = ({ providers, onSaveKey, githubForge }: any) => {
     );
 };
 
-const ProviderCard = ({ name, icon, status, apiKey: initialApiKey, onSave }: any) => {
+const ProviderCard = ({ id, name, icon, status, apiKey: initialApiKey, onSave, authType }: any) => {
     const [apiKey, setApiKey] = useState(initialApiKey);
     const [isSaving, setIsSaving] = useState(false);
 
@@ -1003,6 +1005,25 @@ const ProviderCard = ({ name, icon, status, apiKey: initialApiKey, onSave }: any
             await onSave(apiKey);
         } catch (e) {
             console.error('Failed to save API key', e);
+        }
+        setIsSaving(false);
+    };
+
+    const handleConnectOAuth = async () => {
+        setIsSaving(true);
+        try {
+            const isElectron = typeof window !== 'undefined' && (window as any).electron !== undefined;
+            const mode = isElectron ? 'electron' : 'web';
+            const response = await fetch(`${API_BASE}/api/auth/login?provider=${id}&mode=${mode}`);
+            const data = await response.json();
+            
+            if (data.url) {
+                window.open(data.url, `${id}-oauth`, 'width=600,height=700');
+            } else {
+                throw new Error('Failed to get authorization URL');
+            }
+        } catch (error: any) {
+            console.error('OAuth initiation failed', error);
         }
         setIsSaving(false);
     };
@@ -1023,23 +1044,36 @@ const ProviderCard = ({ name, icon, status, apiKey: initialApiKey, onSave }: any
                 </div>
             </div>
             <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">API Key</label>
-                <div className="flex gap-2">
-                    <input
-                        type="password"
-                        value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                        placeholder="sk-..."
-                        className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-[#1E293B] focus:outline-none focus:border-[#3B82F6] transition-colors font-mono"
-                    />
+                {authType === 'oauth' ? (
                     <button
-                        onClick={handleSave}
+                        onClick={handleConnectOAuth}
                         disabled={isSaving}
-                        className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-600 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-colors disabled:opacity-50"
+                        className="w-full px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white text-xs font-bold uppercase tracking-widest rounded-lg transition-colors flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
                     >
-                        {isSaving ? 'Saving...' : 'Save'}
+                        {isSaving ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
+                        Connect with {name}
                     </button>
-                </div>
+                ) : (
+                    <>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">API Key</label>
+                        <div className="flex gap-2">
+                            <input
+                                type="password"
+                                value={apiKey}
+                                onChange={(e) => setApiKey(e.target.value)}
+                                placeholder="sk-..."
+                                className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-[#1E293B] focus:outline-none focus:border-[#3B82F6] transition-colors font-mono"
+                            />
+                            <button
+                                onClick={handleSave}
+                                disabled={isSaving}
+                                className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-600 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-colors disabled:opacity-50"
+                            >
+                                {isSaving ? 'Saving...' : 'Save'}
+                            </button>
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );

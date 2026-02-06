@@ -47,6 +47,14 @@
       "type": "local",
       "threads": [],
       "agents": []
+    },
+    {
+      "id": "b713f679-bb59-4e97-a149-075bb81dcc64",
+      "name": "ProjetHPC",
+      "path": "/Users/ndn18/PersonalProjects/School/ProjetHPC/ProjetHPC",
+      "type": "local",
+      "threads": [],
+      "agents": []
     }
   ]
 }

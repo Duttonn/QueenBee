@@ -39,6 +39,7 @@ export interface LLMProviderOptions {
   stream?: boolean;
   stop?: string[];
   response_format?: { type: 'json_object' | 'text' };
+  apiKey?: string;
 }
 
 export interface ILLMProvider {

@@ -24,12 +24,18 @@ export const AUTONOMOUS_SYSTEM_PROMPT_INJECT = `
 export class AutonomousRunner {
   private socket: Socket;
   private projectPath: string;
+  private providerId: string;
+  private threadId: string | null;
+  private apiKey: string | null;
   private tm: ProjectTaskManager;
   private session: AgentSession | null = null;
 
-  constructor(socket: Socket, projectPath: string) {
+  constructor(socket: Socket, projectPath: string, providerId: string = 'auto', threadId: string | null = null, apiKey: string | null = null) {
     this.socket = socket;
     this.projectPath = projectPath;
+    this.providerId = providerId;
+    this.threadId = threadId;
+    this.apiKey = apiKey;
     this.tm = new ProjectTaskManager(projectPath);
   }
 
@@ -41,7 +47,10 @@ export class AutonomousRunner {
       const systemPrompt = await this.getEnhancedContext();
       this.session = new AgentSession(this.projectPath, {
         systemPrompt,
-        maxSteps: 15
+        maxSteps: 15,
+        providerId: this.providerId,
+        threadId: this.threadId,
+        apiKey: this.apiKey || undefined
       });
     }
 

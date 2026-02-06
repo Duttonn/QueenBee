@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Github, Sparkles, ArrowRight, Zap, Shield, GitBranch, AlertCircle, Loader2, ExternalLink } from 'lucide-react';
+import { SystemService } from '../../services/SystemService';
 
 interface LoginPageProps {
     onLoginComplete: (data: any) => void;
@@ -19,44 +20,36 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
 
     // Initial mount log
     React.useEffect(() => {
-        if (window.electron && (window.electron as any).log) {
-            (window.electron as any).log('info', 'LoginPage: Component Mounted');
-        }
+        SystemService.logs.log('info', 'LoginPage: Component Mounted');
     }, []);
 
     // Heartbeat for Loading State
     React.useEffect(() => {
         if (!isLoading) return;
         const interval = setInterval(() => {
-            if (window.electron && (window.electron as any).log) {
-                (window.electron as any).log('info', `LoginPage: Still loading... (State: ${waitingMessage ? 'Waiting for Browser' : 'Connecting to Backend'})`);
-            }
+            SystemService.logs.log('info', `LoginPage: Still loading... (State: ${waitingMessage ? 'Waiting for Browser' : 'Connecting to Backend'})`);
         }, 5000);
         return () => clearInterval(interval);
     }, [isLoading, waitingMessage]);
 
     // Listen for auth success from deep link (Electron)
     React.useEffect(() => {
-        if (window.electron && (window.electron as any).onAuthSuccess) {
-            (window.electron as any).log('info', 'LoginPage: Registering onAuthSuccess listener');
-            return (window.electron as any).onAuthSuccess((data: any) => {
-                (window.electron as any).log('info', 'LoginPage: Received push auth data');
-                onLoginComplete(data);
-            });
-        }
+        SystemService.logs.log('info', 'LoginPage: Registering onAuthSuccess listener');
+        return SystemService.auth.onAuthSuccess((data: any) => {
+            SystemService.logs.log('info', 'LoginPage: Received push auth data');
+            onLoginComplete(data);
+        });
     }, [onLoginComplete]);
 
     // Check for cached auth on mount (if push was missed)
     React.useEffect(() => {
-        if (window.electron && (window.electron as any).getCachedAuth) {
-            (window.electron as any).log('info', 'LoginPage: Checking for cached auth');
-            (window.electron as any).getCachedAuth().then((data: any) => {
-                if (data) {
-                    (window.electron as any).log('info', 'LoginPage: Found cached auth data');
-                    onLoginComplete(data);
-                }
-            });
-        }
+        SystemService.logs.log('info', 'LoginPage: Checking for cached auth');
+        SystemService.storage.getCachedAuth().then((data: any) => {
+            if (data) {
+                SystemService.logs.log('info', 'LoginPage: Found cached auth data');
+                onLoginComplete(data);
+            }
+        });
     }, [onLoginComplete]);
 
     // Check backend status on mount and poll
@@ -84,9 +77,7 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
     }, []);
 
     const handleGitHubLogin = async () => {
-        if (window.electron && (window.electron as any).log) {
-            (window.electron as any).log('info', 'LoginPage: handleGitHubLogin clicked');
-        }
+        SystemService.logs.log('info', 'LoginPage: handleGitHubLogin clicked');
         setIsLoading(true);
         setError(null);
         setWaitingMessage(null);
@@ -94,17 +85,17 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
         setDeviceFlowData(null);
 
         try {
-            if (window.electron && (window.electron as any).log) {
-                (window.electron as any).log('info', `LoginPage: Fetching strategy from ${API_BASE}/api/auth/github`);
-            }
+            SystemService.logs.log('info', `LoginPage: Fetching strategy from ${API_BASE}/api/auth/github`);
             
+            // Detect Electron environment
+            const isElectron = typeof window !== 'undefined' && (window as any).electron !== undefined;
+            const mode = isElectron ? 'electron' : 'web';
+
             // Get Auth Strategy from backend
-            const response = await fetch(`${API_BASE}/api/auth/github`);
+            const response = await fetch(`${API_BASE}/api/auth/github?mode=${mode}`);
             const data = await response.json();
 
-            if (window.electron && (window.electron as any).log) {
-                (window.electron as any).log('info', `LoginPage: Strategy received: ${data.type || 'web'}`);
-            }
+            SystemService.logs.log('info', `LoginPage: Strategy received: ${data.type || 'web'}`);
 
             if (!response.ok) {
                 if (data.setup) {
@@ -122,11 +113,14 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
                 // Handle Web Flow
                 sessionStorage.setItem('oauth_state', data.state);
                 
+                // Detect Electron environment
+                const isElectron = typeof window !== 'undefined' && (window as any).electron !== undefined;
+
                 // If in Electron, open in external browser
-                if (window.electron) {
+                if (isElectron) {
                     if (data.url) {
-                        (window.electron as any).log('info', `LoginPage: Opening URL: ${data.url.substring(0, 50)}...`);
-                        (window.electron as any).shell.openExternal(data.url);
+                        SystemService.logs.log('info', `LoginPage: Opening URL: ${data.url.substring(0, 50)}...`);
+                        SystemService.shell.openExternal(data.url);
                         setWaitingMessage('Please complete login in your browser...');
                     } else {
                         throw new Error('Backend did not return an authorization URL');
@@ -142,9 +136,7 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
                 ? `Could not connect to Proxy Bridge (${API_BASE}). Is the backend running?`
                 : err.message;
             
-            if (window.electron && (window.electron as any).log) {
-                (window.electron as any).log('error', `LoginPage: Login failed: ${message}`);
-            }
+            SystemService.logs.log('error', `LoginPage: Login failed: ${message}`);
             
             setError(message);
             setIsLoading(false);
@@ -417,7 +409,11 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
 
                             {/* Google Login Button */}
                             <button
-                                onClick={() => window.location.href = `${API_BASE}/api/auth/login?provider=google`}
+                                onClick={() => {
+                                    const isElectron = typeof window !== 'undefined' && (window as any).electron !== undefined;
+                                    const mode = isElectron ? 'electron' : 'web';
+                                    window.location.href = `${API_BASE}/api/auth/login?provider=google&mode=${mode}`;
+                                }}
                                 disabled={isLoading}
                                 className="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-100 text-gray-900 font-semibold py-3.5 px-6 rounded-xl transition-all duration-200 shadow-lg shadow-white/5 group mt-3 disabled:opacity-50 disabled:cursor-not-allowed"
                             >

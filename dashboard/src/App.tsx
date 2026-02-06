@@ -7,6 +7,7 @@ import OnboardingFlow from './components/auth/OnboardingFlow';
 import { useAuthStore } from './store/useAuthStore';
 import { useHiveStore } from './store/useHiveStore';
 import { useSocketEvents } from './hooks/useSocketEvents'; // Added for TASK-03
+import { SystemService } from './services/SystemService';
 
 function App() {
   const { isAuthenticated, isOnboarded, login, setOnboarded, connectForge, forges, loadApiKeys } = useAuthStore();
@@ -90,9 +91,7 @@ function App() {
   }, []);
 
   const handleLoginComplete = useCallback((data: any) => {
-    if (window.electron && (window.electron as any).log) {
-      (window.electron as any).log('info', `App: handleLoginComplete started for ${data.user?.login}`);
-    }
+    SystemService.logs.log('info', `App: handleLoginComplete started for ${data.user?.login}`);
 
     // Save user data to store
     login({
@@ -118,9 +117,7 @@ function App() {
     setShowOnboarding(true);
     setIsCallback(false);
 
-    if (window.electron && (window.electron as any).log) {
-      (window.electron as any).log('info', 'App: handleLoginComplete finished');
-    }
+    SystemService.logs.log('info', 'App: handleLoginComplete finished');
   }, [login, connectForge]);
 
   const handleAuthError = useCallback((error: string) => {

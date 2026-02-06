@@ -28,6 +28,12 @@ export const useSocketEvents = () => {
       if (data.action === 'SET_AGENT_STATUS') {
         updateAgentStatus(data.payload.projectId, data.payload.agentName, data.payload.status);
       }
+      if (data.action === 'ADD_MESSAGE') {
+        const projectId = useHiveStore.getState().projects.find(p => p.threads?.some((t: any) => t.id === activeThreadId))?.id;
+        if (projectId && activeThreadId) {
+          useHiveStore.getState().addMessage(projectId, activeThreadId, data.payload);
+        }
+      }
     };
 
     const onNativeNotification = (data: any) => {

@@ -43,7 +43,7 @@ const AgenticWorkbench = ({
   const [expandedThinking, setExpandedThinking] = useState<Record<number, boolean>>({});
   const [isAgentMenuOpen, setIsAgentMenuOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { spawnAgent, socket, activeThreadId, setActiveThread } = useHiveStore();
+  const { spawnAgent, socket, activeThreadId, setActiveThread, queenStatus } = useHiveStore();
 
   const handleAddAgent = (role: string) => {
     if (!activeProject) return;
@@ -206,33 +206,55 @@ const AgenticWorkbench = ({
 
             {msg.role === 'assistant' && (
               <div className="flex gap-3">
-                <div className="w-7 h-7 rounded-full bg-gray-900 flex items-center justify-center flex-shrink-0">
+                <div className="w-7 h-7 rounded-full bg-gray-900 flex items-center justify-center flex-shrink-0 group relative">
                   <Bot size={14} className="text-white" />
+                  {isLoading && index === messages.length - 1 && (
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-white animate-pulse" />
+                  )}
                 </div>
                 <div className="flex-1 space-y-2">
-                  {/* Check if content has thinking block markers */}
-                  {msg.content.includes('```thinking') && (
-                    <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Assistant</span>
+                    {(msg.content.includes('```thinking') || (isLoading && index === messages.length - 1 && queenStatus === 'thinking')) && (
                       <button
                         onClick={() => toggleThinking(index)}
-                        className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                        className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-[10px] font-bold text-blue-600 hover:bg-blue-100 transition-colors border border-blue-100"
                       >
-                        {expandedThinking[index] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                        <span>Thinking...</span>
+                        <Sparkles size={10} className={isLoading && index === messages.length - 1 ? "animate-spin" : ""} />
+                        <span>{isLoading && index === messages.length - 1 && !msg.content.includes('```thinking') ? 'Pondering...' : 'View Thoughts'}</span>
+                        {expandedThinking[index] ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
                       </button>
-                      {expandedThinking[index] && (
-                        <div className="pl-4 border-l-2 border-gray-200 space-y-1">
-                          {msg.content
-                            .match(/```thinking\n([\s\S]*?)```/)?.[1]
-                            ?.split('\n')
-                            .filter(Boolean)
-                            .map((line, i) => (
-                              <p key={i} className="text-xs text-gray-400 font-mono">{line}</p>
-                            ))}
+                    )}
+                  </div>
+
+                  {/* Thought Process Dropdown */}
+                  <AnimatePresence>
+                    {(expandedThinking[index] || (isLoading && index === messages.length - 1 && queenStatus === 'thinking' && !msg.content)) && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="pl-4 border-l-2 border-blue-200 bg-blue-50/30 py-2 my-1 rounded-r-lg space-y-1">
+                          {msg.content.includes('```thinking') ? (
+                            msg.content
+                              .match(/```thinking\n([\s\S]*?)```/)?.[1]
+                              ?.split('\n')
+                              .filter(Boolean)
+                              .map((line, i) => (
+                                <p key={i} className="text-[11px] text-blue-700/70 font-mono leading-relaxed">{line}</p>
+                              ))
+                          ) : (
+                            <div className="flex items-center gap-2 text-[11px] text-blue-400 font-mono italic animate-pulse">
+                              <Loader2 size={10} className="animate-spin" />
+                              Connecting to Hive Mind...
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </>
-                  )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   {/* Render tool calls if present */}
                   {msg.toolCalls && msg.toolCalls.map((tool, tIdx) => (
@@ -326,6 +348,7 @@ const AgenticWorkbench = ({
           </div>
         )}
 
+        <div className="h-32 flex-shrink-0" /> {/* Spacer for floating composer bar */}
         <div ref={messagesEndRef} />
       </div>
 
