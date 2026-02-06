@@ -44,28 +44,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
     }
 
-    // Security: Validate file extension
-    const ext = path.extname(absolutePath).toLowerCase();
-    if (!ALLOWED_EXTENSIONS.includes(ext)) {
-        return res.status(403).json({
-            error: 'Invalid file type',
-            message: `Only these extensions are allowed: ${ALLOWED_EXTENSIONS.join(', ')}`
-        });
-    }
-
     // Security: Prevent path traversal (extra check)
     if (absolutePath.includes('..') && !absolutePath.startsWith(PROJECT_ROOT)) {
          return res.status(403).json({ error: 'Path traversal not allowed' });
     }
 
     try {
+        const stats = await fs.stat(absolutePath);
+
         if (req.method === 'GET') {
+            if (stats.isDirectory()) {
+                const files = await fs.readdir(absolutePath);
+                return res.status(200).json({
+                    path: absolutePath,
+                    isDirectory: true,
+                    files
+                });
+            }
+
+            // Security: Validate file extension for files only
+            const ext = path.extname(absolutePath).toLowerCase();
+            if (!ALLOWED_EXTENSIONS.includes(ext)) {
+                return res.status(403).json({
+                    error: 'Invalid file type',
+                    message: `Only these extensions are allowed: ${ALLOWED_EXTENSIONS.join(', ')}`
+                });
+            }
+
             // Read file
             const content = await fs.readFile(absolutePath, 'utf-8');
-            const stats = await fs.stat(absolutePath);
 
             return res.status(200).json({
                 path: absolutePath,
+                isDirectory: false,
                 content,
                 size: stats.size,
                 modified: stats.mtime.toISOString()
