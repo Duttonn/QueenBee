@@ -1,14 +1,33 @@
 import { ISystemService } from '../interfaces/ISystemService';
 
+const API_BASE = (typeof window !== 'undefined' && (window as any).__API_URL__) || 'http://127.0.0.1:3000';
+
 export class ElectronAdapter implements ISystemService {
   private get electron() {
     return (window as any).electron;
   }
 
   fs = {
-    readFile: (path: string) => this.electron.fs.readFile(path),
-    writeFile: (path: string, content: string) => this.electron.fs.writeFile(path, content),
-    readDir: (path: string) => this.electron.fs.readDir(path),
+    readFile: async (path: string) => {
+      const res = await fetch(`${API_BASE}/api/files?path=${encodeURIComponent(path)}`);
+      if (!res.ok) throw new Error('Read failed');
+      const data = await res.json();
+      return data.content;
+    },
+    writeFile: async (path: string, content: string) => {
+      const res = await fetch(`${API_BASE}/api/files`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, content }),
+      });
+      return res.ok;
+    },
+    readDir: async (path: string) => {
+      const res = await fetch(`${API_BASE}/api/files?path=${encodeURIComponent(path)}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.files || [];
+    },
     clone: (repoUrl: string, targetDir: string) => this.electron.clone(repoUrl, targetDir),
   };
 
@@ -18,8 +37,21 @@ export class ElectronAdapter implements ISystemService {
   };
 
   git = {
-    status: (path: string) => this.electron.git.status(path),
-    diff: (path: string, filePath?: string) => this.electron.git.diff(path, filePath),
+    status: async (path: string) => {
+      const res = await fetch(`${API_BASE}/api/git/status?path=${encodeURIComponent(path)}`);
+      if (!res.ok) return 'Git status unavailable';
+      const data = await res.json();
+      // Adjust according to backend response structure
+      return typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    },
+    diff: async (path: string, filePath?: string) => {
+      const params = new URLSearchParams({ projectPath: path });
+      if (filePath) params.append('filePath', filePath);
+      const res = await fetch(`${API_BASE}/api/git/diff?${params.toString()}`);
+      if (!res.ok) return 'Diff unavailable';
+      const data = await res.json();
+      return data.raw || '';
+    },
   };
 
   dialog = {
