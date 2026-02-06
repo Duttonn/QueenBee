@@ -4,6 +4,7 @@ import { logger } from '../../lib/logger';
 import { unifiedLLMService } from '../../lib/UnifiedLLMService';
 import { LLMMessage } from '../../lib/types/llm';
 import path from 'path';
+import { Paths } from '../../lib/Paths';
 
 // Mock responses for testing without a real LLM
 function getMockResponse(messages: any[], prevError?: string): any {
@@ -42,8 +43,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // Resolve Project Context
   const projectPath = rawPath 
-    ? (path.isAbsolute(rawPath) ? rawPath : path.resolve(process.cwd(), '..', rawPath))
-    : process.cwd();
+    ? (path.isAbsolute(rawPath) ? rawPath : path.resolve(Paths.getWorkspaceRoot(), rawPath))
+    : Paths.getProxyBridgeRoot();
   
   try {
     const runner = new AutonomousRunner((res as any).socket, projectPath, providerId, threadId, apiKey);

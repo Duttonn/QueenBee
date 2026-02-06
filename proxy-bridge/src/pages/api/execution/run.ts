@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { exec } from 'child_process';
 import util from 'util';
+import { Paths } from '../../../lib/Paths';
 
 const execAsync = util.promisify(exec);
 
@@ -19,7 +20,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Basic security: avoid specialized characters if possible, or trust user since it's local dev tool
     // For a "Pro" tool, we assume the user knows what they are doing, but prevent cd .. attacks if possible
 
-    const workingDir = cwd || process.cwd();
+    const workingDir = cwd || Paths.getProxyBridgeRoot();
 
     try {
         const { stdout, stderr } = await execAsync(command, { cwd: workingDir });

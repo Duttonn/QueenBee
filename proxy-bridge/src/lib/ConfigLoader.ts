@@ -1,9 +1,10 @@
 import fs from 'fs-extra';
 import path from 'path';
 import yaml from 'js-yaml';
+import { Paths } from './Paths';
 
 export class ConfigLoader {
-  private configDir = path.join(process.cwd(), '../config/local');
+  private configDir = path.join(Paths.getWorkspaceRoot(), 'config/local');
 
   async loadLocalConfigs() {
     const files = await fs.readdir(this.configDir);

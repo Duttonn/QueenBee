@@ -6,6 +6,7 @@ import { broadcast } from './socket-instance';
 import { exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { Paths } from './Paths';
 
 /**
  * EventLoopManager: The "Nervous System" of Queen Bee.
@@ -23,7 +24,7 @@ export class EventLoopManager {
     this.orchestrator = new HiveOrchestrator(socket);
     this.dispatcher = new UniversalDispatcher(socket);
     this.toolExecutor = new ToolExecutor();
-    this.appLogPath = path.join(process.cwd(), '..', 'app.log');
+    this.appLogPath = path.join(Paths.getWorkspaceRoot(), 'app.log');
     this.setupListeners();
   }
 
@@ -84,7 +85,7 @@ export class EventLoopManager {
                     arguments: args,
                     id: toolCallId
                 }, {
-                    projectPath: projectPath || process.cwd(),
+                    projectPath: projectPath || Paths.getProxyBridgeRoot(),
                     projectId,
                     threadId,
                     toolCallId

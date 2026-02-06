@@ -1,13 +1,14 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { execSync } from 'child_process';
+import { Paths } from './Paths';
 
 /**
  * WorkTreeManager (Industrial Edition)
  * Manages the lifecycle of ephemeral git checkouts for agentic work.
  */
 export class WorkTreeManager {
-    private baseDir = path.join(process.cwd(), '../worktrees');
+    private baseDir = Paths.getWorktreesDir();
 
   constructor(baseDir?: string) {
     if (baseDir) this.baseDir = baseDir;

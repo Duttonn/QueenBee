@@ -2,9 +2,10 @@
 import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
+import { Paths } from './Paths';
 
-const CONFIG_DIR = path.join(os.homedir(), '.queenbee');
-const PROFILES_FILE = path.join(CONFIG_DIR, 'auth-profiles.json');
+const CONFIG_DIR = Paths.getCodexHome();
+const PROFILES_FILE = Paths.getAuthProfilesPath();
 
 export type AuthMode = 'api_key' | 'oauth' | 'token';
 
