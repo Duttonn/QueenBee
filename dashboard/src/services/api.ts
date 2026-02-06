@@ -3,8 +3,7 @@
  * Connects the frontend UI to the proxy-bridge backend
  */
 
-// Backend base URL - defaults to localhost in dev
-const API_BASE = (typeof window !== 'undefined' && (window as any).__API_URL__) || 'http://127.0.0.1:3000';
+import { API_BASE, API_BASE_WS } from '../config';
 
 export interface ToolCall {
     id: string;
@@ -194,8 +193,7 @@ export async function executeCommand(command: string, cwd?: string): Promise<{ o
  * Get terminal WebSocket URL for real-time PTY
  */
 export function getTerminalSocketUrl(): string {
-    const wsBase = API_BASE.replace(/^http/, 'ws');
-    return `${wsBase}/api/terminal/socket`;
+    return `${API_BASE_WS}/api/terminal/socket`;
 }
 
 /**

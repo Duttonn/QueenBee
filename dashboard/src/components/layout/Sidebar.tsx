@@ -20,6 +20,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useHiveStore } from '../../store/useHiveStore';
 import { SystemService } from '../../services/SystemService';
+import { API_BASE } from '../../config';
 
 interface SidebarProps {
   activeView: 'build' | 'automations' | 'skills';
@@ -280,7 +281,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                         <button
                           onClick={async () => {
                             try {
-                              const res = await fetch('http://localhost:3000/api/auth/github');
+                              const res = await fetch('${API_BASE}/api/auth/github');
                               const data = await res.json();
                               if (data.url) window.location.href = data.url;
                             } catch (e) {
@@ -334,7 +335,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                           if (url) {
                             setIsCloning('url');
                             try {
-                              const res = await fetch('http://localhost:3000/api/projects/import-url', {
+                              const res = await fetch('${API_BASE}/api/projects/import-url', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({

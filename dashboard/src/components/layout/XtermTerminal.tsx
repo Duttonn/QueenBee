@@ -2,6 +2,8 @@ import React, { useEffect, useRef } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { io } from 'socket.io-client';
+import { API_BASE } from '../../config';
+
 import 'xterm/css/xterm.css';
 
 const XtermTerminal = () => {
@@ -37,7 +39,7 @@ const XtermTerminal = () => {
     xtermRef.current = term;
 
     // 3. Connect to /api/terminal/shell via Socket.io
-    const socket = io('http://localhost:3000', {
+    const socket = io('${API_BASE}', {
       path: '/api/terminal/socket'
     });
 

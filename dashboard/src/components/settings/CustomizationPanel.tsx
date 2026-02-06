@@ -42,7 +42,8 @@ interface FileNode {
     children?: FileNode[];
 }
 
-const API_BASE = 'http://localhost:3000';
+import { API_BASE } from '../../config';
+
 // Removed hardcoded APP_ROOT for portability
 
 const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {

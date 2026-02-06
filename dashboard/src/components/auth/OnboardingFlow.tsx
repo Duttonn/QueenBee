@@ -15,6 +15,7 @@ import {
     Loader2
 } from 'lucide-react';
 import { useAuthStore, AIProvider } from '../../store/useAuthStore';
+import { API_BASE } from '../../config';
 
 interface OnboardingFlowProps {
     onComplete: () => void;
@@ -170,8 +171,6 @@ const FeatureBox = ({ icon, title, desc }: { icon: string; title: string; desc: 
         <div className="text-xs text-slate-500">{desc}</div>
     </div>
 );
-
-const API_BASE = 'http://localhost:3000';
 
 interface TestResult {
     success: boolean;
