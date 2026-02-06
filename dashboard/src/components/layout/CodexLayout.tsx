@@ -26,6 +26,7 @@ import {
 import Sidebar from './Sidebar';
 import AutomationDashboard from './AutomationDashboard';
 import SkillsManager from './SkillsManager';
+import InboxPanel from './InboxPanel';
 import AgenticWorkbench from './AgenticWorkbench';
 import XtermTerminal from './XtermTerminal';
 import GlobalCommandBar from './GlobalCommandBar';
@@ -307,7 +308,7 @@ const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange,
 
 // Command Palette / Search Modal
 const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
-  const [activeView, setActiveView] = useState<'build' | 'automations' | 'skills'>('build');
+  const [activeView, setActiveView] = useState<'build' | 'automations' | 'skills' | 'triage'>('build');
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -610,6 +611,8 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         <div className="flex-1 flex min-h-0 overflow-hidden relative">
           {activeView === 'automations' ? (
             <AutomationDashboard />
+          ) : activeView === 'triage' ? (
+            <InboxPanel />
           ) : activeView === 'build' ? (
             <>
               {(messages.length > 0 || activeProject) ? (
