@@ -3,6 +3,7 @@ import { ILLMProvider, LLMMessage, LLMProviderOptions, LLMResponse } from './typ
 export abstract class LLMProvider implements ILLMProvider {
   abstract id: string;
   abstract chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse>;
+  chatStream?(messages: LLMMessage[], options?: LLMProviderOptions): AsyncGenerator<LLMResponse>;
 
   protected normalizeMessages(messages: LLMMessage[]): LLMMessage[] {
     // Default normalization logic if needed

@@ -95,7 +95,10 @@ export const useHiveStore = create<HiveState>()(
         // Simple state update - the agent will handle worktree creation autonomously
         set((state) => ({
           projects: state.projects.map(p =>
-            p.id === projectId ? { ...p, threads: [{ ...thread, messages: [] }, ...(p.threads || [])] } : p
+            p.id === projectId ? { 
+              ...p, 
+              threads: [{ ...thread, messages: [], agentId: thread.agentId }, ...(p.threads || [])] 
+            } : p
           )
         }));
 

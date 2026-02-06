@@ -156,7 +156,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
         </button>
       </div>
 
-      <div className="px-2 space-y-0.5 mb-4">
+      <div className="px-2 space-y-0.5 mb-4 relative group/new">
         <NavItem
           icon={<PenSquare size={16} />}
           label="New thread"
@@ -166,6 +166,33 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
             onViewChange('build');
           }}
         />
+        
+        {/* Sub-actions for New Thread (Hover/Click) */}
+        <div className="absolute left-full top-0 ml-2 hidden group-hover/new:block z-50">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-1 w-48 backdrop-blur-xl">
+            <button
+              onClick={() => { setActiveThread(null); onViewChange('build'); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+            >
+              <MessageSquare size={14} className="text-gray-400" />
+              <span>Simple Chat</span>
+            </button>
+            <button
+              onClick={() => { 
+                const name = prompt('Feature Name:', 'New Module');
+                if (name) {
+                  // Trigger special swarm event
+                  window.dispatchEvent(new CustomEvent('START_SWARM_WORKFLOW', { detail: { name } }));
+                }
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            >
+              <Plus size={14} className="text-blue-400" />
+              <span>Swarm Workflow</span>
+            </button>
+          </div>
+        </div>
+
         <NavItem
           icon={<Clock size={16} />}
           label="Automations"

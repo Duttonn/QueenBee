@@ -324,6 +324,35 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   // Hive state
   const { projects, addProject, activeThreadId, setActiveThread, addThread, addMessage, updateThread, updateLastMessage } = useHiveStore();
   const activeProject = projects.find(p => p.id === selectedProjectId);
+  
+  // Swarm Workflow Handler
+  useEffect(() => {
+    const handleStartSwarm = async (e: any) => {
+      if (!selectedProjectId) return;
+      const { name } = e.detail;
+      const threadId = `swarm-${Date.now()}`;
+      
+      await addThread(selectedProjectId, {
+        id: threadId,
+        title: `Swarm: ${name}`,
+        diff: '+0 -0',
+        time: 'Just now',
+        agentId: 'orchestrator-bee' // Crucial for backend role detection
+      });
+      
+      setActiveThread(threadId);
+      setActiveView('build');
+      
+      // Auto-trigger the orchestrator's first move
+      setTimeout(() => {
+        setInputValue(`I want to implement the following feature: ${name}. Please create a plan in TASKS.md and start spawning workers.`);
+      }, 500);
+    };
+
+    window.addEventListener('START_SWARM_WORKFLOW', handleStartSwarm);
+    return () => window.removeEventListener('START_SWARM_WORKFLOW', handleStartSwarm);
+  }, [selectedProjectId, addThread, setActiveThread]);
+
   const activeThread = activeProject?.threads?.find((t: any) => t.id === activeThreadId);
   const messages = activeThread?.messages || [];
 
@@ -448,6 +477,10 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     const providerToUse = activeProvider?.id || 'mock';
     const modelToUse = selectedModel || activeProvider?.models?.[0] || 'mock-model';
     const apiKey = activeProvider?.apiKey;
+    
+    // Find active thread to get its agentId
+    const activeThread = activeProject?.threads?.find((t: any) => t.id === currentThreadId);
+    const agentId = activeThread?.agentId;
 
     try {
       await sendChatMessageStream(
@@ -457,7 +490,9 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           provider: providerToUse as any,
           apiKey: apiKey,
           projectPath: activeProject?.path, // Pass the path for context injection
-          threadId: currentThreadId
+          threadId: currentThreadId,
+          mode: executionMode,
+          agentId: agentId
         } as any,
         (chunk) => {
           updateLastMessage(selectedProjectId, currentThreadId!, chunk);
