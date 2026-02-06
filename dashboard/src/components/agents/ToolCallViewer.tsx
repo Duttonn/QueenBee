@@ -21,7 +21,14 @@ const ToolCallViewer: React.FC<ToolCallViewerProps> = ({
   onApprove,
   onReject
 }) => {
-  const [isExpanded, setIsExpanded] = React.useState(false);
+  const [isExpanded, setIsExpanded] = React.useState(status === 'error');
+
+  // Sync expanded state if status changes to error
+  React.useEffect(() => {
+    if (status === 'error') {
+      setIsExpanded(true);
+    }
+  }, [status]);
 
   const getStatusIcon = () => {
     switch (status) {
@@ -98,9 +105,9 @@ const ToolCallViewer: React.FC<ToolCallViewerProps> = ({
                 </div>
               )}
               {error && (
-                <div>
-                  <div className="text-gray-400 mb-1 font-sans font-semibold uppercase tracking-widest text-[9px]">Error</div>
-                  <pre className="bg-red-50/30 p-2 rounded border border-red-100 text-red-800 overflow-x-auto">
+                <div className={status === 'error' ? "ring-1 ring-red-200 rounded-lg overflow-hidden" : ""}>
+                  <div className={`text-gray-400 mb-1 font-sans font-semibold uppercase tracking-widest text-[9px] ${status === 'error' ? "bg-red-50 px-2 py-1 text-red-500" : ""}`}>Error</div>
+                  <pre className="bg-red-50/30 p-2 rounded border border-red-100 text-red-800 overflow-x-auto whitespace-pre-wrap">
                     {error}
                   </pre>
                 </div>

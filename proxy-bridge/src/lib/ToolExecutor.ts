@@ -137,14 +137,27 @@ export class ToolExecutor {
       return result;
     } catch (error: any) {
       console.error(`[ToolExecutor] Error executing tool '${tool.name}':`, error);
-      broadcast('TOOL_RESULT', { 
+      
+      const errorPayload = { 
         tool: tool.name, 
         status: 'error', 
         error: error.message,
         projectId,
         threadId,
         toolCallId
+      };
+
+      // Broadcast result update
+      broadcast('TOOL_RESULT', errorPayload);
+      
+      // Also broadcast a specific error event for UI notifications/toasts
+      broadcast('TOOL_ERROR', {
+        message: `Tool '${tool.name}' failed: ${error.message}`,
+        tool: tool.name,
+        projectId,
+        threadId
       });
+
       throw error;
     }
   }

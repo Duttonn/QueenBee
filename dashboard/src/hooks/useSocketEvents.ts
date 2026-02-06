@@ -92,6 +92,14 @@ export const useSocketEvents = () => {
       handleToolUpdate(data, true);
     };
 
+    const onToolError = (data: any) => {
+      console.error(`[SocketHook] Tool Error:`, data);
+      // Optionally trigger a toast or notification
+      if ((window as any).electron) {
+        (window as any).electron.notify('Tool Error', data.message);
+      }
+    };
+
     const onProjectListUpdate = (data: { projects: any[] }) => {
       console.log(`[SocketHook] Project List Update:`, data);
       useHiveStore.getState().setProjects(data.projects);
@@ -102,6 +110,7 @@ export const useSocketEvents = () => {
     socket.on('NATIVE_NOTIFICATION', onNativeNotification);
     socket.on('TOOL_EXECUTION', onToolExecution);
     socket.on('TOOL_RESULT', onToolResult);
+    socket.on('TOOL_ERROR', onToolError);
     socket.on('PROJECT_LIST_UPDATE', onProjectListUpdate);
 
     return () => {
@@ -110,6 +119,7 @@ export const useSocketEvents = () => {
       socket.off('NATIVE_NOTIFICATION', onNativeNotification);
       socket.off('TOOL_EXECUTION', onToolExecution);
       socket.off('TOOL_RESULT', onToolResult);
+      socket.off('TOOL_ERROR', onToolError);
       socket.off('PROJECT_LIST_UPDATE', onProjectListUpdate);
     };
   }, [socket, setQueenStatus, updateAgentStatus, spawnAgent, updateToolCall, activeThreadId, projects]);
