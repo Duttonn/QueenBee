@@ -135,6 +135,10 @@ export class AgentSession extends EventEmitter {
       } else {
         this.emit('event', { type: 'agent_status', data: { status: 'idle' } });
       }
+
+      // Automatic Memory Flush (Task P1-02)
+      await this.summarizeSession();
+
     } catch (error: any) {
       console.error('[AgentSession] Error in runLoop:', error);
       this.emit('event', { type: 'agent_status', data: { status: 'error', message: error.message } });
@@ -150,6 +154,44 @@ export class AgentSession extends EventEmitter {
     }
 
     return this.messages[this.messages.length - 1];
+  }
+
+  /**
+   * Generates a summary of the session and records it in MEMORY.md
+   */
+  private async summarizeSession() {
+    try {
+      console.log(`[AgentSession] Flushing memory for thread ${this.threadId}...`);
+      
+      const summaryPrompt = "Please summarize the key actions, decisions, and outcomes of this development session. Keep it concise but technical. Focus on what was achieved and what remains to be done.";
+      
+      const messagesWithSummaryRequest: LLMMessage[] = [
+        ...this.messages,
+        { role: 'user', content: summaryPrompt }
+      ];
+
+      const response = await unifiedLLMService.chat(this.providerId, messagesWithSummaryRequest, {
+        apiKey: this.apiKey || undefined
+      });
+
+      if (response.content) {
+        await this.executor.execute({
+          name: 'write_memory',
+          arguments: {
+            category: 'knowledge',
+            content: `Session Summary (${new Date().toLocaleDateString()}): ${response.content}`
+          }
+        }, {
+          projectPath: this.projectPath,
+          agentId: 'System (MemoryFlush)',
+          threadId: this.threadId || undefined
+        });
+        
+        console.log(`[AgentSession] Memory flushed successfully.`);
+      }
+    } catch (e) {
+      console.error('[AgentSession] Failed to summarize session:', e);
+    }
   }
 
   reset() {
