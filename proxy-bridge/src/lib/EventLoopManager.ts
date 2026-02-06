@@ -81,9 +81,19 @@ export class EventLoopManager {
                 // If the client sends back the full tool info:
                 const result = await this.toolExecutor.execute({
                     name: tool,
-                    arguments: args
-                }, projectPath || process.cwd());
+                    arguments: args,
+                    id: toolCallId
+                }, {
+                    projectPath: projectPath || process.cwd(),
+                    projectId,
+                    threadId,
+                    toolCallId
+                });
 
+                // ToolExecutor now broadcasts the result internally, but we keep this for redundancy if needed
+                // or we could remove it to avoid double-events. 
+                // For now, let's trust ToolExecutor's broadcast which now includes IDs.
+                /* 
                 broadcast('TOOL_RESULT', {
                     projectId,
                     threadId,
@@ -91,7 +101,10 @@ export class EventLoopManager {
                     status: 'success',
                     result
                 });
+                */
             } catch (error: any) {
+                // ToolExecutor already broadcasts error with context
+                /*
                 broadcast('TOOL_RESULT', {
                     projectId,
                     threadId,
@@ -99,6 +112,7 @@ export class EventLoopManager {
                     status: 'error',
                     error: error.message
                 });
+                */
             }
         } else {
             broadcast('TOOL_RESULT', {

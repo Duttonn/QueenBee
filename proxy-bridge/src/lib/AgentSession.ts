@@ -2,6 +2,7 @@ import { LLMMessage, LLMProviderOptions, LLMResponse } from './types/llm';
 import { unifiedLLMService } from './UnifiedLLMService';
 import { ToolExecutor } from './ToolExecutor';
 import { broadcast } from './socket-instance';
+import { AGENT_TOOLS } from './ToolDefinitions';
 
 export interface AgentSessionEvents {
   onStepStart?: (step: number) => void;
@@ -50,13 +51,16 @@ export class AgentSession {
    * Submit a new user prompt and run the loop until completion or max steps.
    */
   async prompt(text: string, options?: LLMProviderOptions): Promise<LLMMessage> {
-    const userMessage: LLMMessage = { role: 'user', content: text };
-    this.messages.push(userMessage);
-    // Broadcast user message to ensure UI is in sync if it wasn't already
-    broadcast('UI_UPDATE', { 
-      action: 'ADD_MESSAGE', 
-      payload: { ...userMessage, threadId: this.threadId } 
-    });
+    const lastMsg = this.messages[this.messages.length - 1];
+    if (!lastMsg || lastMsg.content !== text || lastMsg.role !== 'user') {
+      const userMessage: LLMMessage = { role: 'user', content: text };
+      this.messages.push(userMessage);
+      // Broadcast user message to ensure UI is in sync if it wasn't already
+      broadcast('UI_UPDATE', { 
+        action: 'ADD_MESSAGE', 
+        payload: { ...userMessage, threadId: this.threadId } 
+      });
+    }
     return this.runLoop(options);
   }
 
@@ -76,7 +80,8 @@ export class AgentSession {
 
         const response: LLMResponse = await unifiedLLMService.chat(this.providerId, this.messages, {
           ...options,
-          apiKey: this.apiKey || undefined
+          apiKey: this.apiKey || undefined,
+          tools: AGENT_TOOLS
         });
         
         this.events.onStepEnd?.(stepCount, response);
@@ -115,8 +120,14 @@ export class AgentSession {
           try {
             const result = await this.executor.execute({
               name: toolName,
-              arguments: args
-            }, this.projectPath);
+              arguments: args,
+              id: toolCall.id
+            }, {
+              projectPath: this.projectPath,
+              threadId: this.threadId || undefined,
+              agentId: this.threadId, // Using threadId as a proxy for agentId
+              toolCallId: toolCall.id
+            });
 
             this.events.onToolEnd?.(toolName, result);
 
