@@ -1,41 +1,57 @@
 import chokidar from 'chokidar';
-import { Socket } from 'socket.io';
 import { EventEmitter } from 'events';
+import { broadcast } from './socket-instance';
+import path from 'path';
 
 export class FileWatcher extends EventEmitter {
-  private watcher: any;
-  private socket: Socket;
+  private watcher: chokidar.FSWatcher | null = null;
+  private projectPath: string | null = null;
 
-  constructor(socket: Socket) {
+  constructor() {
     super();
-    this.socket = socket;
   }
 
   start(projectPath: string) {
-    console.log(`[Watcher] Starting auto-context for ${projectPath}`);
+    if (this.watcher) {
+      this.stop();
+    }
+    
+    this.projectPath = projectPath;
+    console.log(`[FileWatcher] Starting for ${projectPath}`);
+    
     this.watcher = chokidar.watch(projectPath, {
-      ignored: /(^|[\/\\])\../, // ignore dotfiles
-      persistent: true
+      ignored: /(^|[\/\\])\..*|node_modules|dist/,
+      persistent: true,
+      ignoreInitial: true,
+      depth: 9, // Adjust as needed
     });
 
-    this.watcher.on('change', (path: string) => {
-      console.log(`[Watcher] File changed: ${path}`);
-      const timestamp = Date.now();
+    this.watcher.on('all', (eventType, filePath) => {
+      console.log(`[FileWatcher] Event '${eventType}' for file: ${filePath}`);
       
-      // Emit locally for AutoContextManager
-      this.emit('file-change', { 
-        eventType: 'change', 
-        filePath: path, 
-        relativePath: path, // Simplified for now
-        timestamp 
-      });
+      const relativePath = this.projectPath ? path.relative(this.projectPath, filePath) : filePath;
+      const eventData = {
+        eventType,
+        filePath,
+        relativePath,
+        projectPath: this.projectPath,
+        timestamp: Date.now()
+      };
+      
+      // Emit locally for EventLoopManager
+      this.emit('file-change', eventData);
 
-      // Emit to socket for frontend
-      this.socket.emit('FILE_CHANGE', { path, timestamp });
+      // Emit globally to all clients
+      broadcast('FILE_CHANGE', eventData);
     });
   }
 
   stop() {
-    if (this.watcher) this.watcher.close();
+    if (this.watcher) {
+      console.log(`[FileWatcher] Stopping for ${this.projectPath}`);
+      this.watcher.close();
+      this.watcher = null;
+      this.projectPath = null;
+    }
   }
 }
