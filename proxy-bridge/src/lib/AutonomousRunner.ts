@@ -4,6 +4,7 @@ import { AgentSession } from './AgentSession';
 import { LLMMessage, LLMProviderOptions } from './types/llm';
 import fs from 'fs-extra';
 import path from 'path';
+import { Writable } from 'stream';
 
 export type AgentRole = 'solo' | 'orchestrator' | 'worker';
 
@@ -18,6 +19,7 @@ export class AutonomousRunner {
   private role: AgentRole;
   private tm: ProjectTaskManager;
   private session: AgentSession | null = null;
+  private writable: Writable | null = null;
 
   constructor(
     socket: Socket, 
@@ -47,8 +49,41 @@ export class AutonomousRunner {
     }
   }
 
+  setWritable(writable: Writable) {
+    this.writable = writable;
+  }
+
+  private sendEvent(data: any) {
+    if (this.writable) {
+      this.writable.write(`data: ${JSON.stringify(data)}\n\n`);
+    }
+  }
+
   /**
-   * Main agentic loop
+   * New method to stream intermediate steps from an existing session
+   */
+  async streamIntermediateSteps(userPrompt: string, options?: LLMProviderOptions) {
+      if (!this.session) {
+          const systemPrompt = await this.getEnhancedContext();
+          this.session = new AgentSession(this.projectPath, {
+              systemPrompt,
+              maxSteps: 15,
+              providerId: this.providerId,
+              threadId: this.threadId,
+              apiKey: this.apiKey || undefined
+          });
+
+          // Forward events from the session to the client
+          this.session.on('event', (data) => this.sendEvent(data));
+      }
+      // This will now use the underlying streaming capabilities of the session
+      await this.session.prompt(userPrompt, {...options, stream: true });
+      this.sendEvent({ event: 'agent_finished' });
+  }
+
+
+  /**
+   * Main agentic loop (non-streaming by default now)
    */
   async executeLoop(userPrompt: string, history: LLMMessage[] = [], options?: LLMProviderOptions) {
     if (!this.session) {
