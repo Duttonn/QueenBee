@@ -2,7 +2,6 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { AutonomousRunner } from '../../lib/AutonomousRunner';
 import { logger } from '../../lib/logger';
 import { unifiedLLMService } from '../../lib/UnifiedLLMService';
-import { LLMMessage } from '../../lib/types/llm';
 import path from 'path';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -17,6 +16,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   
   logger.info(`[Chat] Request received. Provider: ${providerId}, Model: ${model}, Stream: ${stream}, Path: ${rawPath}, Thread: ${threadId}, Mode: ${mode}, Agent: ${agentId}`);
 
+  const projectPath = rawPath 
+    ? (path.isAbsolute(rawPath) ? rawPath : path.resolve(process.cwd(), '..', rawPath))
+    : process.cwd();
+
+  // Handle agentic streaming
+  if (stream && (mode === 'autonomous' || mode === 'local' || mode === 'solo')) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    try {
+      const runner = new AutonomousRunner(
+        (res as any).socket, // still needed for some fallback logic
+        projectPath,
+        providerId,
+        threadId,
+        apiKey,
+        mode,
+        agentId
+      );
+      runner.setWritable(res); // Pass the response stream to the runner
+      
+      const lastMessage = messages[messages.length - 1];
+      const history = messages.slice(0, -1);
+
+      await runner.streamIntermediateSteps(lastMessage.content, { model, apiKey });
+      
+      res.end();
+    } catch (error: any) {
+      logger.error(`[Chat] Agent Streaming Error: ${error.message}`);
+      res.write(`data: ${JSON.stringify({ error: { message: error.message, type: 'AGENT_STREAM_ERROR' } })}\n\n`);
+      res.end();
+    }
+    return;
+  }
+
+  // Handle standard LLM streaming
   if (stream) {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -25,47 +62,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     try {
       const streamGenerator = unifiedLLMService.chatStream(providerId, messages, { model, apiKey });
-      let chunkCounter = 0;
       for await (const chunk of streamGenerator) {
-        chunkCounter++;
         res.write(`data: ${JSON.stringify(chunk)}\n\n`);
       }
-      logger.info(`[Chat] Stream ended after ${chunkCounter} chunks.`);
       res.end();
     } catch (error: any) {
-      logger.error(`[Chat] Streaming Error: ${error.message}`);
-      res.write(`data: ${JSON.stringify({ error: { message: error.message, type: 'STREAM_ERROR' } })}\n\n`);
+      logger.error(`[Chat] LLM Streaming Error: ${error.message}`);
+      res.write(`data: ${JSON.stringify({ error: { message: error.message, type: 'LLM_STREAM_ERROR' } })}\n\n`);
       res.end();
     }
     return;
   }
 
-  // Fallback to non-streaming for agentic loops or specific requests
+  // Fallback to standard non-streaming call
   try {
-    const projectPath = rawPath 
-      ? (path.isAbsolute(rawPath) ? rawPath : path.resolve(process.cwd(), '..', rawPath))
-      : process.cwd();
-    
-    // The AutonomousRunner is not designed for streaming back to the client in this way yet.
-    // It uses its own socket events.
-    if (mode === 'autonomous' || mode === 'local') {
-        const runner = new AutonomousRunner((res as any).socket, projectPath, providerId, threadId, apiKey, mode, agentId);
-        const lastMessage = messages[messages.length - 1];
-        
-        if (lastMessage.role === 'user') {
-          const history = messages.slice(0, -1);
-          // Run in background, don't await
-          runner.executeLoop(lastMessage.content, history, { model, stream }).catch(e => logger.error(`[Chat] Autonomous Runner failed: ${e.message}`));
-          
-          return res.status(202).json({
-            status: 'processing',
-            message: 'Autonomous agent started. Monitor socket events for updates.',
-            threadId: threadId,
-          });
-        }
-    }
-
-    // Standard non-streaming call
     const response = await unifiedLLMService.chat(providerId, messages, { model, apiKey });
     return res.status(200).json({
         choices: [{
@@ -76,7 +86,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
         }]
     });
-
   } catch (error: any) {
     logger.error(`[Chat] Non-Streaming Error: ${error.message}`);
     return res.status(500).json({ error: error.message });
