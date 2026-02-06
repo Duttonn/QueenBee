@@ -23,6 +23,10 @@ import {
   Loader2,
   Settings
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
+import 'highlight.js/styles/github.css';
 import Sidebar from './Sidebar';
 import AutomationDashboard from './AutomationDashboard';
 import SkillsManager from './SkillsManager';
@@ -185,6 +189,23 @@ const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange,
 
   return (
     <div className="absolute bottom-6 left-4 right-4 sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-3xl sm:px-4">
+      <AnimatePresence>
+        {value.trim().length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.98 }}
+            className="mb-3 p-4 bg-white/80 backdrop-blur-md border border-gray-200 rounded-2xl shadow-lg max-h-48 overflow-y-auto prose prose-sm prose-zinc"
+          >
+            <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+              <Plus size={10} className="rotate-45" /> Live Preview
+            </div>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+              {value}
+            </ReactMarkdown>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <div className="bg-white border border-gray-200 rounded-3xl shadow-2xl flex flex-col">
         {/* Top: Input Area */}
         <div className="px-4 pt-4 pb-2">
