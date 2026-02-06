@@ -158,7 +158,7 @@ const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange,
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
 
   // Voice Recording Hook
-  const { isRecording, toggleRecording } = useVoiceRecording(
+  const { isRecording, isTranscribing, toggleRecording } = useVoiceRecording(
     useCallback((transcript) => {
       onChange(value ? `${value} ${transcript}` : transcript);
     }, [value, onChange])
@@ -284,9 +284,10 @@ const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange,
           <div className="flex items-center gap-2">
             <button 
               onClick={toggleRecording}
-              className={`p-2 rounded-xl transition-all ${isRecording ? 'bg-red-500/10 text-red-500' : 'hover:bg-gray-100 text-gray-400 hover:text-gray-600'}`}
+              className={`p-2 rounded-xl transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : isTranscribing ? 'bg-blue-500/10 text-blue-500' : 'hover:bg-gray-100 text-gray-400 hover:text-gray-600'}`}
+              disabled={isTranscribing}
             >
-              {isRecording ? <Loader2 size={18} className="animate-spin" /> : <Mic size={18} strokeWidth={1.5} />}
+              {isTranscribing ? <Loader2 size={18} className="animate-spin" /> : <Mic size={18} strokeWidth={1.5} />}
             </button>
             <button
               onClick={onSubmit}
