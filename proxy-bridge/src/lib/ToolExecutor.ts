@@ -2,6 +2,7 @@ import { exec } from 'child_process';
 import fs from 'fs-extra';
 import path from 'path';
 import { broadcast } from './socket-instance';
+import { Paths } from './Paths';
 
 // Simple Mutex for concurrent file writes
 class Mutex {
@@ -25,6 +26,14 @@ const workerRegistry = new Map<string, { status: string; prUrl?: string }>();
  * ToolExecutor: Parses and executes tool calls from the LLM.
  */
 export class ToolExecutor {
+  private validatePath(projectPath: string, relativePath: string): string {
+    const absolutePath = path.resolve(projectPath, relativePath);
+    if (!absolutePath.startsWith(path.resolve(projectPath))) {
+      throw new Error(`Security Violation: Path traversal detected. Path '${relativePath}' is outside of project root '${projectPath}'.`);
+    }
+    return absolutePath;
+  }
+
   async execute(
     tool: { name: string; arguments: any; id?: string },
     contextOrPath: string | { projectPath: string; agentId?: string | null; threadId?: string; projectId?: string; toolCallId?: string },
@@ -60,31 +69,32 @@ export class ToolExecutor {
       let result = null;
       switch (tool.name) {
         case 'write_file':
-          const filePath = path.join(projectPath, tool.arguments.path);
+          const filePath = this.validatePath(projectPath, tool.arguments.path);
           await fs.ensureDir(path.dirname(filePath));
           await fs.writeFile(filePath, tool.arguments.content);
           result = { success: true, path: filePath };
           break;
           
         case 'run_shell':
+          // Potential additional security: sanitize or restrict commands here
           result = await this.runShellCommand(tool.arguments.command, projectPath);
           break;
           
         case 'read_file':
-          const readPath = path.join(projectPath, tool.arguments.path);
+          const readPath = this.validatePath(projectPath, tool.arguments.path);
           result = await fs.readFile(readPath, 'utf-8');
           break;
 
         case 'create_worktree':
           const wtName = tool.arguments.name;
-          const repoDir = projectPath;
-          const worktreePath = path.resolve(repoDir, '..', 'worktrees', wtName);
+          const worktreePath = path.join(Paths.getWorktreesDir(), wtName);
           const branchName = `agent/${wtName}`;
           
           broadcast('QUEEN_STATUS', { status: 'working', message: `Creating worktree ${wtName}...` });
           
           await new Promise((resolve, reject) => {
-            exec(`git worktree add -b ${branchName} "${worktreePath}" HEAD`, { cwd: repoDir }, (error, stdout, stderr) => {
+            const cmd = `git worktree add -b ${branchName} "${worktreePath}" HEAD`;
+            exec(cmd, { cwd: Paths.getWorkspaceRoot() }, (error: any, stdout: string, stderr: string) => {
               if (error) reject(new Error(`Failed to create worktree: ${stderr}`));
               else resolve(stdout);
             });
@@ -178,7 +188,7 @@ export class ToolExecutor {
   private async handleWriteMemory(projectPath: string, category: string, content: string, agentId: string | null) {
     const unlock = await memoryMutex.lock();
     try {
-      const memoryPath = path.join(projectPath, 'MEMORY.md');
+      const memoryPath = this.validatePath(projectPath, 'MEMORY.md');
       const sectionHeaders: Record<string, string> = {
         architecture: '# 🏗 Architecture',
         conventions: '# 📏 Conventions & patterns',
@@ -210,7 +220,7 @@ export class ToolExecutor {
   }
 
   private async handleReadMemory(projectPath: string, category?: string) {
-    const memoryPath = path.join(projectPath, 'MEMORY.md');
+    const memoryPath = this.validatePath(projectPath, 'MEMORY.md');
     if (!await fs.pathExists(memoryPath)) {
       return "MEMORY.md does not exist yet.";
     }

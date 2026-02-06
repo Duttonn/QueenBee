@@ -51,4 +51,18 @@ export class Paths {
   static getBackupDir(): string {
     return path.join(this.getCodexHome(), 'backups');
   }
+
+  /**
+   * Resolves the workspace root (parent of proxy-bridge).
+   */
+  static getWorkspaceRoot(): string {
+    return path.resolve(process.cwd(), '..');
+  }
+
+  /**
+   * Resolves the worktrees directory.
+   */
+  static getWorktreesDir(): string {
+    return path.join(this.getWorkspaceRoot(), 'worktrees');
+  }
 }
