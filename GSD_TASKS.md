@@ -40,7 +40,7 @@
   - **Validation**: `grep -r "localhost:3000" dashboard/src` ne doit trouver que des usages de `API_BASE`.
   - **Worker**: FRONTEND
 
-- [ ] `S-05`: [Backend] Sécuriser ToolExecutor pour qu'il soit exclusivement server-side
+- [IN PROGRESS: SOUDURE-06] `S-05`: [Backend] Sécuriser ToolExecutor pour qu'il soit exclusivement server-side
   - **Fichiers**: `proxy-bridge/src/lib/ToolExecutor.ts`
   - **Dépend de**: Rien
   - **Validation**: Aucun appel direct à `fs` depuis Electron (preload.ts) ne doit contourner l'API.
@@ -75,7 +75,7 @@
 - [ ] `P1-01`: [Frontend] Implémenter le streaming UI (Markdown partiel) dans le Composer
 - [IN PROGRESS: SOUDURE-05] `P1-02`: [Backend] Implémenter le résumé automatique de fin de session (Memory Flush)
 - [ ] `P1-03`: [Frontend] Améliorer le Diff Viewer (Split-pane + Synchronized scrolling)
-- [ ] `P1-04`: [Integration] Intégrer la dictée vocale Whisper (Ctrl+M)
+- [IN PROGRESS: INTEG-01] `P1-04`: [Integration] Intégrer la dictée vocale Whisper (Ctrl+M)
 - [IN PROGRESS: FRONTEND-01] `P1-05`: [Frontend] Ajouter les Security Approvals UI pour les actions sensibles
 
 ## 📂 PHASE 2: FILESYSTEM & IPC (Abstraction Couche)
