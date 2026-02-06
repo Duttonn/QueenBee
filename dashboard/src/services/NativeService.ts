@@ -1,6 +1,8 @@
+import * as api from './api';
+
 /**
  * NativeService: A bridge between the React frontend and Electron native features.
- * Provides fallbacks for web mode to ensure the app doesn't crash outside of Electron.
+ * Provides fallbacks for web mode using the proxy-bridge API to ensure functionality.
  */
 
 export interface NativeBridge {
@@ -14,8 +16,8 @@ export interface NativeBridge {
     showItemInFolder: (path: string) => Promise<boolean>;
   };
   git: {
-    status: (path: string) => Promise<string>;
-    diff: (path: string, filePath?: string) => Promise<string>;
+    status: (path: string) => Promise<any>;
+    diff: (path: string, filePath?: string) => Promise<any>;
   };
   dialog: {
     showOpen: (options: any) => Promise<any>;
@@ -38,18 +40,20 @@ export const NativeService: NativeBridge = {
   fs: {
     readFile: async (path: string) => {
       if (isElectron()) return getElectron().fs.readFile(path);
-      console.warn('[NativeService] readFile: Web Mode - Feature Unavailable');
-      throw new Error('Native filesystem access only available in Desktop App');
+      console.log(`[NativeService] readFile (Web Mode): ${path}`);
+      const res = await api.readFile(path);
+      return res.content;
     },
     writeFile: async (path: string, content: string) => {
       if (isElectron()) return getElectron().fs.writeFile(path, content);
-      console.warn('[NativeService] writeFile: Web Mode - Feature Unavailable');
-      throw new Error('Native filesystem access only available in Desktop App');
+      console.log(`[NativeService] writeFile (Web Mode): ${path}`);
+      await api.writeFile(path, content);
+      return true;
     },
     readDir: async (path: string) => {
       if (isElectron()) return getElectron().fs.readDir(path);
-      console.warn('[NativeService] readDir: Web Mode - Feature Unavailable');
-      return [];
+      console.warn('[NativeService] readDir: Web Mode - Feature Unavailable (Limited API)');
+      return []; // We might need a GET /api/files/list if needed
     }
   },
   shell: {
@@ -67,17 +71,24 @@ export const NativeService: NativeBridge = {
   git: {
     status: async (path: string) => {
       if (isElectron()) return getElectron().git.status(path);
-      return 'Web Mode - Git Unavailable';
+      console.log(`[NativeService] gitStatus (Web Mode): ${path}`);
+      const status = await api.getGitStatus(path);
+      return JSON.stringify(status, null, 2);
     },
     diff: async (path: string, filePath?: string) => {
       if (isElectron()) return getElectron().git.diff(path, filePath);
-      return 'Web Mode - Diff Unavailable';
+      console.log(`[NativeService] gitDiff (Web Mode): ${path}`);
+      const diff = await api.getGitDiff(path, filePath);
+      // NativeBridge expects a string for diff usually, or we might need to adjust based on consumer.
+      return JSON.stringify(diff, null, 2);
     }
   },
   dialog: {
     showOpen: async (options: any) => {
       if (isElectron()) return getElectron().dialog.showOpen(options);
-      console.warn('[NativeService] showOpen: Web Mode - Feature Unavailable');
+      console.warn('[NativeService] showOpen: Web Mode - Using prompt fallback');
+      const path = prompt('Enter folder path:', '');
+      if (path) return { canceled: false, filePaths: [path] };
       return { canceled: true };
     },
     showMessage: async (options: any) => {

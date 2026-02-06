@@ -174,6 +174,46 @@ export async function getGitDiff(projectPath: string, filePath?: string): Promis
 }
 
 /**
+ * Get git status for a project
+ */
+export async function getGitStatus(projectPath: string): Promise<any> {
+    const response = await fetch(`${API_BASE}/api/git/status?path=${encodeURIComponent(projectPath)}`);
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to get git status');
+    }
+    return response.json();
+}
+
+/**
+ * Read file from the backend
+ */
+export async function readFile(filePath: string): Promise<{ content: string }> {
+    const response = await fetch(`${API_BASE}/api/files?path=${encodeURIComponent(filePath)}`);
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to read file');
+    }
+    return response.json();
+}
+
+/**
+ * Write file to the backend
+ */
+export async function writeFile(filePath: string, content: string): Promise<any> {
+    const response = await fetch(`${API_BASE}/api/files`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: filePath, content }),
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to write file');
+    }
+    return response.json();
+}
+
+/**
  * Execute a shell command (one-shot)
  */
 export async function executeCommand(command: string, cwd?: string): Promise<{ output: string; exitCode: number }> {
