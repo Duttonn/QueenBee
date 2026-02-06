@@ -40,7 +40,7 @@
   - **Validation**: `grep -r "localhost:3000" dashboard/src` ne doit trouver que des usages de `API_BASE`.
   - **Worker**: FRONTEND
 
-- [IN PROGRESS: SOUDURE-06] `S-05`: [Backend] Sécuriser ToolExecutor pour qu'il soit exclusivement server-side
+- [IN PROGRESS: BACKEND-01] `S-05`: [Backend] Sécuriser ToolExecutor pour qu'il soit exclusivement server-side
   - **Fichiers**: `proxy-bridge/src/lib/ToolExecutor.ts`
   - **Dépend de**: Rien
   - **Validation**: Aucun appel direct à `fs` depuis Electron (preload.ts) ne doit contourner l'API.
@@ -70,13 +70,18 @@
   - **Validation**: L'ajout d'un projet existant via l'UI ne crée pas de doublon dans la liste.
   - **Worker**: FRONTEND
 
+- [ ] `S-10`: [Configuration] Enforce `gemini-2.5-flash-lite` as the default LLM provider model.
+  - **Fichiers**: `proxy-bridge/src/lib/UnifiedLLMService.ts` (or configuration files)
+  - **Dépend de**: Rien
+  - **Validation**: API calls for chat/completion default to `gemini-2.5-flash-lite`. Check logs for model usage.
+  - **Worker**: BACKEND
 
 ## 🚀 PHASE 1: SOLO MODE COMPLET (Semaines 2-4)
 - [ ] `P1-01`: [Frontend] Implémenter le streaming UI (Markdown partiel) dans le Composer
-- [IN PROGRESS: SOUDURE-05] `P1-02`: [Backend] Implémenter le résumé automatique de fin de session (Memory Flush)
+- [ ] `P1-02`: [Backend] Implémenter le résumé automatique de fin de session (Memory Flush)
 - [ ] `P1-03`: [Frontend] Améliorer le Diff Viewer (Split-pane + Synchronized scrolling)
-- [IN PROGRESS: INTEG-01] `P1-04`: [Integration] Intégrer la dictée vocale Whisper (Ctrl+M)
-- [IN PROGRESS: FRONTEND-01] `P1-05`: [Frontend] Ajouter les Security Approvals UI pour les actions sensibles
+- [ ] `P1-04`: [Integration] Intégrer la dictée vocale Whisper (Ctrl+M)
+- [ ] `P1-05`: [Frontend] Ajouter les Security Approvals UI pour les actions sensibles
 
 ## 📂 PHASE 2: FILESYSTEM & IPC (Abstraction Couche)
 - [ ] `P2-01`: [Integration] Finaliser l'Hybridation (SystemService switch entre Electron/Web)
