@@ -70,6 +70,21 @@
         }
       ],
       "agents": []
+    },
+    {
+      "id": "47519d29-5855-425b-99bc-844d0e415cfa",
+      "name": "QueenBee",
+      "path": "/Users/ndn18/.codex/workspaces/cloud-47519d29-5855-425b-99bc-844d0e415cfa",
+      "type": "cloud",
+      "threads": [
+        {
+          "id": "cloud-47519d29-5855-425b-99bc-844d0e415cfa",
+          "title": "Cloud Workspace Initialized",
+          "diff": "+0 -0",
+          "time": "2026-02-06T23:26:06.144Z"
+        }
+      ],
+      "agents": []
     }
   ]
 }
