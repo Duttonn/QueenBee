@@ -27,6 +27,25 @@ export class ToolExecutor {
           const readPath = path.join(projectPath, tool.arguments.path);
           result = await fs.readFile(readPath, 'utf-8');
           break;
+
+        case 'create_worktree':
+          const wtName = tool.arguments.name;
+          // Use the same logic as our worktree API
+          const repoDir = projectPath;
+          const worktreePath = path.resolve(repoDir, '..', 'worktrees', wtName);
+          const branchName = `agent/${wtName}`;
+          
+          broadcast('QUEEN_STATUS', { status: 'working', message: `Creating worktree ${wtName}...` });
+          
+          await new Promise((resolve, reject) => {
+            exec(`git worktree add -b ${branchName} "${worktreePath}" HEAD`, { cwd: repoDir }, (error, stdout, stderr) => {
+              if (error) reject(new Error(`Failed to create worktree: ${stderr}`));
+              else resolve(stdout);
+            });
+          });
+          
+          result = { success: true, path: worktreePath, branch: branchName };
+          break;
           
         default:
           throw new Error(`Unknown tool: ${tool.name}`);

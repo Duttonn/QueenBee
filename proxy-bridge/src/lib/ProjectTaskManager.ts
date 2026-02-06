@@ -1,0 +1,64 @@
+import fs from 'fs-extra';
+import path from 'path';
+
+/**
+ * ProjectTaskManager: Manages the internal GSD (TASKS.md) for user projects.
+ * Implements the "Vertical Slicing" philosophy.
+ */
+export class ProjectTaskManager {
+  private projectPath: string;
+  private tasksFile: string;
+
+  constructor(projectPath: string) {
+    this.projectPath = projectPath;
+    this.tasksFile = path.join(projectPath, 'TASKS.md');
+  }
+
+  /**
+   * Initializes a new TASKS.md if it doesn't exist
+   */
+  async ensureInitialized(projectName: string) {
+    if (!(await fs.pathExists(this.tasksFile))) {
+      const template = `# 🚀 PROJET: ${projectName}\n\n## 🏗 PHASE 1: CORE (BLOCKING)\n- [ ] \`FEAT-01\`: **Initial Scan** - Analyze codebase and define structure.\n\n## 🧩 PHASE 2: FEATURES\n\n## 🧪 PHASE 3: QA & POLISH\n`;
+      await fs.writeFile(this.tasksFile, template);
+    }
+  }
+
+  /**
+   * Returns the system prompt for the Architect Agent
+   */
+  getArchitectPrompt() {
+    return `
+# RÔLE : ARCHITECTE DE PROJET "FULL STACK"
+Tu es le module d'intelligence ProjectTaskManager. Ta mission : Transformer une demande utilisateur en un plan de bataille exécutable.
+
+## RÈGLE D'OR : LE DÉCOUPAGE VERTICAL
+Tu ne dois JAMAIS séparer le Frontend du Backend. Une tâche doit être une "Vertical Slice" : une fonctionnalité complète (DB -> API -> UI).
+
+## FORMAT DE SORTIE (Markdown)
+Génère le contenu pour un fichier TASKS.md avec :
+- PHASE 1: CORE (Squelette)
+- PHASE 2: FEATURES (Vertical Slices)
+- PHASE 3: QA & POLISH
+`;
+  }
+
+  /**
+   * Updates the tasks file with new content from the Architect
+   */
+  async updateTasks(content: string) {
+    await fs.writeFile(this.tasksFile, content);
+  }
+
+  /**
+   * Parses TASKS.md to find available (unchecked) tasks
+   */
+  async getPendingTasks() {
+    if (!(await fs.pathExists(this.tasksFile))) return [];
+    const content = await fs.readFile(this.tasksFile, 'utf-8');
+    const lines = content.split('\n');
+    return lines
+      .filter(line => line.startsWith('- [ ]'))
+      .map(line => line.replace('- [ ]', '').trim());
+  }
+}

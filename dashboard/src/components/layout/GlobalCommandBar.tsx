@@ -1,16 +1,23 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, Command, Search, Cpu, GitBranch, Zap, Layers, Loader2 } from 'lucide-react';
 import { useHiveStore } from '../../store/useHiveStore';
+import { useVoiceRecording } from '../../hooks/useVoiceRecording';
 
 const GlobalCommandBar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [isRecording, setIsRecording] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Hive state
   const { socket, projects } = useHiveStore();
   const activeProject = projects.length > 0 ? projects[0] : null;
+
+  // Voice Recording Hook
+  const { isRecording, toggleRecording, stopRecording } = useVoiceRecording(
+    useCallback((transcript) => {
+      setQuery(prev => (prev ? `${prev} ${transcript}` : transcript));
+    }, [])
+  );
 
   // Toggle with Cmd+K and Ctrl+M for Voice
   useEffect(() => {
@@ -21,21 +28,22 @@ const GlobalCommandBar = () => {
         setIsOpen(prev => !prev);
       }
       
-      // Voice Shortcut (Ctrl+M)
+      // Voice Shortcut (Ctrl+M) - TOGGLE
       if ((e.metaKey || e.ctrlKey) && e.key === 'm') {
         e.preventDefault();
         if (!isOpen) setIsOpen(true);
-        startVoiceRecording();
+        toggleRecording();
       }
 
       if (e.key === 'Escape') {
         setIsOpen(false);
+        stopRecording();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
+  }, [isOpen, toggleRecording, stopRecording]);
 
   // Focus input when opened
   useEffect(() => {
@@ -56,46 +64,13 @@ const GlobalCommandBar = () => {
 
     setQuery('');
     setIsOpen(false);
+    stopRecording();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleSubmit();
     }
-  };
-
-  const startVoiceRecording = () => {
-    if (isRecording) return;
-    
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    
-    if (!SpeechRecognition) {
-      alert('Speech recognition is not supported in your browser/environment.');
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.interimResults = false;
-    
-    recognition.onstart = () => {
-      setIsRecording(true);
-    };
-
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setQuery(prev => (prev ? `${prev} ${transcript}` : transcript));
-    };
-
-    recognition.onerror = () => {
-      setIsRecording(false);
-    };
-
-    recognition.onend = () => {
-      setIsRecording(false);
-    };
-
-    recognition.start();
   };
 
   if (!isOpen) return null;
@@ -133,7 +108,7 @@ const GlobalCommandBar = () => {
             
             {/* Voice Toggle */}
             <button 
-                onClick={startVoiceRecording}
+                onClick={toggleRecording}
                 className={`p-2 rounded-lg transition-colors ${isRecording ? 'bg-red-500/20 text-red-400' : 'hover:bg-white/10 text-zinc-500 hover:text-white'}`}
             >
               {isRecording ? <Loader2 size={18} className="animate-spin" /> : <Mic size={18} strokeWidth={1.5} />}

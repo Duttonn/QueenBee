@@ -37,6 +37,7 @@ export interface ChatRequest {
     stream?: boolean;
     provider?: 'gemini' | 'nvidia' | 'ollama' | 'mock' | 'openai' | 'anthropic';
     apiKey?: string;
+    projectPath?: string;
 }
 
 /**

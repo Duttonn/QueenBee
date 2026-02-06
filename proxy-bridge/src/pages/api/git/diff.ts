@@ -9,10 +9,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: 'projectPath is required' });
   }
 
+  // Security: Resolve path to absolute. If relative, assume it's from the project root.
+  const absoluteProjectPath = path.isAbsolute(projectPath as string) 
+    ? projectPath as string 
+    : path.resolve(process.cwd(), '..', projectPath as string);
+
   try {
     // We call our Python extractor for the heavy lifting of parsing
     const scriptPath = path.join(process.cwd(), 'src/lib/git_diff_extractor.py');
-    const output = execSync(`python3 "${scriptPath}" "${projectPath}" "${filePath || ''}"`).toString();
+    const output = execSync(`python3 "${scriptPath}" "${absoluteProjectPath}" "${filePath || ''}"`).toString();
     
     const diffData = JSON.parse(output);
     

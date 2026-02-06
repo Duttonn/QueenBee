@@ -28,7 +28,7 @@
 - [TESTED & VALIDATED: Antigravity] `TASK-07` (B-03): **Tool Executor** - Implémenter le switch/case pour `write_file` et `run_shell`.
 - [TESTED & VALIDATED: Antigravity] `TASK-08` (B-04): **Diff Watcher** - Lier `chokidar` -> `git_diff_extractor` -> Socket.
 
-### 🔧 PHASE 4: API PORT MIGRATION (HOTFIX)
+### 🔧 PHASE 4A: API PORT MIGRATION (HOTFIX)
 > **Contexte**: Le backend tourne sur port 3000, mais plusieurs fichiers frontend appellent encore le port 3001.
 
 - [TESTED & VALIDATED: Antigravity] `TASK-09` (F-09): **API Base URL** - Changer `API_BASE` de 3001 à 3000 dans `useAppStore.ts` (ligne 42).
@@ -48,6 +48,23 @@
 > **Contexte**: Le callback GitHub OAuth utilise le port 3001 au lieu de 3000.
 
 - [TESTED & VALIDATED: Antigravity] `TASK-19` (B-19): **GitHub OAuth Callback** - Corriger le port 3001→3000 dans `auth/github/index.ts` et `auth-manager.ts`.
+
+### 🧠 PHASE 4: BRAIN TRANSPLANT (OpenClaw Integration)
+> **Objectif**: Remplacer les mocks LLM par le moteur multi-provider d'OpenClaw.
+
+- [IN PROGRESS: WORKER-BEE-LLM-EXPERT] `TASK-30`: **LLMProviderInterface Adaptation** - Créer une interface d'abstraction LLMProviderInterface inspirée d'OpenClaw supportant OpenAI, Anthropic, Gemini, Mistral.
+- [IN PROGRESS: Worker-Bee-AI] `TASK-31`: **Enterprise/Local Gateway** - Permettre l'override des baseURL (Ollama, LocalAI) et le support des "Custom Network URL" pour les modèles internes.
+- [IN PROGRESS: WORKER-BEE-LLM-EXPERT] `TASK-32`: **UnifiedLLMService Implementation** - Implémenter le service central dans `proxy-bridge/src/lib/UnifiedLLMService.ts` capable de router les requêtes selon le provider.
+- [IN PROGRESS: WORKER-BEE-LLM-EXPERT] `TASK-33`: **OAuth & Key Bridge** - Adapter la logique OAuth d'OpenClaw pour stocker les tokens dans `AccountStateManager` de Queen Bee, tout en respectant les clés `.env`.
+- [ ] `TASK-34`: **Agentic Loop Extraction** - Extraire la boucle "Think -> Act -> Observe" d'OpenClaw (`AgentSession`) et l'intégrer dans `AutonomousRunner.ts`.
+- [ ] `TASK-35`: **I/O Standardization** - Assurer la normalisation des réponses LLM (JSON/Structuré) pour tous les providers afin de garantir la compatibilité avec HiveOrchestrator.
+
+### ⚡️ PHASE 9: INTERNAL COMBUSTION ENGINE (Recursion)
+- [ ] `TASK-25` (B-25): **ProjectTaskManager** - Service to generate and parse `TASKS.md` using the Vertical Slicing prompt.
+- [ ] `TASK-26` (B-26): **Recursive Runner** - Update `AutonomousRunner.ts` to implement the loop: Plan -> Execute -> Error -> Fix.
+- [ ] `TASK-27` (B-27): **Project Context Injector** - Automatically scan and provide the project tree + README to agents on every message.
+- [ ] `TASK-28` (F-28): **Task Board Component** - UI to visualize the project's internal `TASKS.md` status.
+- [ ] `TASK-29` (B-29): **Mutex File Lock** - Implementation of a locking system to prevent parallel agents from colliding on the same files.
 
 ### ☁️ PHASE 7: QUEEN BEE CLOUD (Headless Workspaces)
 - [x] `TASK-20` (B-20): **RepoClonerService** - Implémenter le service de clonage côté serveur (simple-git) utilisant le token OAuth.

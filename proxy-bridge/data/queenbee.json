@@ -39,5 +39,14 @@
       "type": "plugin"
     }
   ],
-  "projects": []
+  "projects": [
+    {
+      "id": "04b48e43-dbf0-4203-978d-487dc404185c",
+      "name": "BlackJackAdvisor",
+      "path": "/Users/ndn18/PersonalProjects/BlackJackAdvisor",
+      "type": "local",
+      "threads": [],
+      "agents": []
+    }
+  ]
 }
