@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { io, Socket } from 'socket.io-client';
+import { API_BASE } from './useAppStore';
 
 interface HiveState {
   projects: any[];
@@ -46,12 +47,12 @@ export const useHiveStore = create<HiveState>()(
         
         // Boot the socket server via HTTP first (Next.js requirement)
         try {
-          await fetch('http://127.0.0.1:3000/api/logs/stream');
+          await fetch(`${API_BASE}/api/logs/stream`);
         } catch (e) {
           console.error('[HiveStore] Failed to boot socket server:', e);
         }
 
-        const socket = io('http://127.0.0.1:3000', {
+        const socket = io(`${API_BASE}`, {
           path: '/api/logs/stream',
           transports: ['websocket', 'polling']
         });
@@ -60,7 +61,7 @@ export const useHiveStore = create<HiveState>()(
 
       fetchProjects: async () => {
         try {
-          const res = await fetch('http://127.0.0.1:3000/api/projects');
+          const res = await fetch(`${API_BASE}/api/projects`);
           if (res.ok) {
             const projects = await res.json();
             set({ projects });

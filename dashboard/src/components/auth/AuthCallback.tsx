@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Loader2, CheckCircle2, AlertCircle, Github } from 'lucide-react';
+import { API_BASE } from '../../store/useAppStore';
 
 interface AuthCallbackProps {
     onSuccess: (data: any) => void;
     onError: (error: string) => void;
 }
-
-const API_BASE = 'http://localhost:3000';
 
 /**
  * Handles the GitHub OAuth callback

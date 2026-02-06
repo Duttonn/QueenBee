@@ -1,6 +1,5 @@
 import { ISystemService } from '../interfaces/ISystemService';
-
-const API_BASE = (typeof window !== 'undefined' && (window as any).__API_URL__) || 'http://127.0.0.1:3000';
+import { API_BASE } from '../../store/useAppStore';
 
 export class WebAdapter implements ISystemService {
   fs = {

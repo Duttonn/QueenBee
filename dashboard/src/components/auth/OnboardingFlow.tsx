@@ -15,14 +15,11 @@ import {
     Loader2
 } from 'lucide-react';
 import { useAuthStore, AIProvider } from '../../store/useAuthStore';
+import { API_BASE } from '../../store/useAppStore';
 
 interface OnboardingFlowProps {
     onComplete: () => void;
 }
-
-type Step = 'welcome' | 'providers' | 'forges' | 'complete';
-
-const OnboardingFlow = ({ onComplete }: OnboardingFlowProps) => {
     const [currentStep, setCurrentStep] = useState<Step>('welcome');
     const { providers, updateProvider, saveApiKey, forges, connectForge, reorderProviders, setOnboarded } = useAuthStore();
 

@@ -40,7 +40,7 @@ export interface ExecutionResult {
     code?: number;
 }
 
-const API_BASE = 'http://127.0.0.1:3000/api';
+export const API_BASE = (typeof window !== 'undefined' && (window as any).__API_URL__) || 'http://127.0.0.1:3000';
 
 interface AppState {
     // Data
@@ -74,8 +74,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     fetchData: async () => {
         try {
             const [authRes, skillsRes] = await Promise.all([
-                fetch(`${API_BASE}/automations`),
-                fetch(`${API_BASE}/skills`)
+                fetch(`${API_BASE}/api/automations`),
+                fetch(`${API_BASE}/api/skills`)
             ]);
 
             if (authRes.ok) set({ automations: await authRes.json() });
@@ -90,7 +90,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     },
 
     addAutomation: async (auto) => {
-        const res = await fetch(`${API_BASE}/automations`, {
+        const res = await fetch(`${API_BASE}/api/automations`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(auto)
@@ -102,7 +102,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     },
 
     toggleAutomation: async (id, active) => {
-        const res = await fetch(`${API_BASE}/automations`, {
+        const res = await fetch(`${API_BASE}/api/automations`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id, active })
@@ -115,7 +115,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     },
 
     runAutomation: async (script) => {
-        const res = await fetch(`${API_BASE}/execution/run`, {
+        const res = await fetch(`${API_BASE}/api/execution/run`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ command: script })
@@ -124,7 +124,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     },
 
     installSkill: async (skill) => {
-        const res = await fetch(`${API_BASE}/skills`, {
+        const res = await fetch(`${API_BASE}/api/skills`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(skill)
@@ -137,7 +137,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     },
 
     uninstallSkill: async (id) => {
-        const res = await fetch(`${API_BASE}/skills?id=${id}`, {
+        const res = await fetch(`${API_BASE}/api/skills?id=${id}`, {
             method: 'DELETE'
         });
         if (res.ok) {
@@ -146,7 +146,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     },
 
     addProject: async (name, path) => {
-        const res = await fetch(`${API_BASE}/projects`, {
+        const res = await fetch(`${API_BASE}/api/projects`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, path })
@@ -158,7 +158,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     },
 
     commit: async (repoPath, message) => {
-        await fetch(`${API_BASE}/git/commit`, {
+        await fetch(`${API_BASE}/api/git/commit`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path: repoPath, message })
@@ -166,7 +166,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     },
 
     getGitStatus: async (repoPath) => {
-        const res = await fetch(`${API_BASE}/git/status?path=${encodeURIComponent(repoPath)}`);
+        const res = await fetch(`${API_BASE}/api/git/status?path=${encodeURIComponent(repoPath)}`);
         return await res.json();
     }
 }));

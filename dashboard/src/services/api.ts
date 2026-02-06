@@ -3,8 +3,7 @@
  * Connects the frontend UI to the proxy-bridge backend
  */
 
-// Backend base URL - defaults to localhost in dev
-const API_BASE = (typeof window !== 'undefined' && (window as any).__API_URL__) || 'http://127.0.0.1:3000';
+import { API_BASE } from '../store/useAppStore';
 
 export interface ToolCall {
     id: string;

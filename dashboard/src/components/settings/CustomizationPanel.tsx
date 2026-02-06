@@ -27,23 +27,10 @@ import {
 } from 'lucide-react';
 import yaml from 'js-yaml';
 import { useAuthStore } from '../../store/useAuthStore';
+import { API_BASE } from '../../store/useAppStore';
 
 interface CustomizationPanelProps {
     isOpen: boolean;
-    onClose: () => void;
-}
-
-type Tab = 'appearance' | 'skills' | 'code' | 'plugins' | 'integrations' | 'config';
-
-interface FileNode {
-    name: string;
-    path: string;
-    type: 'file' | 'directory';
-    children?: FileNode[];
-}
-
-const API_BASE = 'http://localhost:3000';
-// Removed hardcoded APP_ROOT for portability
 
 const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
     const [activeTab, setActiveTab] = useState<Tab>('appearance');
