@@ -2,7 +2,7 @@
 # 🐝 ANTIGRAVITY QA WATCHER
 # Surveille GSD_TASKS.md toutes les 60 secondes pour les tags [REVIEW] ou [PR OPEN]
 
-PROJECT_DIR="/Users/ndn18/PersonalProjects/QueenBee"
+PROJECT_DIR="~/PersonalProjects/QueenBee"
 GSD_FILE="$PROJECT_DIR/GSD_TASKS.md"
 LOG_FILE="$PROJECT_DIR/logs/qa-watcher.log"
 
