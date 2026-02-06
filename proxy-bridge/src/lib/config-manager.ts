@@ -125,7 +125,7 @@ ALWAYS use these tools to verify information and interact with the simulator.`,
                                 transport: {
                                     type: "stdio",
                                     command: "/usr/local/bin/python3",
-                                    args: ["/Users/ndn18/.continue/mcp-server/server.py"],
+                                    args: [path.join(os.homedir(), ".continue/mcp-server/server.py")],
                                     env: {
                                         NVIDIA_API_KEY: "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"
                                     }
@@ -135,7 +135,7 @@ ALWAYS use these tools to verify information and interact with the simulator.`,
                     },
                     index: {
                         embedModel: "Nomic Embed",
-                        paths: ["/Users/ndn18/LLMData/visionos-knowledge/"]
+                        paths: [path.join(os.homedir(), "LLMData/visionos-knowledge/")]
                     },
                     context: [
                         { provider: "file" }, { provider: "code" }, { provider: "codebase" },

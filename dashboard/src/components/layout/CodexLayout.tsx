@@ -28,11 +28,13 @@ import AutomationDashboard from './AutomationDashboard';
 import SkillsManager from './SkillsManager';
 import AgenticWorkbench from './AgenticWorkbench';
 import XtermTerminal from './XtermTerminal';
+import GlobalCommandBar from './GlobalCommandBar';
 import { sendChatMessage, sendChatMessageStream, getGitDiff, type Message } from '../../services/api';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useAppStore } from '../../store/useAppStore';
 import { useHiveStore } from '../../store/useHiveStore';
 import CustomizationPanel from '../settings/CustomizationPanel';
+import { NativeService } from '../../services/NativeService';
 
 // Cloud Terminal Icon Component (matches ☁️_ from spec)
 const CloudTerminalIcon = () => (
@@ -274,75 +276,12 @@ const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange,
 };
 
 // Command Palette / Search Modal
-const CommandPalette = ({ onClose }: { onClose: () => void }) => (
-  <motion.div
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    exit={{ opacity: 0 }}
-    className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[100] flex items-start justify-center pt-[15vh]"
-    onClick={onClose}
-  >
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95, y: -10 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95, y: -10 }}
-      transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-      className="w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden"
-      onClick={(e) => e.stopPropagation()}
-    >
-      {/* Search Input */}
-      <div className="flex items-center gap-3 px-4 py-4 border-b border-gray-100">
-        <Search size={18} className="text-gray-400" />
-        <input
-          autoFocus
-          type="text"
-          placeholder="Search threads, commands, or anything..."
-          className="flex-1 bg-transparent text-base text-slate-800 placeholder-gray-400 outline-none"
-        />
-        <kbd className="px-2 py-1 text-xs font-medium text-gray-400 bg-gray-100 rounded">esc</kbd>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="p-2 max-h-80 overflow-y-auto">
-        <div className="px-3 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">Quick Actions</div>
-        <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors text-left">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-            <PenSquare size={16} className="text-blue-600" />
-          </div>
-          <div>
-            <div className="text-sm font-medium text-gray-900">New Thread</div>
-            <div className="text-xs text-gray-500">Start a new conversation</div>
-          </div>
-        </button>
-        <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors text-left">
-          <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center">
-            <Terminal size={16} className="text-purple-600" />
-          </div>
-          <div>
-            <div className="text-sm font-medium text-gray-900">Open Terminal</div>
-            <div className="text-xs text-gray-500">⌘J to toggle</div>
-          </div>
-        </button>
-        <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors text-left">
-          <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
-            <Clock size={16} className="text-green-600" />
-          </div>
-          <div>
-            <div className="text-sm font-medium text-gray-900">Automations</div>
-            <div className="text-xs text-gray-500">Manage scheduled tasks</div>
-          </div>
-        </button>
-      </div>
-    </motion.div>
-  </motion.div>
-);
 const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const [activeView, setActiveView] = useState<'build' | 'automations' | 'skills'>('build');
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isCustomizationOpen, setIsCustomizationOpen] = useState(false);
 
   // Auth state
@@ -353,7 +292,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const { runAutomation, commit, fetchData, addProject: addAppProject } = useAppStore();
 
   // Hive state
-  const { projects, addProject, activeThreadId, setActiveThread, addThread, addMessage, updateThread } = useHiveStore();
+  const { projects, addProject, activeThreadId, setActiveThread, addThread, addMessage, updateThread, updateLastMessage } = useHiveStore();
   const activeProject = projects.find(p => p.id === selectedProjectId);
   const activeThread = activeProject?.threads?.find((t: any) => t.id === activeThreadId);
   const messages = activeThread?.messages || [];
@@ -373,13 +312,23 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   }, [availableModels, selectedModel]);
 
   const handleRun = async () => {
+    // We could implement a custom modal for input instead of prompt
     const cmd = prompt('Enter command to run:', 'echo "Hello World"');
     if (cmd) {
       try {
         const res = await runAutomation(cmd);
-        alert(`Execution Result:\n\nStdout:\n${res.stdout}\n\nStderr:\n${res.stderr}`);
+        NativeService.dialog.showMessage({
+          type: 'info',
+          title: 'Execution Result',
+          message: 'Command executed successfully',
+          detail: `Stdout:\n${res.stdout}\n\nStderr:\n${res.stderr}`
+        });
       } catch (e: any) {
-        alert('Execution failed: ' + e.message);
+        NativeService.dialog.showMessage({
+          type: 'error',
+          message: 'Execution failed',
+          detail: e.message
+        });
       }
     }
   };
@@ -389,24 +338,38 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     if (msg) {
       try {
         // Default to current directory or first project
-        const path = projects.length > 0 ? projects[0].path : '/Users/ndn18/PersonalProjects/QueenBee';
+        const path = activeProject?.path || '.';
         await commit(path, msg);
-        alert('Changes committed successfully!');
+        NativeService.notify('Commit Successful', `Committed changes to ${path}`);
       } catch (e: any) {
-        alert('Commit failed: ' + e.message);
+        NativeService.dialog.showMessage({
+          type: 'error',
+          message: 'Commit failed',
+          detail: e.message
+        });
       }
     }
   };
 
   const handleOpen = async () => {
-    const path = prompt('Enter absolute path to project folder:', '/Users/ndn18/PersonalProjects/');
-    if (path) {
+    const result = await NativeService.dialog.showOpen({
+      properties: ['openDirectory'],
+      title: 'Select Project Folder'
+    });
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      const path = result.filePaths[0];
       const name = path.split('/').pop() || 'Untitled';
       try {
         await addAppProject(name, path);
-        alert(`Project "${name}" added successfully!`);
+        // Success notification
+        NativeService.notify('Project Added', `Successfully added ${name}`);
       } catch (e: any) {
-        alert('Failed to add project. Ensure backend is running and path exists.');
+        NativeService.dialog.showMessage({
+          type: 'error',
+          message: 'Failed to add project',
+          detail: e.message
+        });
       }
     }
   };
@@ -427,7 +390,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     if (!currentThreadId) {
       currentThreadId = Date.now().toString();
       const title = inputValue.length > 30 ? inputValue.substring(0, 30) + '...' : inputValue;
-      addThread(selectedProjectId, {
+      await addThread(selectedProjectId, {
         id: currentThreadId,
         title: title,
         diff: '+0 -0',
@@ -441,48 +404,51 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     setInputValue('');
     setIsLoading(true);
 
+    // Add empty assistant message for streaming
+    addMessage(selectedProjectId, currentThreadId, { role: 'assistant', content: '' });
+
     // Determine which provider to use
     const providerToUse = activeProvider?.id || 'mock';
     const modelToUse = selectedModel || activeProvider?.models?.[0] || 'mock-model';
     const apiKey = activeProvider?.apiKey;
 
     try {
-      const response = await sendChatMessage({
-        model: modelToUse,
-        messages: [...messages, userMessage],
-        provider: providerToUse as any,
-        apiKey: apiKey,
-      });
-
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: response.choices?.[0]?.message?.content || 'No response received',
-      };
-      addMessage(selectedProjectId, currentThreadId, assistantMessage);
-
-      // Update diff stats after action
-      try {
-        const diff = await getGitDiff('/Users/ndn18/PersonalProjects/QueenBee');
-        setDiffStats({ added: diff.added, removed: diff.removed });
-        
-        // Update thread stats in sidebar
-        updateThread(selectedProjectId, currentThreadId, {
-          diff: `+${diff.added} -${diff.removed}`,
-          time: 'Just now'
-        });
-      } catch {
-        // Ignore diff errors
-      }
+      await sendChatMessageStream(
+        {
+          model: modelToUse,
+          messages: [...messages, userMessage],
+          provider: providerToUse as any,
+          apiKey: apiKey,
+        },
+        (chunk) => {
+          updateLastMessage(selectedProjectId, currentThreadId!, chunk);
+        },
+        async (fullText) => {
+          setIsLoading(false);
+          // Update diff stats after action
+          try {
+            const diff = await getGitDiff(activeProject?.path || '.');
+            setDiffStats({ added: diff.added, removed: diff.removed });
+            
+            updateThread(selectedProjectId, currentThreadId!, {
+              diff: `+${diff.added} -${diff.removed}`,
+              time: 'Just now'
+            });
+          } catch {
+            // Ignore diff errors
+          }
+        },
+        (error) => {
+          console.error('Chat error:', error);
+          updateLastMessage(selectedProjectId, currentThreadId!, `\n\nError: ${error.message}`);
+          setIsLoading(false);
+        }
+      );
     } catch (error) {
       console.error('Chat error:', error);
-      addMessage(selectedProjectId, currentThreadId, {
-        role: 'assistant',
-        content: `Error: ${error instanceof Error ? error.message : 'Failed to get response'}`,
-      });
-    } finally {
       setIsLoading(false);
     }
-  }, [inputValue, messages, isLoading, selectedProjectId, activeThreadId, activeProvider, selectedModel, addThread, addMessage, updateThread]);
+  }, [inputValue, messages, isLoading, selectedProjectId, activeThreadId, activeProvider, selectedModel, addThread, addMessage, updateThread, updateLastMessage]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -491,15 +457,6 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'j') {
         e.preventDefault();
         setIsTerminalOpen(prev => !prev);
-      }
-      // Cmd+K: Toggle Search/Command Palette
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setIsSearchOpen(prev => !prev);
-      }
-      // Escape: Close modals
-      if (e.key === 'Escape') {
-        setIsSearchOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -555,7 +512,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
               <Sidebar
                 activeView={activeView}
                 onOpenSettings={() => setIsCustomizationOpen(true)}
-                onSearchClick={() => setIsSearchOpen(true)}
+                onSearchClick={() => {}} // GlobalCommandBar handles Cmd+K
                 selectedProjectId={selectedProjectId}
                 onProjectSelect={(id) => {
                   setSelectedProjectId(id);
@@ -633,12 +590,8 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         </AnimatePresence>
       </div>
 
-      {/* Command Palette (Cmd+K) */}
-      <AnimatePresence>
-        {isSearchOpen && (
-          <CommandPalette onClose={() => setIsSearchOpen(false)} />
-        )}
-      </AnimatePresence>
+      {/* Global Command Bar (Cmd+K) */}
+      <GlobalCommandBar />
 
       {/* Customization Panel */}
       <CustomizationPanel

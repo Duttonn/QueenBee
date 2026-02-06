@@ -42,7 +42,7 @@ interface FileNode {
 }
 
 const API_BASE = 'http://localhost:3000';
-const APP_ROOT = '/Users/ndn18/PersonalProjects/QueenBee/dashboard';
+// Removed hardcoded APP_ROOT for portability
 
 const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
     const [activeTab, setActiveTab] = useState<Tab>('appearance');
@@ -149,7 +149,7 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
         setSelectedFile(path);
 
         try {
-            const response = await fetch(`${API_BASE}/api/files?path=${encodeURIComponent(`${APP_ROOT}/${path}`)}`);
+            const response = await fetch(`${API_BASE}/api/files?path=${encodeURIComponent(path)}`);
             if (response.ok) {
                 const data = await response.json();
                 setFileContent(data.content);
@@ -175,7 +175,7 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    path: `${APP_ROOT}/${selectedFile}`,
+                    path: selectedFile,
                     content: fileContent
                 })
             });

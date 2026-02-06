@@ -34,9 +34,12 @@ export interface Skill {
 }
 
 export interface Project {
+    id: string;
     name: string;
     path: string;
+    type: 'local' | 'cloud';
     threads: Thread[];
+    agents?: any[];
 }
 
 export interface Thread {

@@ -30,7 +30,6 @@ interface SidebarProps {
 }
 
 const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, selectedProjectId, onProjectSelect }: SidebarProps) => {
-  const { projects: appProjects } = useAppStore();
   const { projects, addProject, activeThreadId, setActiveThread } = useHiveStore();
   const { forges, user } = useAuthStore();
   const gitForge = forges.find(f => f.id === 'github');
@@ -79,7 +78,8 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
     
     // Check if we are in Electron or Web
     if (window.electron) {
-      const targetDir = `/Users/ndn18/PersonalProjects/QueenBee/projects/${repo.name}`;
+      // Use relative path for portability
+      const targetDir = `projects/${repo.name}`;
       try {
         console.log(`[Electron] Starting clone for ${repo.full_name}...`);
         await window.electron.clone(repo.html_url, targetDir);

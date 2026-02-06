@@ -10,7 +10,7 @@ import { useSocketEvents } from './hooks/useSocketEvents'; // Added for TASK-03
 
 function App() {
   const { isAuthenticated, isOnboarded, login, setOnboarded, connectForge, forges } = useAuthStore();
-  const { initSocket } = useHiveStore(); // Destructure initSocket
+  const { initSocket, fetchProjects } = useHiveStore(); // Destructure initSocket and fetchProjects
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isCallback, setIsCallback] = useState(false);
 
@@ -18,8 +18,56 @@ function App() {
   useEffect(() => {
     if (isAuthenticated && isOnboarded) {
       initSocket();
+      fetchProjects();
     }
-  }, [isAuthenticated, isOnboarded, initSocket]);
+  }, [isAuthenticated, isOnboarded, initSocket, fetchProjects]);
+
+  // Global Log Relay to Backend
+  const { socket } = useHiveStore();
+  useEffect(() => {
+    if (!socket) return;
+
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalWarn = console.warn;
+
+    const relay = (type: string, args: any[]) => {
+      socket.emit('LOG_RELAY', {
+        type,
+        message: args.map(arg => {
+          try {
+            return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
+          } catch (e) {
+            return '[Unserializable Object]';
+          }
+        }).join(' '),
+        timestamp: new Date().toISOString()
+      });
+    };
+
+    console.log = (...args) => {
+      relay('info', args);
+      originalLog.apply(console, args);
+    };
+
+    console.error = (...args) => {
+      relay('error', args);
+      originalError.apply(console, args);
+    };
+
+    console.warn = (...args) => {
+      relay('warn', args);
+      originalWarn.apply(console, args);
+    };
+
+    console.log('[App] Log relay initialized');
+
+    return () => {
+      console.log = originalLog;
+      console.error = originalError;
+      console.warn = originalWarn;
+    };
+  }, [socket]);
 
   // Hook into socket events
   useSocketEvents(); // Added for TASK-03
@@ -36,6 +84,10 @@ function App() {
   }, []);
 
   const handleLoginComplete = useCallback((data: any) => {
+    if (window.electron && (window.electron as any).log) {
+      (window.electron as any).log('info', `App: handleLoginComplete started for ${data.user?.login}`);
+    }
+
     // Save user data to store
     login({
       id: data.user.id,
@@ -59,6 +111,10 @@ function App() {
     // Show onboarding for AI provider setup
     setShowOnboarding(true);
     setIsCallback(false);
+
+    if (window.electron && (window.electron as any).log) {
+      (window.electron as any).log('info', 'App: handleLoginComplete finished');
+    }
   }, [login, connectForge]);
 
   const handleAuthError = useCallback((error: string) => {

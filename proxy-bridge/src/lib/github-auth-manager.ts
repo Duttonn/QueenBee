@@ -50,7 +50,8 @@ export class GitHubAuthManager {
 
         const state = Buffer.from(JSON.stringify({
             timestamp: Date.now(),
-            nonce: Math.random().toString(36).substring(7)
+            nonce: Math.random().toString(36).substring(7),
+            mode: this.isLocalMac() ? 'electron' : 'web'
         })).toString('base64');
 
         const authUrl = new URL('https://github.com/login/oauth/authorize');

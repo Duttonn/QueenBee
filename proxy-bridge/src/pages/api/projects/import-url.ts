@@ -24,8 +24,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const name = projectName || repoUrl.split('/').pop() || 'Imported Cloud Project';
 
     const newProject: Project = {
+      id: sessionId,
       name,
       path: targetPath,
+      type: 'cloud',
       threads: [
         {
           id: `cloud-${sessionId}`,
@@ -33,7 +35,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           diff: '+0 -0',
           time: new Date().toISOString()
         }
-      ]
+      ],
+      agents: []
     };
 
     db.projects.push(newProject);

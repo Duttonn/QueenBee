@@ -1,9 +1,52 @@
 const { app, BrowserWindow, ipcMain, Notification, Menu, shell: electronShell, globalShortcut } = require('electron');
 const path = require('path');
-const { NativeFSManager } = require('./NativeFSManager');
+import { NativeFSManager } from './NativeFSManager';
 
 const nativeFS = new NativeFSManager();
-let mainWindow;
+nativeFS.setupHandlers();
+
+let mainWindow: any; 
+let lastUrl: string | null = null; 
+let authCache: any = null; // Store auth data if renderer isn't ready
+
+function handleDeepLink(url: string) {
+  if (!url) return;
+  console.log('[Main] Handling deep link:', url);
+  
+  if (!mainWindow) {
+    lastUrl = url;
+    return;
+  }
+
+  // Parse URL: queenbee://auth/callback?auth_data=...
+  try {
+    const parsedUrl = new URL(url);
+    if (parsedUrl.host === 'auth' && parsedUrl.pathname === '/callback') {
+      const authDataParam = parsedUrl.searchParams.get('auth_data');
+      if (authDataParam) {
+        const data = JSON.parse(decodeURIComponent(authDataParam));
+        authCache = data; // Cache it
+        
+        console.log('[Main] Sending auth success to renderer (with delay)');
+        setTimeout(() => {
+          if (mainWindow) {
+            mainWindow.webContents.send('GITHUB_AUTH_SUCCESS', data);
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        }, 500);
+      }
+    }
+  } catch (e) {
+    console.error('[Main] Failed to parse deep link:', e);
+  }
+}
+
+// macOS deep link listener
+app.on('open-url', (event: any, url: string) => {
+  event.preventDefault();
+  handleDeepLink(url);
+});
 
 function createMenu() {
   const template = [
@@ -44,7 +87,18 @@ function createMenu() {
         { role: 'zoomIn' },
         { role: 'zoomOut' },
         { type: 'separator' },
-        { role: 'togglefullscreen' }
+        { role: 'togglefullscreen' },
+        { type: 'separator' },
+        {
+          label: 'Clear App Data & Restart',
+          click: async () => {
+            if (mainWindow) {
+              await mainWindow.webContents.session.clearStorageData();
+              app.relaunch();
+              app.exit();
+            }
+          }
+        }
       ]
     },
     {
@@ -76,7 +130,6 @@ function createMenu() {
 }
 
 function createWindow() {
-  nativeFS.setupHandlers();
   createMenu();
 
   mainWindow = new BrowserWindow({
@@ -89,11 +142,22 @@ function createWindow() {
     visualEffectState: 'active',
     backgroundColor: '#00000000', // Transparent for vibrancy
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true
     }
   });
+
+  // DEVELOPER SOLUTION: Mirror Renderer logs to Terminal
+  mainWindow.webContents.on('console-message', (event: any, level: any, message: string, line: any, sourceId: any) => {
+    const levels = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
+    console.log(`[Renderer-${levels[level] || 'LOG'}] ${message}`);
+  });
+
+  // Open DevTools automatically in development
+  if (process.env.NODE_ENV === 'development' || true) { // Force for now
+    mainWindow.webContents.openDevTools();
+  }
 
   // In development, load from Vite dev server
   // In production, load from build/index.html
@@ -102,6 +166,13 @@ function createWindow() {
     : `file://${path.join(__dirname, '../dist/index.html')}`;
 
   mainWindow.loadURL(startUrl);
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (lastUrl) {
+      handleDeepLink(lastUrl);
+      lastUrl = null;
+    }
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -159,4 +230,17 @@ ipcMain.on('notification:show', (event: any, { title, body }: { title: string, b
   new Notification({ title, body }).show();
 });
 
-export {}; // Treat as module
+// Native Direct Logger
+const logPath = path.resolve(__dirname, '..', '..', 'app.log');
+const fs = require('fs-extra');
+ipcMain.on('app:log', (event: any, { level, message }: { level: string, message: string }) => {
+  const entry = `[${new Date().toISOString()}] [RENDERER-${level.toUpperCase()}] ${message}\n`;
+  fs.appendFileSync(logPath, entry);
+});
+
+// Auth Cache Pull Handler
+ipcMain.handle('auth:get-cached', () => {
+  const data = authCache;
+  authCache = null; // Clear after pull
+  return data;
+});

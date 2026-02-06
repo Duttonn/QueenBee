@@ -12,13 +12,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     // We call our Python extractor for the heavy lifting of parsing
     const scriptPath = path.join(process.cwd(), 'src/lib/git_diff_extractor.py');
-    const output = execSync(`python3 ${scriptPath} ${projectPath} ${filePath || ''}`).toString();
+    const output = execSync(`python3 "${scriptPath}" "${projectPath}" "${filePath || ''}"`).toString();
     
     const diffData = JSON.parse(output);
     
-    // Optional: Get Queen Bee explanation here by passing the diff to an LLM
-    // const explanation = await getQueenBeeExplanation(diffData);
-    // diffData.explanation = explanation;
+    if (diffData.status === 'error') {
+        return res.status(500).json({ error: diffData.message });
+    }
 
     res.status(200).json(diffData);
   } catch (error: any) {

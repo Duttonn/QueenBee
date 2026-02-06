@@ -1,11 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, Command, Search, Cpu, GitBranch, Zap, Layers, Loader2 } from 'lucide-react';
+import { useHiveStore } from '../../store/useHiveStore';
 
 const GlobalCommandBar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Hive state
+  const { socket, projects } = useHiveStore();
+  const activeProject = projects.length > 0 ? projects[0] : null;
 
   // Toggle with Cmd+K and Ctrl+M for Voice
   useEffect(() => {
@@ -38,6 +43,26 @@ const GlobalCommandBar = () => {
       inputRef.current.focus();
     }
   }, [isOpen]);
+
+  const handleSubmit = () => {
+    if (!query.trim() || !socket) return;
+
+    console.log(`[GlobalCommandBar] Submitting: ${query}`);
+    socket.emit('CMD_SUBMIT', {
+      prompt: query,
+      projectId: activeProject?.id || 'default',
+      projectPath: activeProject?.path || '.'
+    });
+
+    setQuery('');
+    setIsOpen(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSubmit();
+    }
+  };
 
   const startVoiceRecording = () => {
     if (isRecording) return;
@@ -96,6 +121,7 @@ const GlobalCommandBar = () => {
             placeholder={isRecording ? "Listening..." : "Command the Queen Bee..."}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
           />
           
           <div className="flex items-center gap-3">

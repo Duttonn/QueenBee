@@ -1,9 +1,11 @@
 import { Socket } from 'socket.io';
 import { HiveOrchestrator } from './HiveOrchestrator';
 import { UniversalDispatcher } from './UniversalDispatcher';
+import { ToolExecutor } from './ToolExecutor';
 import { broadcast } from './socket-instance';
 import { exec } from 'child_process';
 import path from 'path';
+import fs from 'fs';
 
 /**
  * EventLoopManager: The "Nervous System" of Queen Bee.
@@ -13,15 +15,31 @@ export class EventLoopManager {
   private socket: Socket;
   private orchestrator: HiveOrchestrator;
   private dispatcher: UniversalDispatcher;
+  private toolExecutor: ToolExecutor;
+  private appLogPath: string;
 
   constructor(socket: Socket) {
     this.socket = socket;
     this.orchestrator = new HiveOrchestrator(socket);
     this.dispatcher = new UniversalDispatcher(socket);
+    this.toolExecutor = new ToolExecutor();
+    this.appLogPath = path.join(process.cwd(), '..', 'app.log');
     this.setupListeners();
   }
 
   private setupListeners() {
+    /**
+     * Scenario: Global Log Relay from Frontend
+     */
+    this.socket.on('LOG_RELAY', (data: { type: string, message: string, timestamp: string }) => {
+      const logEntry = `[${data.timestamp}] [${data.type.toUpperCase()}] ${data.message}\n`;
+      try {
+        fs.appendFileSync(this.appLogPath, logEntry);
+      } catch (e) {
+        console.error('Failed to write to app.log', e);
+      }
+    });
+
     /**
      * Scenario: User submits a prompt in the Global Bar
      */
@@ -52,6 +70,47 @@ export class EventLoopManager {
     });
 
     /**
+     * Scenario: Human-in-the-loop Tool Approval
+     */
+    this.socket.on('TOOL_APPROVAL', async ({ projectId, threadId, toolCallId, approved, tool, args, projectPath }) => {
+        console.log(`[EventLoop] Tool approval received for ${toolCallId}: ${approved ? 'APPROVED' : 'REJECTED'}`);
+        
+        if (approved) {
+            try {
+                // We need to know which tool to execute. 
+                // If the client sends back the full tool info:
+                const result = await this.toolExecutor.execute({
+                    name: tool,
+                    arguments: args
+                }, projectPath || process.cwd());
+
+                broadcast('TOOL_RESULT', {
+                    projectId,
+                    threadId,
+                    toolCallId,
+                    status: 'success',
+                    result
+                });
+            } catch (error: any) {
+                broadcast('TOOL_RESULT', {
+                    projectId,
+                    threadId,
+                    toolCallId,
+                    status: 'error',
+                    error: error.message
+                });
+            }
+        } else {
+            broadcast('TOOL_RESULT', {
+                projectId,
+                threadId,
+                toolCallId,
+                status: 'rejected'
+            });
+        }
+    });
+
+    /**
      * Scenario: Agent modified a file
      * This is triggered by the FileWatcher inside AutoContextManager
      */
@@ -59,8 +118,8 @@ export class EventLoopManager {
       console.log(`[EventLoop] File change detected in ${filePath}. Calculating Diff.`);
       
       try {
-        const scriptPath = path.join(process.cwd(), 'src/lib/git_diff_extractor.py');
-        const diffProcess = exec(`python3 ${scriptPath} "${treePath}" "${filePath}"`);
+        const scriptPath = path.join(__dirname, 'git_diff_extractor.py');
+        const diffProcess = exec(`python3 "${scriptPath}" "${treePath}" "${filePath}"`);
         let diffOutput = '';
         diffProcess.stdout?.on('data', (data) => {
           diffOutput += data.toString();

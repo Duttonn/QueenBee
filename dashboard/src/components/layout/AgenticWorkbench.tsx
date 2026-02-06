@@ -43,7 +43,7 @@ const AgenticWorkbench = ({
   const [expandedThinking, setExpandedThinking] = useState<Record<number, boolean>>({});
   const [isAgentMenuOpen, setIsAgentMenuOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { spawnAgent, socket, activeThreadId } = useHiveStore();
+  const { spawnAgent, socket, activeThreadId, setActiveThread } = useHiveStore();
 
   const handleAddAgent = (role: string) => {
     if (!activeProject) return;
@@ -84,11 +84,20 @@ const AgenticWorkbench = ({
         <div className="flex items-center gap-3">
           {/* Project Title */}
           {activeProject && (
-            <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-zinc-50 border border-zinc-100 mr-2">
-              <div className="w-4 h-4 rounded bg-blue-500 flex items-center justify-center text-[10px] text-white font-bold">
-                {activeProject.name[0]}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-zinc-50 border border-zinc-100">
+                <div className="w-4 h-4 rounded bg-blue-500 flex items-center justify-center text-[10px] text-white font-bold">
+                  {activeProject.name[0]}
+                </div>
+                <span className="text-xs font-semibold text-zinc-700">{activeProject.name}</span>
               </div>
-              <span className="text-xs font-semibold text-zinc-700">{activeProject.name}</span>
+              <button
+                onClick={() => setActiveThread(null)}
+                className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-blue-500 transition-colors"
+                title="New Thread"
+              >
+                <Plus size={14} />
+              </button>
             </div>
           )}
         </div>
@@ -239,6 +248,9 @@ const AgenticWorkbench = ({
                           projectId: activeProject?.id, 
                           threadId: activeThreadId, 
                           toolCallId: tool.id || tool.name, 
+                          tool: tool.name,
+                          args: tool.arguments,
+                          projectPath: activeProject?.path,
                           approved: true 
                         });
                       }}
@@ -247,6 +259,9 @@ const AgenticWorkbench = ({
                           projectId: activeProject?.id, 
                           threadId: activeThreadId, 
                           toolCallId: tool.id || tool.name, 
+                          tool: tool.name,
+                          args: tool.arguments,
+                          projectPath: activeProject?.path,
                           approved: false 
                         });
                       }}

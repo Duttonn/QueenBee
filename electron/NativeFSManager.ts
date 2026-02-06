@@ -1,5 +1,5 @@
 import type { IpcMainInvokeEvent } from 'electron';
-const { ipcMain, shell } = require('electron');
+const { ipcMain, shell, dialog, BrowserWindow } = require('electron');
 const { exec } = require('child_process');
 const fs = require('fs-extra');
 const path = require('path');
@@ -8,7 +8,7 @@ const path = require('path');
  * NativeFSManager: The IPC bridge for system-level operations.
  * This runs in the Electron Main process (Native side).
  */
-class NativeFSManager {
+export class NativeFSManager {
   setupHandlers() {
     // Handler for cloning repos to the local machine
     ipcMain.handle('fs:clone', async (event: IpcMainInvokeEvent, { repoUrl, targetDir }: { repoUrl: string, targetDir: string }) => {
@@ -51,7 +51,7 @@ class NativeFSManager {
     // Git Operations (Basic wrappers around CLI)
     ipcMain.handle('git:status', async (event: IpcMainInvokeEvent, projectPath: string) => {
       return new Promise((resolve, reject) => {
-        exec('git status', { cwd: projectPath }, (err: any, out: string) => { // Removed --json as it's not standard git status
+        exec('git status', { cwd: projectPath }, (err: any, out: string) => {
             if (err) reject(err);
             else resolve(out);
           });
@@ -67,7 +67,16 @@ class NativeFSManager {
         });
       });
     });
+
+    // Native Dialogs
+    ipcMain.handle('dialog:showOpen', async (event: IpcMainInvokeEvent, options: any) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      return await dialog.showOpenDialog(win, options);
+    });
+
+    ipcMain.handle('dialog:showMessage', async (event: IpcMainInvokeEvent, options: any) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      return await dialog.showMessageBox(win, options);
+    });
   }
 }
-
-module.exports = { NativeFSManager };
