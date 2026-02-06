@@ -4,6 +4,7 @@ import path from 'path';
 import { broadcast } from './socket-instance';
 import { Paths } from './Paths';
 import { CloudFSManager } from './CloudFSManager';
+import { ProjectTaskManager } from './ProjectTaskManager';
 
 // Simple Mutex for concurrent file writes
 class Mutex {
@@ -60,6 +61,7 @@ export class ToolExecutor {
     }
 
     const cloudFS = mode === 'cloud' ? new CloudFSManager(projectPath) : null;
+    const ptm = new ProjectTaskManager(projectPath);
 
     broadcast('TOOL_EXECUTION', { 
       tool: tool.name, 
@@ -133,7 +135,9 @@ export class ToolExecutor {
             status: tool.arguments.status, 
             prUrl: tool.arguments.prUrl 
           });
-          result = { success: true, message: `Status for ${tool.arguments.taskId} updated.` };
+          // Also update the local TASKS.md if it exists
+          await ptm.completeTask(tool.arguments.taskId, agentId || 'unknown');
+          result = { success: true, message: `Status for ${tool.arguments.taskId} updated and TASKS.md synced.` };
           break;
 
         case 'check_status':
@@ -143,6 +147,21 @@ export class ToolExecutor {
           } else {
             result = Object.fromEntries(workerRegistry);
           }
+          break;
+
+        case 'plan_tasks':
+          await ptm.updateTasks(tool.arguments.content);
+          result = { success: true, message: 'TASKS.md updated with the new plan.' };
+          break;
+
+        case 'add_task':
+          await ptm.addTask(tool.arguments.phase, tool.arguments.taskId, tool.arguments.description);
+          result = { success: true, taskId: tool.arguments.taskId, message: 'Task added to TASKS.md' };
+          break;
+
+        case 'claim_task':
+          const claimed = await ptm.claimTask(tool.arguments.taskId, agentId || 'unknown');
+          result = { success: claimed, taskId: tool.arguments.taskId, message: claimed ? 'Task claimed' : 'Task not found or already claimed' };
           break;
           
         default:

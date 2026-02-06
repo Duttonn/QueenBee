@@ -61,4 +61,62 @@ Génère le contenu pour un fichier TASKS.md avec :
       .filter(line => line.startsWith('- [ ]'))
       .map(line => line.replace('- [ ]', '').trim());
   }
+
+  async claimTask(taskId: string, agentId: string): Promise<boolean> {
+    if (!(await fs.pathExists(this.tasksFile))) return false;
+    let content = await fs.readFile(this.tasksFile, 'utf-8');
+
+    const safeTaskId = taskId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = `- \\[ \\] \`${safeTaskId}\``;
+    const regex = new RegExp(pattern);
+
+    if (!regex.test(content)) return false;
+
+    const newContent = content.replace(
+      regex,
+      `- [IN PROGRESS: ${agentId}] \`${taskId}\``
+    );
+
+    await fs.writeFile(this.tasksFile, newContent);
+    return true;
+  }
+
+  async completeTask(taskId: string, agentId: string): Promise<boolean> {
+    if (!(await fs.pathExists(this.tasksFile))) return false;
+    let content = await fs.readFile(this.tasksFile, 'utf-8');
+
+    const safeTaskId = taskId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = `- \\[IN PROGRESS: ${agentId}\\] \`${safeTaskId}\``;
+    const regex = new RegExp(pattern);
+
+    if (!regex.test(content)) {
+      const fallbackPattern = `- \\[IN PROGRESS: .*\\] \`${safeTaskId}\``;
+      const fallbackRegex = new RegExp(fallbackPattern);
+      if (!fallbackRegex.test(content)) return false;
+      const newContent = content.replace(fallbackRegex, `- [DONE] \`${taskId}\``);
+      await fs.writeFile(this.tasksFile, newContent);
+      return true;
+    }
+
+    const newContent = content.replace(regex, `- [DONE] \`${taskId}\``);
+    await fs.writeFile(this.tasksFile, newContent);
+    return true;
+  }
+
+  async addTask(phase: string, taskId: string, description: string) {
+    if (!(await fs.pathExists(this.tasksFile))) {
+      await this.ensureInitialized('New Project');
+    }
+    let content = await fs.readFile(this.tasksFile, 'utf-8');
+    const newTaskLine = `- [ ] \`${taskId}\`: ${description}`;
+    
+    const phaseHeader = `## ${phase}`;
+    if (content.includes(phaseHeader)) {
+      content = content.replace(phaseHeader, `${phaseHeader}\n${newTaskLine}`);
+    } else {
+      content += `\n\n${phaseHeader}\n${newTaskLine}`;
+    }
+    
+    await fs.writeFile(this.tasksFile, content);
+  }
 }

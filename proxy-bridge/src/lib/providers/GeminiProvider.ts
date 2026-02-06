@@ -10,11 +10,10 @@ export class GeminiProvider extends LLMProvider {
     this.apiKey = apiKey;
   }
 
-  async chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
-    const geminiModel = options?.model || 'gemini-2.5-flash-lite';
-    
-    // Antigravity fallback (special case for borrowed IDs if no specific model selected)
-    let finalModel = geminiModel;
+    async chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
+      const geminiModel = options?.model || 'gemini-1.5-flash';
+  
+      // Antigravity fallback (special case for borrowed IDs if no specific model selected)    let finalModel = geminiModel;
     if (finalModel === 'antigravity-1') {
       finalModel = 'gemini-1.5-pro';
     }
@@ -124,7 +123,7 @@ export class GeminiProvider extends LLMProvider {
   }
 
   async *chatStream(messages: LLMMessage[], options?: LLMProviderOptions): AsyncGenerator<LLMResponse> {
-    const geminiModel = options?.model || 'gemini-2.5-flash-lite';
+    const geminiModel = options?.model || 'gemini-1.5-flash';
     let finalModel = geminiModel;
     if (finalModel === 'antigravity-1') finalModel = 'gemini-1.5-pro';
 

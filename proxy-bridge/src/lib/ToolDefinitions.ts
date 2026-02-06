@@ -135,5 +135,49 @@ export const AGENT_TOOLS = [
         }
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'plan_tasks',
+      description: 'Initialize or update the project TASKS.md with a structured plan. Use this as an Orchestrator to define the project roadmap.',
+      parameters: {
+        type: 'object',
+        properties: {
+          content: { type: 'string', description: 'The full Markdown content for TASKS.md.' }
+        },
+        required: ['content']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'add_task',
+      description: 'Add a single task to an existing phase in TASKS.md.',
+      parameters: {
+        type: 'object',
+        properties: {
+          phase: { type: 'string', description: 'The phase name (e.g. "PHASE 2: FEATURES").' },
+          taskId: { type: 'string', description: 'Unique ID (e.g. "FEAT-02").' },
+          description: { type: 'string', description: 'What needs to be done.' }
+        },
+        required: ['phase', 'taskId', 'description']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'claim_task',
+      description: 'Mark a task as in-progress in TASKS.md. Use this when starting to work on a task.',
+      parameters: {
+        type: 'object',
+        properties: {
+          taskId: { type: 'string', description: 'The ID of the task to claim.' }
+        },
+        required: ['taskId']
+      }
+    }
   }
 ];
