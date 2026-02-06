@@ -17,8 +17,9 @@ function App() {
   // Initialize Socket.io connection if authenticated and onboarded
   useEffect(() => {
     if (isAuthenticated && isOnboarded) {
-      initSocket();
-      fetchProjects();
+      initSocket().then(() => {
+        fetchProjects();
+      });
     }
   }, [isAuthenticated, isOnboarded, initSocket, fetchProjects]);
 

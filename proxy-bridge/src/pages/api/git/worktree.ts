@@ -14,15 +14,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Common query params: path (to repo), name (of worktree)
-    const repoPath = (req.body?.path || req.query.path) as string;
+    const rawRepoPath = (req.body?.path || req.query.path) as string;
     const worktreeName = (req.body?.name || req.query.name) as string;
 
-    if (!repoPath) {
+    if (!rawRepoPath) {
         return res.status(400).json({ error: 'Repository path required' });
     }
 
+    const repoPath = path.isAbsolute(rawRepoPath) 
+        ? rawRepoPath 
+        : path.resolve(process.cwd(), '..', rawRepoPath);
+
     if (!fs.existsSync(repoPath)) {
-        return res.status(400).json({ error: 'Repository path does not exist' });
+        return res.status(400).json({ error: `Repository path does not exist: ${repoPath}` });
     }
 
     const git = simpleGit(repoPath);

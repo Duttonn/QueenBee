@@ -78,27 +78,44 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
     
     // Check if we are in Electron or Web
     if (window.electron) {
-      // Use relative path for portability
-      const targetDir = `projects/${repo.name}`;
       try {
-        console.log(`[Electron] Starting clone for ${repo.full_name}...`);
-        await window.electron.clone(repo.html_url, targetDir);
+        // ALLOW USER TO CHOOSE FOLDER
+        const result = await (window.electron as any).dialog.showOpen({
+          properties: ['openDirectory'],
+          title: 'Select Destination Folder for Clone'
+        });
+
+        if (result.canceled || result.filePaths.length === 0) {
+          setIsCloning(null);
+          return;
+        }
+
+        const baseDir = result.filePaths[0];
+        const targetDirForClone = `${baseDir}/${repo.name}`;
         
-        const newProject = {
-          id: repo.id.toString(),
-          name: repo.name,
-          path: targetDir,
-          agents: [],
-          threads: [
-            { id: Date.now().toString(), title: 'Initial Triage', diff: '+0 -0', time: 'Just now', messages: [] }
-          ],
-          type: 'local'
-        };
+        console.log(`[Electron] Starting clone for ${repo.full_name} into ${targetDirForClone}...`);
+        await window.electron.clone(repo.html_url, targetDirForClone);
         
-        addProject(newProject);
-        setIsAddRepoOpen(false);
-        onProjectSelect?.(newProject.id);
-        setActiveThread(newProject.threads[0].id);
+        // SAVE TO BACKEND
+        const res = await fetch('http://127.0.0.1:3000/api/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: repo.name,
+            path: targetDirForClone, // Use the actual absolute path chosen by user
+            type: 'local'
+          })
+        });
+
+        if (res.ok) {
+          const savedProject = await res.json();
+          addProject(savedProject);
+          setIsAddRepoOpen(false);
+          onProjectSelect?.(savedProject.id);
+          if (savedProject.threads && savedProject.threads.length > 0) {
+            setActiveThread(savedProject.threads[0].id);
+          }
+        }
       } catch (error) {
         console.error('Clone failed:', error);
         alert(`Failed to clone repository: ${error}`);
@@ -108,7 +125,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
     } else {
       // WEB MODE - Use Cloud Import
       try {
-        const res = await fetch('http://localhost:3000/api/projects/import-url', {
+        const res = await fetch('http://127.0.0.1:3000/api/projects/import-url', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -203,6 +220,33 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
             Threads
           </div>
           <div className="flex items-center gap-1">
+            <button
+              onClick={async () => {
+                if (window.electron) {
+                  const result = await (window.electron as any).dialog.showOpen({
+                    properties: ['openDirectory'],
+                    title: 'Select Project Folder'
+                  });
+                  if (!result.canceled && result.filePaths.length > 0) {
+                    const path = result.filePaths[0];
+                    const name = path.split('/').pop() || 'Existing Project';
+                    const res = await fetch('http://127.0.0.1:3000/api/projects', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ name, path, type: 'local' })
+                    });
+                    if (res.ok) {
+                      const proj = await res.json();
+                      addProject(proj);
+                    }
+                  }
+                }
+              }}
+              className="text-gray-400 hover:text-blue-500 transition-colors p-1 hover:bg-gray-100 rounded"
+              title="Open Local Folder"
+            >
+              <Folder size={14} />
+            </button>
             <button
               onClick={() => setIsCloudImportOpen(!isCloudImportOpen)}
               className="text-gray-400 hover:text-blue-500 transition-colors p-1 hover:bg-gray-100 rounded"

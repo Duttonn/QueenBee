@@ -35,6 +35,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { useHiveStore } from '../../store/useHiveStore';
 import CustomizationPanel from '../settings/CustomizationPanel';
 import { NativeService } from '../../services/NativeService';
+import { useVoiceRecording } from '../../hooks/useVoiceRecording';
 
 // Cloud Terminal Icon Component (matches ☁️_ from spec)
 const CloudTerminalIcon = () => (
@@ -156,6 +157,25 @@ interface ComposerBarProps {
 const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange, availableModels, selectedModel, onModelSelect }: ComposerBarProps) => {
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
 
+  // Voice Recording Hook
+  const { isRecording, toggleRecording } = useVoiceRecording(
+    useCallback((transcript) => {
+      onChange(value ? `${value} ${transcript}` : transcript);
+    }, [value, onChange])
+  );
+
+  // Ctrl+M Shortcut for Composer
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'm') {
+        e.preventDefault();
+        toggleRecording();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleRecording]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && value.trim() && !isLoading) {
       e.preventDefault();
@@ -165,7 +185,7 @@ const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange,
 
   return (
     <div className="absolute bottom-6 left-4 right-4 sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-3xl sm:px-4">
-      <div className="bg-white border border-gray-200 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="bg-white border border-gray-200 rounded-3xl shadow-2xl flex flex-col">
         {/* Top: Input Area */}
         <div className="px-4 pt-4 pb-2">
           <textarea
@@ -181,7 +201,7 @@ const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange,
         </div>
 
         {/* Bottom: Controls Row */}
-        <div className="px-3 pb-3 pt-1 flex items-center justify-between bg-zinc-50/30 border-t border-gray-100/50">
+        <div className="px-3 pb-3 pt-1 flex items-center justify-between bg-zinc-50/30 border-t border-gray-100/50 rounded-b-3xl">
           <div className="flex items-center gap-2">
             {/* Plus button */}
             <button className="p-2 hover:bg-gray-100 rounded-xl text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0">
@@ -255,8 +275,11 @@ const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange,
 
           {/* Right side: Voice and Send */}
           <div className="flex items-center gap-2">
-            <button className="p-2 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-gray-600 transition-colors">
-              <Mic size={18} strokeWidth={1.5} />
+            <button 
+              onClick={toggleRecording}
+              className={`p-2 rounded-xl transition-all ${isRecording ? 'bg-red-500/10 text-red-500' : 'hover:bg-gray-100 text-gray-400 hover:text-gray-600'}`}
+            >
+              {isRecording ? <Loader2 size={18} className="animate-spin" /> : <Mic size={18} strokeWidth={1.5} />}
             </button>
             <button
               onClick={onSubmit}
@@ -419,7 +442,8 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           messages: [...messages, userMessage],
           provider: providerToUse as any,
           apiKey: apiKey,
-        },
+          projectPath: activeProject?.path // Pass the path for context injection
+        } as any,
         (chunk) => {
           updateLastMessage(selectedProjectId, currentThreadId!, chunk);
         },
@@ -427,7 +451,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           setIsLoading(false);
           // Update diff stats after action
           try {
-            const diff = await getGitDiff(activeProject?.path || '.');
+            const diff = await getGitDiff(activeProject?.path || '../');
             setDiffStats({ added: diff.added, removed: diff.removed });
             
             updateThread(selectedProjectId, currentThreadId!, {

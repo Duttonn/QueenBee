@@ -1,5 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { ToolExecutor } from '../../lib/ToolExecutor';
+import { AutonomousRunner } from '../../lib/AutonomousRunner';
+import { ProjectTaskManager } from '../../lib/ProjectTaskManager';
+import { logger } from '../../lib/logger';
+import path from 'path';
 
 type Message = {
   role: 'system' | 'user' | 'assistant';
@@ -44,7 +48,8 @@ async function executeAndRespond(req: NextApiRequest, res: NextApiResponse, mess
     if (responseMessage.tool_calls) {
         console.log('[ToolCall] Detected:', responseMessage.tool_calls);
         const executor = new ToolExecutor();
-        const projectPath = req.body.projectPath || process.cwd(); // Assume projectPath is sent in the body
+        const rawPath = req.body.projectPath || process.cwd(); 
+        const projectPath = path.isAbsolute(rawPath) ? rawPath : path.resolve(process.cwd(), '..', rawPath);
 
         const toolResults = [];
         for (const toolCall of responseMessage.tool_calls) {
@@ -95,7 +100,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { model, messages, stream } = req.body;
+  const { model, messages, stream, projectPath: rawPath } = req.body;
+  logger.info(`[Chat] Request received. Model: ${model}, Stream: ${stream}, Path: ${rawPath}`);
+
+  // 1. Resolve Project Context
+  const projectPath = rawPath 
+    ? (path.isAbsolute(rawPath) ? rawPath : path.resolve(process.cwd(), '..', rawPath))
+    : process.cwd();
+  
+  logger.info(`[Chat] Resolved project path: ${projectPath}`);
+
+  // 2. Inject Context (TASK-27)
+  let enhancedMessages = [...messages];
+  try {
+    const runner = new AutonomousRunner((res as any).socket, projectPath);
+    const context = await runner.getEnhancedContext();
+    enhancedMessages.unshift({ role: 'system', content: context });
+  } catch (e) {
+    console.warn('[Chat] Context injection failed, proceeding with raw prompt');
+  }
 
   // Prioritized list of providers to try
   // ... (rest of the provider logic remains the same)
@@ -136,7 +159,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         },
         body: JSON.stringify({
           model: model || (provider.id === 'nvidia' ? 'moonshotai/kimi-k2.5' : 'llama3'),
-          messages,
+          messages: enhancedMessages,
           stream
         }),
       };
@@ -149,9 +172,124 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             headers: { 'Content-Type': 'application/json' } // Ollama doesn't need auth
         });
       } else if (provider.id === 'gemini') {
-        // Gemini logic remains complex due to different API structure
-        // Not integrating tool calls with Gemini in this step for simplicity
-        // ... (Gemini logic as before)
+        const apiKey = provider.key || process.env.GEMINI_API_KEY;
+        
+        if (!apiKey) {
+          throw new Error('Gemini API Key is missing. Please configure it in Settings.');
+        }
+
+        // Map OpenAI messages to Gemini format
+        const geminiMessages = enhancedMessages.map((m: any) => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content || '' }]
+        }));
+
+        const geminiModel = model || 'gemini-1.5-flash';
+
+                try {
+
+                  logger.info(`[Gemini] Sending ${enhancedMessages.length} messages to model ${geminiModel}`);
+
+                  response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`, {
+
+                    method: 'POST',
+
+                    headers: { 'Content-Type': 'application/json' },
+
+                    body: JSON.stringify({
+
+                      contents: geminiMessages,
+
+                      generationConfig: {
+
+                        temperature: 0.7,
+
+                        maxOutputTokens: 2048,
+
+                      }
+
+                    })
+
+                  });
+
+        
+
+                  if (response.ok) {
+
+                    const data = await response.json();
+
+                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Gemini.';
+
+                    logger.info(`[Gemini] Received response (${text.length} chars)`);
+
+                    
+
+                    if (stream) {
+
+        
+
+                        res.writeHead(200, { 
+
+                          'Content-Type': 'text/event-stream',
+
+                          'Cache-Control': 'no-cache',
+
+                          'Connection': 'keep-alive'
+
+                        });
+
+                        // Wrap the full response in a single SSE data block so the frontend reader catches it
+
+                        const sseData = {
+
+                          choices: [{
+
+                            delta: { content: text }
+
+                          }]
+
+                        };
+
+                        res.write(`data: ${JSON.stringify(sseData)}\n\n`);
+
+                        res.end();
+
+                        return;
+
+                      } else {
+
+                        const mockOpenAIResponse = {
+
+                          id: `gemini-${Date.now()}`,
+
+                          choices: [{
+
+                            message: {
+
+                              role: 'assistant',
+
+                              content: text
+
+                            }
+
+                          }]
+
+                        };
+
+                        return executeAndRespond(req, res, messages, mockOpenAIResponse);
+
+                      }
+
+                    }
+
+           else {
+            const errBody = await response.text();
+            throw new Error(`Gemini API error: ${response.status} ${errBody}`);
+          }
+        } catch (e: any) {
+          console.error('[Gemini] Fetch failed:', e.message);
+          throw e;
+        }
       }
 
       if (response && response.ok) {
@@ -163,7 +301,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return;
         } else {
             const data = await response.json();
-            return executeAndRespond(req, res, messages, data);
+            return executeAndRespond(req, res, enhancedMessages, data);
         }
       } else {
         const errText = await response?.text();
