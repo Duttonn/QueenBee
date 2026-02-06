@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DATA_DIR, 'queenbee.json');
@@ -99,7 +100,18 @@ export const getDb = (): Database => {
     }
     try {
         const data = fs.readFileSync(DB_PATH, 'utf-8');
-        return JSON.parse(data);
+        const db = JSON.parse(data) as Database;
+
+        // Resolve ~ in project paths
+        if (db.projects) {
+            db.projects.forEach(p => {
+                if (p.path.startsWith('~')) {
+                    p.path = p.path.replace('~', os.homedir());
+                }
+            });
+        }
+
+        return db;
     } catch (error) {
         console.error('Error reading DB:', error);
         return defaultDb;
