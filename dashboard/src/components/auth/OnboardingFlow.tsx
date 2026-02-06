@@ -200,6 +200,27 @@ const ProvidersStep = ({
         setTestingId(provider.id);
         setTestResults(prev => ({ ...prev, [provider.id]: { success: false, message: 'Testing connection...' } }));
 
+        // For OAuth providers, initiate OAuth flow instead of testing key
+        if (provider.authType === 'oauth') {
+            try {
+                const isElectron = typeof window !== 'undefined' && (window as any).electron !== undefined;
+                const mode = isElectron ? 'electron' : 'web';
+                const response = await fetch(`${API_BASE}/api/auth/login?provider=${provider.id}&mode=${mode}`);
+                const data = await response.json();
+                
+                if (data.url) {
+                    window.open(data.url, `${provider.id}-oauth`, 'width=600,height=700');
+                    setTestResults(prev => ({ ...prev, [provider.id]: { success: true, message: 'OAuth flow initiated in new window.' } }));
+                } else {
+                    throw new Error('Failed to get authorization URL');
+                }
+            } catch (error: any) {
+                setTestResults(prev => ({ ...prev, [provider.id]: { success: false, message: `Failed to start OAuth: ${error.message}` } }));
+            }
+            setTestingId(null);
+            return;
+        }
+
         // Ensure key is saved securely before testing if it's changed
         if (provider.apiKey) {
             await onSaveKey(provider.id, provider.apiKey);
@@ -330,7 +351,27 @@ const ProvidersStep = ({
                                     className="border-t border-white/5 overflow-hidden"
                                 >
                                     <div className="p-4 space-y-4">
-                                        {provider.id !== 'ollama' ? (
+                                        {provider.authType === 'oauth' ? (
+                                            <div className="py-2">
+                                                <p className="text-xs text-slate-400 mb-4">
+                                                    This provider uses OAuth. Click the button below to sign in with your account.
+                                                </p>
+                                                <button
+                                                    onClick={() => handleTestConnection(provider)}
+                                                    disabled={testingId === provider.id}
+                                                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-white text-gray-900 text-sm font-bold rounded-xl hover:bg-gray-100 transition-all shadow-lg"
+                                                >
+                                                    {testingId === provider.id ? (
+                                                        <Loader2 size={18} className="animate-spin" />
+                                                    ) : (
+                                                        <>
+                                                            <ExternalLink size={18} />
+                                                            Connect {provider.name}
+                                                        </>
+                                                    )}
+                                                </button>
+                                            </div>
+                                        ) : provider.id !== 'ollama' ? (
                                             <div>
                                                 <label className="text-xs font-medium text-slate-400 mb-1.5 block">API Key</label>
                                                 <div className="relative">
@@ -357,23 +398,25 @@ const ProvidersStep = ({
                                             </div>
                                         )}
 
-                                        <button
-                                            onClick={() => handleTestConnection(provider)}
-                                            disabled={testingId === provider.id}
-                                            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-[#3B82F6] text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-                                        >
-                                            {testingId === provider.id ? (
-                                                <>
-                                                    <Loader2 size={14} className="animate-spin" />
-                                                    Testing connection...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Zap size={14} />
-                                                    Test Connection
-                                                </>
-                                            )}
-                                        </button>
+                                        {provider.authType !== 'oauth' && (
+                                            <button
+                                                onClick={() => handleTestConnection(provider)}
+                                                disabled={testingId === provider.id}
+                                                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-[#3B82F6] text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                                            >
+                                                {testingId === provider.id ? (
+                                                    <>
+                                                        <Loader2 size={14} className="animate-spin" />
+                                                        Testing connection...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Zap size={14} />
+                                                        Test Connection
+                                                    </>
+                                                )}
+                                            </button>
+                                        )}
 
                                         {/* Test Result Display */}
                                         {testResults[provider.id] && (

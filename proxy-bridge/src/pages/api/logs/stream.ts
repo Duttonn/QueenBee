@@ -28,6 +28,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
   if (res.socket && (res.socket as any).server.io) {
     console.log('[LogRelay] Socket.io already running');
+    setIO((res.socket as any).server.io); // Ensure singleton is populated
     res.end();
     return;
   }

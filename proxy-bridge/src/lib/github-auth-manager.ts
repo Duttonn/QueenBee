@@ -21,7 +21,7 @@ export class GitHubAuthManager {
         return os.platform() === 'darwin';
     }
 
-    static async initiateLogin(redirectUri: string): Promise<AuthInitResponse> {
+    static async initiateLogin(redirectUri: string, mode?: 'electron' | 'web'): Promise<AuthInitResponse> {
         const clientId = process.env.GITHUB_CLIENT_ID;
         if (!clientId) throw new Error('GITHUB_CLIENT_ID is not configured');
 
@@ -29,16 +29,19 @@ export class GitHubAuthManager {
         const preferDeviceFlow = process.env.USE_DEVICE_FLOW === 'true';
 
         // Hybrid Strategy:
-        // 1. If on macOS (Local) -> Use Web Flow (Redirect) for best UX
-        // 2. If on VPS (Linux/Other) -> Use Device Flow to avoid callback issues
+        // 1. If explicitly requested web mode, or not on mac -> maybe device flow or web flow
+        // For now, let's keep the logic but allow override
+        
+        const effectiveMode = mode || (this.isLocalMac() ? 'electron' : 'web');
+
         if (this.isLocalMac() && !preferDeviceFlow) {
-            return this.initiateWebFlow(clientId, redirectUri);
+            return this.initiateWebFlow(clientId, redirectUri, effectiveMode);
         } else {
             return this.initiateDeviceFlow(clientId);
         }
     }
 
-    private static initiateWebFlow(clientId: string, redirectUri: string): AuthInitResponse {
+    private static initiateWebFlow(clientId: string, redirectUri: string, mode: 'electron' | 'web'): AuthInitResponse {
         const scopes = [
             'user:email',
             'read:user',
@@ -51,7 +54,7 @@ export class GitHubAuthManager {
         const state = Buffer.from(JSON.stringify({
             timestamp: Date.now(),
             nonce: Math.random().toString(36).substring(7),
-            mode: this.isLocalMac() ? 'electron' : 'web'
+            mode: mode
         })).toString('base64');
 
         const authUrl = new URL('https://github.com/login/oauth/authorize');

@@ -34,10 +34,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { model, messages, stream, projectPath: rawPath } = req.body;
+  const { model, messages, stream, projectPath: rawPath, threadId } = req.body;
   const providerId = (req.headers['x-codex-provider'] as string) || 'auto';
+  const apiKey = req.headers['authorization']?.replace('Bearer ', '') || null;
   
-  logger.info(`[Chat] Request received. Provider: ${providerId}, Model: ${model}, Stream: ${stream}, Path: ${rawPath}`);
+  logger.info(`[Chat] Request received. Provider: ${providerId}, Model: ${model}, Stream: ${stream}, Path: ${rawPath}, Thread: ${threadId}`);
 
   // Resolve Project Context
   const projectPath = rawPath 
@@ -45,13 +46,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     : process.cwd();
   
   try {
-    const runner = new AutonomousRunner((res as any).socket, projectPath);
+    const runner = new AutonomousRunner((res as any).socket, projectPath, providerId, threadId, apiKey);
     
     const lastMessage = messages[messages.length - 1];
     
     if (lastMessage.role === 'user') {
       // Use the new agentic loop
-      const finalAssistantMessage = await runner.executeLoop(lastMessage.content, { model, stream, provider: providerId });
+      const finalAssistantMessage = await runner.executeLoop(lastMessage.content, { model, stream });
       
       return res.status(200).json({
         id: `queen-${Date.now()}`,

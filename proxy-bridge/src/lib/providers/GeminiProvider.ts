@@ -13,13 +13,19 @@ export class GeminiProvider extends LLMProvider {
   async chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
     const geminiModel = options?.model || 'gemini-1.5-flash';
     
+    // Antigravity fallback (special case for borrowed IDs if no specific model selected)
+    let finalModel = geminiModel;
+    if (finalModel === 'antigravity-1') {
+      finalModel = 'gemini-1.5-pro';
+    }
+    
     // Map messages to Gemini format
     const geminiMessages = messages.map((m) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: m.content || '' }]
     }));
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${this.apiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${finalModel}:generateContent?key=${this.apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -41,7 +47,7 @@ export class GeminiProvider extends LLMProvider {
 
     return {
       id: `gemini-${Date.now()}`,
-      model: geminiModel,
+      model: finalModel,
       content: text,
       usage: {
         prompt_tokens: 0, // Gemini returns usage but it needs mapping if we care

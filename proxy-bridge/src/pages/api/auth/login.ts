@@ -7,14 +7,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const { provider } = req.query;
+    const { provider, mode } = req.query;
 
     if (!provider || typeof provider !== 'string') {
         return res.status(400).json({ error: 'Provider is required' });
     }
 
     try {
-        const { url, state, codeVerifier } = await AuthManager.initiateOAuth(provider);
+        const { url, state, codeVerifier } = await AuthManager.initiateOAuth(provider, mode as any);
 
         // Store verifier/state in cookie or session if needed for strict security
         // For this implementation, we might skip persistent state storage but it's recommended

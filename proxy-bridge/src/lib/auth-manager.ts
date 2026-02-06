@@ -7,6 +7,14 @@ import crypto from 'crypto';
 // Configuration for providers
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+
+// OpenClaw "Borrowed" Client IDs for specific features
+const ANTIGRAVITY_CLIENT_ID = process.env.ANTIGRAVITY_CLIENT_ID || "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com";
+const ANTIGRAVITY_CLIENT_SECRET = process.env.ANTIGRAVITY_CLIENT_SECRET || "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f";
+
+const GEMINI_CLI_CLIENT_ID = process.env.GEMINI_CLI_CLIENT_ID; // Usually extracted from local install
+const GEMINI_CLI_CLIENT_SECRET = process.env.GEMINI_CLI_CLIENT_SECRET;
+
 // Redirect URI for local flow
 const REDIRECT_URI = 'http://localhost:3000/api/auth/callback';
 
@@ -15,34 +23,109 @@ export class AuthManager {
     /**
      * Start OAuth flow for a provider
      */
-    static async initiateOAuth(provider: string): Promise<{ url: string; state: string; codeVerifier?: string }> {
+    static async initiateOAuth(provider: string, mode: 'electron' | 'web' = 'web'): Promise<{ url: string; state: string; codeVerifier?: string }> {
         if (provider === 'google') {
-            return this.initiateGoogleOAuth();
+            return this.initiateGoogleOAuth(mode);
+        }
+        if (provider === 'google-antigravity') {
+            return this.initiateAntigravityOAuth(mode);
+        }
+        if (provider === 'google-gemini-cli') {
+            return this.initiateGeminiCliOAuth(mode);
+        }
+        if (provider === 'openai-codex') {
+            return this.initiateOpenAICodexOAuth(mode);
+        }
+        if (provider === 'qwen-portal') {
+            return this.initiateQwenPortalOAuth(mode);
+        }
+        if (provider === 'anthropic' || provider === 'anthropic-oauth') {
+            return this.initiateAnthropicOAuth(mode);
         }
         throw new Error(`Provider ${provider} not supported for OAuth initiation`);
     }
 
     /**
-     * Google OAuth implementation
+     * Anthropic OAuth implementation (Claude Code)
      */
-    private static async initiateGoogleOAuth() {
-        if (!GOOGLE_CLIENT_ID) throw new Error('GOOGLE_CLIENT_ID not set');
-
-        const stateRaw = { p: 'google', n: uuidv4() };
+    private static async initiateAnthropicOAuth(mode: 'electron' | 'web' = 'web') {
+        const stateRaw = { p: 'anthropic', n: uuidv4(), mode: mode };
         const state = Buffer.from(JSON.stringify(stateRaw)).toString('base64');
-        // Google supports PKCE
+        // Anthropic uses claude.ai for authorize
+        const url = `https://claude.ai/oauth/authorize?client_id=official-id-here&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=openid%20profile%20email&state=${state}&response_type=code`;
+        return { url, state };
+    }
+
+    /**
+     * OpenAI Codex OAuth implementation
+     */
+    private static async initiateOpenAICodexOAuth(mode: 'electron' | 'web' = 'web') {
+        const stateRaw = { p: 'openai-codex', n: uuidv4(), mode: mode };
+        const state = Buffer.from(JSON.stringify(stateRaw)).toString('base64');
+        const url = `https://auth.openai.com/oauth/authorize?client_id=official-id-here&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=openid%20profile%20email&state=${state}&response_type=code`;
+        return { url, state };
+    }
+
+    /**
+     * Qwen Portal OAuth implementation
+     */
+    private static async initiateQwenPortalOAuth(mode: 'electron' | 'web' = 'web') {
+        const stateRaw = { p: 'qwen-portal', n: uuidv4(), mode: mode };
+        const state = Buffer.from(JSON.stringify(stateRaw)).toString('base64');
+        const url = `https://chat.qwen.ai/api/v1/oauth2/authorize?client_id=f0304373b74a44d2b584a3fb70ca9e56&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=openid%20profile%20email%20model.completion&state=${state}&response_type=code`;
+        return { url, state };
+    }
+
+    /**
+     * Google OAuth implementation (Standard)
+     */
+    private static async initiateGoogleOAuth(mode: 'electron' | 'web' = 'web') {
+        if (!GOOGLE_CLIENT_ID) throw new Error('GOOGLE_CLIENT_ID not set');
+        return this.generateGoogleUrl(GOOGLE_CLIENT_ID, ['openid', 'email', 'profile', 'https://www.googleapis.com/auth/cloud-platform'], 'google', mode);
+    }
+
+    /**
+     * Antigravity OAuth implementation (Borrowed ID)
+     */
+    private static async initiateAntigravityOAuth(mode: 'electron' | 'web' = 'web') {
+        const scopes = [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/userinfo.email",
+            "https://www.googleapis.com/auth/userinfo.profile",
+            "https://www.googleapis.com/auth/cclog",
+            "https://www.googleapis.com/auth/experimentsandconfigs",
+        ];
+        return this.generateGoogleUrl(ANTIGRAVITY_CLIENT_ID, scopes, 'google-antigravity', mode);
+    }
+
+    /**
+     * Gemini CLI OAuth implementation
+     */
+    private static async initiateGeminiCliOAuth(mode: 'electron' | 'web' = 'web') {
+        if (!GEMINI_CLI_CLIENT_ID) throw new Error('GEMINI_CLI_CLIENT_ID not set. Please set it in .env or install Gemini CLI.');
+        const scopes = [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/userinfo.email",
+            "https://www.googleapis.com/auth/userinfo.profile",
+        ];
+        return this.generateGoogleUrl(GEMINI_CLI_CLIENT_ID, scopes, 'google-gemini-cli', mode);
+    }
+
+    private static generateGoogleUrl(clientId: string, scopes: string[], provider: string, mode: 'electron' | 'web') {
+        const stateRaw = { p: provider, n: uuidv4(), mode: mode };
+        const state = Buffer.from(JSON.stringify(stateRaw)).toString('base64');
         const codeVerifier = this.generateCodeVerifier();
         const codeChallenge = this.generateCodeChallenge(codeVerifier);
 
         const params = new URLSearchParams({
-            client_id: GOOGLE_CLIENT_ID,
+            client_id: clientId,
             redirect_uri: REDIRECT_URI,
             response_type: 'code',
-            scope: 'openid email profile https://www.googleapis.com/auth/cloud-platform', // Adjust scopes as needed for Gemini/Antigravity
+            scope: scopes.join(' '),
             state: state,
             code_challenge: codeChallenge,
             code_challenge_method: 'S256',
-            access_type: 'offline', // Important for refresh token
+            access_type: 'offline',
             prompt: 'consent'
         });
 
@@ -55,17 +138,23 @@ export class AuthManager {
      */
     static async exchangeCodeForToken(provider: string, code: string, codeVerifier?: string): Promise<AuthProfile> {
         if (provider === 'google') {
-            return this.exchangeGoogleCode(code, codeVerifier);
+            return this.exchangeGoogleCode(code, GOOGLE_CLIENT_ID!, GOOGLE_CLIENT_SECRET!, codeVerifier);
+        }
+        if (provider === 'google-antigravity') {
+            return this.exchangeGoogleCode(code, ANTIGRAVITY_CLIENT_ID, ANTIGRAVITY_CLIENT_SECRET, codeVerifier, 'google-antigravity');
+        }
+        if (provider === 'google-gemini-cli') {
+            return this.exchangeGoogleCode(code, GEMINI_CLI_CLIENT_ID!, GEMINI_CLI_CLIENT_SECRET!, codeVerifier, 'google-gemini-cli');
         }
         throw new Error(`Provider ${provider} exchange not supported`);
     }
 
-    private static async exchangeGoogleCode(code: string, codeVerifier?: string): Promise<AuthProfile> {
-        if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) throw new Error('Google credentials not set');
+    private static async exchangeGoogleCode(code: string, clientId: string, clientSecret: string, codeVerifier?: string, provider: string = 'google'): Promise<AuthProfile> {
+        if (!clientId || !clientSecret) throw new Error(`${provider} credentials not set`);
 
         const params = new URLSearchParams({
-            client_id: GOOGLE_CLIENT_ID,
-            client_secret: GOOGLE_CLIENT_SECRET,
+            client_id: clientId,
+            client_secret: clientSecret,
             code: code,
             grant_type: 'authorization_code',
             redirect_uri: REDIRECT_URI,
@@ -90,11 +179,11 @@ export class AuthManager {
         // data: access_token, refresh_token, expires_in, id_token, scope
 
         // Use ID token to get user info/email for profile ID
-        const profileId = await this.generateProfileId('google', data.id_token);
+        const profileId = await this.generateProfileId(provider, data.id_token);
 
         const profile: AuthProfile = {
             id: profileId,
-            provider: 'google',
+            provider: provider,
             mode: 'oauth',
             access: data.access_token,
             refresh: data.refresh_token,

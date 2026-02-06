@@ -36,11 +36,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Get the redirect URI from query or use default
     const redirectUri = req.query.redirect_uri as string || 'http://localhost:3000/api/auth/github/callback';
+    const mode = req.query.mode as 'electron' | 'web';
 
     // Use the Auth Manager to decide the best flow (Hybrid Strategy)
     try {
         const { GitHubAuthManager } = require('../../../../lib/github-auth-manager');
-        const authResponse = await GitHubAuthManager.initiateLogin(redirectUri);
+        const authResponse = await GitHubAuthManager.initiateLogin(redirectUri, mode);
         return res.status(200).json(authResponse);
     } catch (error: any) {
         console.error('[Auth] Strategy selection failed:', error);

@@ -212,18 +212,25 @@ const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange,
 
             {/* Mode Selector */}
             <div className="flex items-center gap-1 bg-gray-100/80 rounded-xl p-1 flex-shrink-0">
-              {(['local', 'worktree', 'cloud'] as const).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => onModeChange(m)}
-                  className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${mode === m
-                    ? 'bg-white text-zinc-900 shadow-sm'
-                    : 'text-zinc-400 hover:text-zinc-600'
-                    }`}
-                >
-                  {m}
-                </button>
-              ))}
+              {(() => {
+                const isElectron = typeof window !== 'undefined' && (window as any).electron !== undefined;
+                const modes = isElectron 
+                  ? (['local', 'worktree', 'cloud'] as const)
+                  : (['cloud'] as const);
+                
+                return modes.map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => onModeChange(m)}
+                    className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${mode === m
+                      ? 'bg-white text-zinc-900 shadow-sm'
+                      : 'text-zinc-400 hover:text-zinc-600'
+                      }`}
+                  >
+                    {m}
+                  </button>
+                ));
+              })()}
             </div>
 
             {/* Model Selector */}
@@ -329,8 +336,13 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const [selectedModel, setSelectedModel] = useState<string>('');
 
   useEffect(() => {
-    if (availableModels.length > 0 && !selectedModel) {
-      setSelectedModel(availableModels[0]);
+    if (availableModels.length > 0) {
+      // If current selected model is not in the new available models list, reset it to the first available
+      if (!selectedModel || !availableModels.includes(selectedModel)) {
+        setSelectedModel(availableModels[0]);
+      }
+    } else {
+      setSelectedModel('');
     }
   }, [availableModels, selectedModel]);
 
@@ -400,7 +412,9 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   // Chat state
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [executionMode, setExecutionMode] = useState<'local' | 'worktree' | 'cloud'>('worktree');
+  const [executionMode, setExecutionMode] = useState<'local' | 'worktree' | 'cloud'>(
+    (typeof window !== 'undefined' && (window as any).electron) ? 'worktree' : 'cloud'
+  );
   const [diffStats, setDiffStats] = useState({ added: 0, removed: 0 });
 
   // Send message to backend using active provider
@@ -442,7 +456,8 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           messages: [...messages, userMessage],
           provider: providerToUse as any,
           apiKey: apiKey,
-          projectPath: activeProject?.path // Pass the path for context injection
+          projectPath: activeProject?.path, // Pass the path for context injection
+          threadId: currentThreadId
         } as any,
         (chunk) => {
           updateLastMessage(selectedProjectId, currentThreadId!, chunk);

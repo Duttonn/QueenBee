@@ -2,13 +2,14 @@ import simpleGit, { SimpleGit } from 'simple-git';
 import fs from 'fs-extra';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { Paths } from './Paths';
 
 export class RepoClonerService {
   private baseDir: string;
 
   constructor() {
-    // Jail workspaces in /tmp/workspaces
-    this.baseDir = path.join(process.cwd(), 'workspaces');
+    // Jail workspaces in ~/.codex/workspaces
+    this.baseDir = path.join(Paths.getCodexHome(), 'workspaces');
     fs.ensureDirSync(this.baseDir);
   }
 

@@ -1,16 +1,18 @@
 import { Server } from 'socket.io';
 
-let io: Server | null = null;
+// Use global to persist across hot-reloads in Next.js development
+const globalForSocket = global as unknown as { io: Server | undefined };
 
 export function getIO(): Server | null {
-  return io;
+  return globalForSocket.io || null;
 }
 
 export function setIO(server: Server) {
-  io = server;
+  globalForSocket.io = server;
 }
 
 export function broadcast(event: string, data: any) {
+  const io = getIO();
   if (io) {
     io.emit(event, data);
   } else {

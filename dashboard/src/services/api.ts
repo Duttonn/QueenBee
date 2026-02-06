@@ -38,6 +38,7 @@ export interface ChatRequest {
     provider?: 'gemini' | 'nvidia' | 'ollama' | 'mock' | 'openai' | 'anthropic';
     apiKey?: string;
     projectPath?: string;
+    threadId?: string;
 }
 
 /**
@@ -61,6 +62,8 @@ export async function sendChatMessage(request: ChatRequest): Promise<any> {
             model: request.model,
             messages: request.messages,
             stream: request.stream || false,
+            projectPath: request.projectPath,
+            threadId: request.threadId
         }),
     });
 
@@ -98,6 +101,8 @@ export async function sendChatMessageStream(
                 model: request.model,
                 messages: request.messages,
                 stream: true,
+                projectPath: request.projectPath,
+                threadId: request.threadId
             }),
         });
 

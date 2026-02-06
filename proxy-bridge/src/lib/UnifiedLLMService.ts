@@ -11,6 +11,13 @@ export class UnifiedLLMService {
   private providers: Map<string, LLMProvider> = new Map();
   public ready: Promise<void>;
 
+  private providerAliases: Record<string, string> = {
+    'gemini': 'google',
+    'claude': 'anthropic',
+    'codex': 'openai-codex',
+    'kimi': 'moonshot'
+  };
+
   constructor() {
     this.ready = this.initializeProviders();
   }
@@ -112,16 +119,103 @@ export class UnifiedLLMService {
 
   async chat(providerId: string, messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
     await this.ready;
-    const provider = this.providers.get(providerId);
-    if (!provider) {
-      // Fallback to auto-selection or error
-      if (providerId === 'auto') {
-        return this.autoChat(messages, options);
-      }
-      throw new Error(`Provider ${providerId} not found or not configured.`);
+    
+    // 1. Try to find the provider, reloading if necessary
+    let provider = await this.getOrLoadProvider(providerId, options);
+    
+    // 2. If not found and it's 'auto', use autoChat
+    if (!provider && providerId === 'auto') {
+      return this.autoChat(messages, options);
     }
 
-    return await provider.chat(messages, options);
+    // 3. Last resort fallback
+    if (!provider) {
+      console.warn(`[LLMService] Provider '${providerId}' not found. Attempting 'last resort' fallback to any configured provider...`);
+      const firstAvailable = Array.from(this.providers.entries())[0];
+      if (firstAvailable) {
+        console.log(`[LLMService] Falling back to provider: ${firstAvailable[0]}`);
+        provider = firstAvailable[1];
+      }
+    }
+
+    if (!provider) {
+      throw new Error(`No AI providers configured. Please add an API key or login in Settings. Available: ${Array.from(this.providers.keys()).join(', ') || 'none'}`);
+    }
+
+    // Safety: If the requested model is clearly for another provider, don't pass it
+    const safeOptions = { ...options };
+    const requestedModel = options?.model?.toLowerCase() || '';
+    
+    if (requestedModel.includes('gemini') && provider.id !== 'gemini' && !provider.id.includes('google')) {
+      safeOptions.model = undefined; // Let the provider use its own default
+    } else if (requestedModel.includes('gpt') && provider.id !== 'openai') {
+      safeOptions.model = undefined;
+    } else if (requestedModel.includes('claude') && provider.id !== 'anthropic') {
+      safeOptions.model = undefined;
+    }
+
+    return await provider.chat(messages, safeOptions);
+  }
+
+  private async getOrLoadProvider(providerId: string, options?: LLMProviderOptions): Promise<LLMProvider | undefined> {
+    // 1. Check existing providers
+    let provider = this.providers.get(providerId);
+    if (provider) return provider;
+
+    // 2. Try alias lookup
+    const alias = this.providerAliases[providerId];
+    if (alias) {
+      provider = this.providers.get(alias);
+      if (provider) return provider;
+    }
+
+    // 3. If an apiKey is passed, create a temporary provider
+    if (options?.apiKey) {
+      console.log(`[LLMService] Creating temporary provider for '${providerId}' using provided API key.`);
+      const type = alias || providerId;
+      const newProvider = this.createProviderByType(type, options.apiKey);
+      if (newProvider) return newProvider;
+    }
+
+    // 4. Try to load from store (in case it was added after startup)
+    console.log(`[LLMService] Provider '${providerId}' not found in memory, checking AuthProfileStore...`);
+    const profiles = await AuthProfileStore.listProfiles();
+    for (const profile of profiles) {
+      const pId = profile.id || profile.provider;
+      if (pId === providerId || pId === alias || profile.provider === providerId || profile.provider === alias) {
+        console.log(`[LLMService] Found matching profile in store: ${pId}. Loading into memory.`);
+        this.initFromProfile(profile);
+        return this.providers.get(pId);
+      }
+    }
+
+    // 5. Try pattern match in memory
+    for (const [id, p] of this.providers.entries()) {
+      if (id.startsWith(`${providerId}:`) || (alias && id.startsWith(`${alias}:`))) {
+        return p;
+      }
+    }
+
+    return undefined;
+  }
+
+  private createProviderByType(type: string, apiKey: string): LLMProvider | undefined {
+    switch (type) {
+      case 'openai':
+      case 'openai-codex':
+        return new OpenAIProvider(type, apiKey);
+      case 'anthropic':
+        return new AnthropicProvider(apiKey);
+      case 'google':
+      case 'gemini':
+        return new GeminiProvider(apiKey);
+      case 'mistral':
+        return new MistralProvider(apiKey);
+      case 'nvidia':
+        return new OpenAIProvider('nvidia', apiKey, 'https://integrate.api.nvidia.com/v1');
+      default:
+        return undefined;
+    }
   }
 
   private async autoChat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
@@ -134,11 +228,14 @@ export class UnifiedLLMService {
       const provider = this.providers.get(id);
       if (provider) {
         try {
+          console.log(`[AutoChat] Trying provider: ${id}`);
           return await provider.chat(messages, options);
         } catch (e: any) {
           lastError = e;
-          console.warn(`Auto-chat fallback: ${id} failed, trying next...`, e.message);
+          console.warn(`[AutoChat] Fallback: ${id} failed:`, e.message);
         }
+      } else {
+        console.log(`[AutoChat] Provider ${id} not configured, skipping.`);
       }
     }
 

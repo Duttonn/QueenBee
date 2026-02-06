@@ -19,6 +19,7 @@ import {
 import { useAppStore } from '../../store/useAppStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useHiveStore } from '../../store/useHiveStore';
+import { SystemService } from '../../services/SystemService';
 
 interface SidebarProps {
   activeView: 'build' | 'automations' | 'skills';
@@ -36,51 +37,18 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [isAddRepoOpen, setIsAddRepoOpen] = useState(false);
   const [isCloning, setIsCloning] = useState<string | null>(null);
-  const [importUrl, setImportUrl] = useState('');
-  const [isCloudImportOpen, setIsCloudImportOpen] = useState(false);
-
-  const handleImportUrl = async () => {
-    if (!importUrl) return;
-    setIsCloning('url');
-    
-    try {
-      const res = await fetch('http://localhost:3000/api/projects/import-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          repoUrl: importUrl,
-          projectName: importUrl.split('/').pop(),
-          accessToken: gitForge?.accessToken
-        })
-      });
-
-      if (res.ok) {
-        const newProject = await res.json();
-        addProject(newProject);
-        setIsCloudImportOpen(false);
-        setImportUrl('');
-        onProjectSelect?.(newProject.id);
-        setActiveThread(newProject.threads[0].id);
-      } else {
-        const err = await res.json();
-        alert(`Cloud import failed: ${err.error}`);
-      }
-    } catch (error) {
-      console.error('Cloud import failed:', error);
-      alert(`Failed to import repository to cloud: ${error}`);
-    } finally {
-      setIsCloning(null);
-    }
-  };
 
   const handleImportRepo = async (repo: any) => {
     setIsCloning(repo.full_name);
     
+    // Detect Electron environment
+    const isElectron = typeof window !== 'undefined' && (window as any).electron !== undefined;
+
     // Check if we are in Electron or Web
-    if (window.electron) {
+    if (isElectron) {
       try {
         // ALLOW USER TO CHOOSE FOLDER
-        const result = await (window.electron as any).dialog.showOpen({
+        const result = await SystemService.dialog.showOpen({
           properties: ['openDirectory'],
           title: 'Select Destination Folder for Clone'
         });
@@ -93,8 +61,8 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
         const baseDir = result.filePaths[0];
         const targetDirForClone = `${baseDir}/${repo.name}`;
         
-        console.log(`[Electron] Starting clone for ${repo.full_name} into ${targetDirForClone}...`);
-        await window.electron.clone(repo.html_url, targetDirForClone);
+        console.log(`[System] Starting clone for ${repo.full_name} into ${targetDirForClone}...`);
+        await SystemService.fs.clone(repo.html_url, targetDirForClone);
         
         // SAVE TO BACKEND
         const res = await fetch('http://127.0.0.1:3000/api/projects', {
@@ -221,84 +189,13 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
           </div>
           <div className="flex items-center gap-1">
             <button
-              onClick={async () => {
-                if (window.electron) {
-                  const result = await (window.electron as any).dialog.showOpen({
-                    properties: ['openDirectory'],
-                    title: 'Select Project Folder'
-                  });
-                  if (!result.canceled && result.filePaths.length > 0) {
-                    const path = result.filePaths[0];
-                    const name = path.split('/').pop() || 'Existing Project';
-                    const res = await fetch('http://127.0.0.1:3000/api/projects', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ name, path, type: 'local' })
-                    });
-                    if (res.ok) {
-                      const proj = await res.json();
-                      addProject(proj);
-                    }
-                  }
-                }
-              }}
-              className="text-gray-400 hover:text-blue-500 transition-colors p-1 hover:bg-gray-100 rounded"
-              title="Open Local Folder"
-            >
-              <Folder size={14} />
-            </button>
-            <button
-              onClick={() => setIsCloudImportOpen(!isCloudImportOpen)}
-              className="text-gray-400 hover:text-blue-500 transition-colors p-1 hover:bg-gray-100 rounded"
-              title="Import from URL (Cloud)"
-            >
-              <Globe size={14} />
-            </button>
-            <button
               onClick={() => setIsAddRepoOpen(!isAddRepoOpen)}
               className="text-gray-400 hover:text-blue-500 transition-colors p-1 hover:bg-gray-100 rounded"
-              title="Import Repository"
+              title="Add Project"
             >
               <Plus size={14} />
             </button>
           </div>
-
-          <AnimatePresence>
-            {isCloudImportOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setIsCloudImportOpen(false)} />
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
-                  className="absolute right-0 top-6 w-64 z-20 bg-white rounded-xl shadow-xl border border-gray-100 p-3"
-                >
-                  <div className="text-xs font-bold text-gray-600 mb-2 uppercase tracking-widest flex items-center gap-2">
-                    <Globe size={12} className="text-blue-500" /> Cloud Workspace
-                  </div>
-                  <div className="space-y-2">
-                    <div className="relative">
-                      <LinkIcon size={12} className="absolute left-2 top-2.5 text-gray-400" />
-                      <input 
-                        type="text" 
-                        placeholder="GitHub URL..." 
-                        className="w-full bg-gray-50 border border-gray-100 rounded-lg py-2 pl-7 pr-2 text-xs outline-none focus:border-blue-500"
-                        value={importUrl}
-                        onChange={(e) => setImportUrl(e.target.value)}
-                      />
-                    </div>
-                    <button 
-                      onClick={handleImportUrl}
-                      disabled={isCloning === 'url' || !importUrl}
-                      className="w-full bg-[#0F172A] text-white text-xs font-bold py-2 rounded-lg hover:bg-[#1E293B] transition-colors disabled:opacity-50"
-                    >
-                      {isCloning === 'url' ? <Loader2 size={14} className="animate-spin mx-auto" /> : 'Import to Server'}
-                    </button>
-                  </div>
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
 
           <AnimatePresence>
             {isAddRepoOpen && (
@@ -370,17 +267,85 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                           </div>
                           Connect GitHub
                         </button>
-                        <p className="text-[10px] text-gray-400 text-center mt-2">
-                          Connect to import repositories
-                        </p>
                       </div>
                     )}
                   </div>
 
-                  <div className="border-t border-gray-50 p-1">
+                  <div className="border-t border-gray-50 p-1 space-y-1">
+                    {/* Environment Specific Actions */}
+                    {typeof window !== 'undefined' && (window as any).electron ? (
+                      <button
+                        onClick={async () => {
+                          const result = await SystemService.dialog.showOpen({
+                            properties: ['openDirectory'],
+                            title: 'Select Project Folder'
+                          });
+                          if (!result.canceled && result.filePaths.length > 0) {
+                            const path = result.filePaths[0];
+                            const name = path.split('/').pop() || 'Existing Project';
+                            const res = await fetch('http://127.0.0.1:3000/api/projects', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ name, path, type: 'local' })
+                            });
+                            if (res.ok) {
+                              const proj = await res.json();
+                              addProject(proj);
+                              setIsAddRepoOpen(false);
+                            }
+                          }
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+                      >
+                        <Folder size={12} className="text-gray-400" />
+                        <span>Import Local Folder</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={async () => {
+                          const url = prompt('Enter GitHub repository URL (e.g. https://github.com/user/repo):');
+                          if (url) {
+                            setIsCloning('url');
+                            try {
+                              const res = await fetch('http://localhost:3000/api/projects/import-url', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  repoUrl: url,
+                                  projectName: url.split('/').pop(),
+                                  accessToken: gitForge?.accessToken
+                                })
+                              });
+
+                              if (res.ok) {
+                                const newProject = await res.json();
+                                addProject(newProject);
+                                setIsAddRepoOpen(false);
+                                onProjectSelect?.(newProject.id);
+                                if (newProject.threads && newProject.threads.length > 0) {
+                                  setActiveThread(newProject.threads[0].id);
+                                }
+                              } else {
+                                const err = await res.json();
+                                alert(`Import failed: ${err.error}`);
+                              }
+                            } catch (e) {
+                              alert(`Import failed: ${e}`);
+                            } finally {
+                              setIsCloning(null);
+                            }
+                          }
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+                      >
+                        <Globe size={12} className="text-gray-400" />
+                        <span>Import Remote Repo (Fork)</span>
+                      </button>
+                    )}
+                    
                     <button
                       onClick={onOpenSettings}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-blue-600 hover:bg-blue-50 rounded-lg justify-center transition-colors"
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                     >
                       <Settings size={12} />
                       <span>Manage Connections</span>

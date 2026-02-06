@@ -11,6 +11,7 @@ export interface AIProvider {
     connected: boolean;
     tier: number;
     models?: string[];
+    authType: 'api_key' | 'oauth' | 'token';
 }
 
 export interface GitForge {
@@ -64,11 +65,20 @@ interface AuthState {
 }
 
 const defaultProviders: AIProvider[] = [
-    { id: 'openai', name: 'OpenAI', icon: '🤖', connected: false, tier: 1, models: ['gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo'] },
-    { id: 'anthropic', name: 'Claude (Anthropic)', icon: '🧠', connected: false, tier: 2, models: ['claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku'] },
-    { id: 'gemini', name: 'Google Gemini', icon: '✨', connected: false, tier: 3, models: ['gemini-2.0-flash', 'gemini-1.5-pro'] },
-    { id: 'ollama', name: 'Ollama (Local)', icon: '🦙', connected: false, tier: 4, baseUrl: 'http://localhost:11434', models: ['llama3', 'mistral', 'codellama'] },
-    { id: 'nvidia', name: 'NVIDIA NIM', icon: '🟢', connected: false, tier: 5, models: ['meta/llama3-70b-instruct'] },
+    { id: 'openai', name: 'OpenAI', icon: '🤖', connected: false, tier: 1, models: ['gpt-4o', 'gpt-4-turbo', 'o1-preview'], authType: 'api_key' },
+    { id: 'openai-codex', name: 'OpenAI Codex (ChatGPT)', icon: '💬', connected: false, tier: 2, models: ['gpt-4o', 'gpt-4-turbo'], authType: 'oauth' },
+    { id: 'anthropic', name: 'Claude (Anthropic)', icon: '🧠', connected: false, tier: 3, models: ['claude-3-5-sonnet', 'claude-3-opus', 'claude-3-haiku'], authType: 'api_key' },
+    { id: 'anthropic-oauth', name: 'Claude OAuth (Subscription)', icon: '🧠', connected: false, tier: 4, models: ['claude-3-5-sonnet'], authType: 'oauth' },
+    { id: 'gemini', name: 'Google Gemini', icon: '✨', connected: false, tier: 5, models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-2.0-flash-001', 'gemini-2.0-flash-lite-001'], authType: 'api_key' },
+    { id: 'google-gemini-cli', name: 'Gemini CLI', icon: '💻', connected: false, tier: 6, models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'], authType: 'oauth' },
+    { id: 'google-antigravity', name: 'Antigravity', icon: '🌌', connected: false, tier: 7, models: ['antigravity-1'], authType: 'oauth' },
+    { id: 'mistral', name: 'Mistral AI', icon: '🌬️', connected: false, tier: 7, models: ['mistral-large-latest', 'mistral-small-latest', 'codestral-latest'], authType: 'api_key' },
+    { id: 'qwen-portal', name: 'Qwen Portal', icon: '🏮', connected: false, tier: 8, models: ['qwen-turbo'], authType: 'oauth' },
+    { id: 'perplexity', name: 'Perplexity', icon: '🔍', connected: false, tier: 9, models: ['llama-3-sonar-large-32k-online'], authType: 'api_key' },
+    { id: 'groq', name: 'Groq', icon: '⚡', connected: false, tier: 10, models: ['llama3-70b-8192', 'mixtral-8x7b-32768'], authType: 'api_key' },
+    { id: 'ollama', name: 'Ollama (Local)', icon: '🦙', connected: false, tier: 11, baseUrl: 'http://localhost:11434', models: ['llama3', 'mistral', 'codellama'], authType: 'api_key' },
+    { id: 'nvidia', name: 'NVIDIA NIM', icon: '🟢', connected: false, tier: 12, models: ['meta/llama3-70b-instruct'], authType: 'api_key' },
+    { id: 'antigravity', name: 'Antigravity (Legacy)', icon: '🌌', connected: false, tier: 13, models: ['antigravity-1'], authType: 'api_key' },
 ];
 
 const defaultForges: GitForge[] = [
@@ -170,6 +180,7 @@ export const useAuthStore = create<AuthState>()(
         }),
         {
             name: 'queen-bee-auth',
+            version: 5, // Incremented to remove hardcoded models
             partialize: (state) => ({
                 user: state.user,
                 isAuthenticated: state.isAuthenticated,

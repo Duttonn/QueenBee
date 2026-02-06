@@ -25,6 +25,7 @@ interface HiveState {
   addThread: (projectId: string, thread: any) => void;
   updateThread: (projectId: string, threadId: string, updates: any) => void;
   addMessage: (projectId: string, threadId: string, message: any) => void;
+  clearThreadMessages: (projectId: string, threadId: string) => void;
   updateLastMessage: (projectId: string, threadId: string, content: string) => void;
   updateToolCall: (projectId: string, threadId: string, messageIndex: number, toolCallId: string, updates: any) => void;
 }
@@ -114,8 +115,29 @@ export const useHiveStore = create<HiveState>()(
         projects: state.projects.map(p =>
           p.id === projectId ? {
             ...p,
+            threads: p.threads.map((t: any) => {
+              if (t.id === threadId) {
+                // Prevent duplicate messages (especially from socket relay)
+                const isDuplicate = t.messages?.some((m: any) => 
+                  m.role === message.role && 
+                  m.content === message.content && 
+                  message.content !== '' // Allow empty messages for streaming
+                );
+                if (isDuplicate) return t;
+                return { ...t, messages: [...(t.messages || []), message] };
+              }
+              return t;
+            })
+          } : p
+        )
+      })),
+
+      clearThreadMessages: (projectId, threadId) => set((state) => ({
+        projects: state.projects.map(p =>
+          p.id === projectId ? {
+            ...p,
             threads: p.threads.map((t: any) =>
-              t.id === threadId ? { ...t, messages: [...(t.messages || []), message] } : t
+              t.id === threadId ? { ...t, messages: [] } : t
             )
           } : p
         )
