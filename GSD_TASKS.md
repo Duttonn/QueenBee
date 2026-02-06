@@ -28,7 +28,7 @@
   - **Validation**: `curl -N -X POST http://127.0.0.1:3000/api/chat ...` doit afficher les chunks en temps réel.
   - **Worker**: BACKEND
 
-- [ ] `S-03`: [Integration] Reconnecter AutonomousRunner à /api/chat et gérer le streaming agent (SSE)
+- [IN PROGRESS: SOUDURE-10] `S-03`: [Integration] Reconnecter AutonomousRunner à /api/chat et gérer le streaming agent (SSE)
   - **Fichiers**: `proxy-bridge/src/lib/AutonomousRunner.ts`, `proxy-bridge/src/pages/api/chat.ts`
   - **Dépend de**: `S-02`
   - **Validation**: L'agent doit pouvoir envoyer des messages intermédiaires via SSE pendant que le runner s'exécute.
@@ -64,7 +64,7 @@
   - **Validation**: Modifier un fichier trigger une mise à jour immédiate du Diff dans le dashboard sans boucle infinie.
   - **Worker**: BACKEND
 
-- [ ] `S-09`: [Frontend] Bugfix: Empêcher l'ajout de projets en double dans le Sidebar
+- [IN PROGRESS: FRONTEND-01] `S-09`: [Frontend] Bugfix: Empêcher l'ajout de projets en double dans le Sidebar
   - **Fichiers**: `dashboard/src/store/useHiveStore.ts`
   - **Dépend de**: Rien
   - **Validation**: L'ajout d'un projet existant via l'UI ne crée pas de doublon dans la liste.

@@ -98,7 +98,7 @@ const ReviewAndShip = () => {
          {/* Diff Viewer / Visual Diff */}
          <div className="flex-1 overflow-auto p-8 flex justify-center bg-[#0d0d0d]">
              {viewMode === 'code' ? (
-                <DiffViewer />
+                <DiffViewer projectPath="." filePath={selectedFile} />
              ) : (
                 <VisualUIDiff />
              )}
