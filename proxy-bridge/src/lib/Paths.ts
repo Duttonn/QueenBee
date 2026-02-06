@@ -51,4 +51,18 @@ export class Paths {
   static getBackupDir(): string {
     return path.join(this.getCodexHome(), 'backups');
   }
+
+  /**
+   * Resolves the workspace root (parent of proxy-bridge).
+   */
+  static getWorkspaceRoot(): string {
+    return path.resolve(process.cwd(), '..');
+  }
+
+  /**
+   * Resolves the root of the proxy-bridge Next.js app.
+   */
+  static getProxyBridgeRoot(): string {
+    return process.cwd();
+  }
 }
