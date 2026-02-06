@@ -69,8 +69,9 @@ const defaultProviders: AIProvider[] = [
     { id: 'openai-codex', name: 'OpenAI Codex (ChatGPT)', icon: '💬', connected: false, tier: 2, models: ['gpt-4o', 'gpt-4-turbo'], authType: 'oauth' },
     { id: 'anthropic', name: 'Claude (Anthropic)', icon: '🧠', connected: false, tier: 3, models: ['claude-3-5-sonnet', 'claude-3-opus', 'claude-3-haiku'], authType: 'api_key' },
     { id: 'anthropic-oauth', name: 'Claude OAuth (Subscription)', icon: '🧠', connected: false, tier: 4, models: ['claude-3-5-sonnet'], authType: 'oauth' },
-    { id: 'gemini', name: 'Google Gemini', icon: '✨', connected: false, tier: 5, models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-2.0-flash-001', 'gemini-2.0-flash-lite-001'], authType: 'api_key' },
-    { id: 'google-gemini-cli', name: 'Gemini CLI', icon: '💻', connected: false, tier: 6, models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'], authType: 'oauth' },
+            { id: 'gemini', name: 'Google Gemini', icon: '✨', connected: false, tier: 5, models: ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-2.0-flash-001', 'gemini-2.0-flash-lite-001'], authType: 'api_key' },
+            { id: 'google-gemini-cli', name: 'Gemini CLI', icon: '💻', connected: false, tier: 6, models: ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'], authType: 'oauth' },
+    
     { id: 'google-antigravity', name: 'Antigravity', icon: '🌌', connected: false, tier: 7, models: ['antigravity-1'], authType: 'oauth' },
     { id: 'mistral', name: 'Mistral AI', icon: '🌬️', connected: false, tier: 7, models: ['mistral-large-latest', 'mistral-small-latest', 'codestral-latest'], authType: 'api_key' },
     { id: 'qwen-portal', name: 'Qwen Portal', icon: '🏮', connected: false, tier: 8, models: ['qwen-turbo'], authType: 'oauth' },

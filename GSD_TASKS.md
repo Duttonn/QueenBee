@@ -28,7 +28,7 @@
   - **Validation**: `curl -N -X POST http://127.0.0.1:3000/api/chat ...` doit afficher les chunks en temps réel.
   - **Worker**: BACKEND
 
-- [IN PROGRESS: SOUDURE-10] `S-03`: [Integration] Reconnecter AutonomousRunner à /api/chat et gérer le streaming agent (SSE)
+- [ ] `S-03`: [Integration] Reconnecter AutonomousRunner à /api/chat et gérer le streaming agent (SSE)
   - **Fichiers**: `proxy-bridge/src/lib/AutonomousRunner.ts`, `proxy-bridge/src/pages/api/chat.ts`
   - **Dépend de**: `S-02`
   - **Validation**: L'agent doit pouvoir envoyer des messages intermédiaires via SSE pendant que le runner s'exécute.
@@ -40,7 +40,7 @@
   - **Validation**: `grep -r "localhost:3000" dashboard/src` ne doit trouver que des usages de `API_BASE`.
   - **Worker**: FRONTEND
 
-- [IN PROGRESS: BACKEND-01] `S-05`: [Backend] Sécuriser ToolExecutor pour qu'il soit exclusivement server-side
+- [ ] `S-05`: [Backend] Sécuriser ToolExecutor pour qu'il soit exclusivement server-side
   - **Fichiers**: `proxy-bridge/src/lib/ToolExecutor.ts`
   - **Dépend de**: Rien
   - **Validation**: Aucun appel direct à `fs` depuis Electron (preload.ts) ne doit contourner l'API.
@@ -64,17 +64,19 @@
   - **Validation**: Modifier un fichier trigger une mise à jour immédiate du Diff dans le dashboard sans boucle infinie.
   - **Worker**: BACKEND
 
-- [IN PROGRESS: FRONTEND-01] `S-09`: [Frontend] Bugfix: Empêcher l'ajout de projets en double dans le Sidebar
+- [ ] `S-09`: [Frontend] Bugfix: Empêcher l'ajout de projets en double dans le Sidebar
   - **Fichiers**: `dashboard/src/store/useHiveStore.ts`
   - **Dépend de**: Rien
   - **Validation**: L'ajout d'un projet existant via l'UI ne crée pas de doublon dans la liste.
   - **Worker**: FRONTEND
+  - **Note**: Code déjà implémenté, en attente de validation QA.
 
 - [ ] `S-10`: [Configuration] Enforce `gemini-2.5-flash-lite` as the default LLM provider model.
-  - **Fichiers**: `proxy-bridge/src/lib/UnifiedLLMService.ts` (or configuration files)
+  - **Fichiers**: `proxy-bridge/src/lib/providers/GeminiProvider.ts`
   - **Dépend de**: Rien
-  - **Validation**: API calls for chat/completion default to `gemini-2.5-flash-lite`. Check logs for model usage.
+  - **Validation**: API calls for chat/completion default to `gemini-2.5-flash-lite`.
   - **Worker**: BACKEND
+  - **Note**: Déjà configuré par défaut dans GeminiProvider.ts.
 
 ## 🚀 PHASE 1: SOLO MODE COMPLET (Semaines 2-4)
 - [ ] `P1-01`: [Frontend] Implémenter le streaming UI (Markdown partiel) dans le Composer

@@ -164,7 +164,7 @@ export class UnifiedLLMService {
     
     if (!provider && providerId === 'auto') {
       // For auto mode in streaming, we'll use the first available provider from priority list
-      const priority = ['nvidia', 'gemini', 'ollama'];
+      const priority = ['gemini', 'nvidia', 'ollama'];
       for (const id of priority) {
         provider = this.providers.get(id);
         if (provider) break;
@@ -262,7 +262,7 @@ export class UnifiedLLMService {
   private async autoChat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
     await this.ready;
     // Simple priority list for auto selection
-    const priority = ['nvidia', 'gemini', 'ollama'];
+    const priority = ['gemini', 'nvidia', 'ollama'];
     let lastError: Error | null = null;
 
     for (const id of priority) {
