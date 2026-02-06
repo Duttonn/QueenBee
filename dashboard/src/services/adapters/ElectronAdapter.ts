@@ -26,7 +26,7 @@ export class ElectronAdapter implements ISystemService {
       const res = await fetch(`${API_BASE}/api/files?path=${encodeURIComponent(path)}`);
       if (!res.ok) return [];
       const data = await res.json();
-      return data.files || [];
+      return data.isDirectory ? data.files : [];
     },
     clone: (repoUrl: string, targetDir: string) => this.electron.clone(repoUrl, targetDir),
   };

@@ -19,11 +19,10 @@ export class WebAdapter implements ISystemService {
       return res.ok;
     },
     readDir: async (path: string) => {
-      // Assuming there's a list directory endpoint or similar
-      const res = await fetch(`${API_BASE}/api/files/list?path=${encodeURIComponent(path)}`);
+      const res = await fetch(`${API_BASE}/api/files?path=${encodeURIComponent(path)}`);
       if (!res.ok) return [];
       const data = await res.json();
-      return data.files || [];
+      return data.isDirectory ? data.files : [];
     },
     clone: async (repoUrl: string, targetDir: string) => {
       // Web mode might not support local clone easily, 

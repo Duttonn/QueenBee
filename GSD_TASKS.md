@@ -79,14 +79,14 @@
   - **Note**: Déjà configuré par défaut dans GeminiProvider.ts.
 
 ## 🚀 PHASE 1: SOLO MODE COMPLET (Semaines 2-4)
-- [ ] `P1-01`: [Frontend] Implémenter le streaming UI (Markdown partiel) dans le Composer
+- [IN PROGRESS: INTEG-01] `P1-01`: [Frontend] Implémenter le streaming UI (Markdown partiel) dans le Composer
 - [ ] `P1-02`: [Backend] Implémenter le résumé automatique de fin de session (Memory Flush)
 - [ ] `P1-03`: [Frontend] Améliorer le Diff Viewer (Split-pane + Synchronized scrolling)
 - [ ] `P1-04`: [Integration] Intégrer la dictée vocale Whisper (Ctrl+M)
 - [ ] `P1-05`: [Frontend] Ajouter les Security Approvals UI pour les actions sensibles
 
 ## 📂 PHASE 2: FILESYSTEM & IPC (Abstraction Couche)
-- [ ] `P2-01`: [Integration] Finaliser l'Hybridation (SystemService switch entre Electron/Web)
+- [IN PROGRESS: INTEG-01] `P2-01`: [Integration] Finaliser l'Hybridation (SystemService switch entre Electron/Web)
 - [ ] `P2-02`: [Backend] Implémenter RepoClonerService utilisant simple-git
 - [ ] `P2-03`: [Backend] CloudFSManager : Jail dans `~/.codex/workspaces`
 
@@ -94,7 +94,7 @@
 - [ ] `P3-01`: [Backend] ProjectTaskManager : Génération récursive de TASKS.md
 - [ ] `P3-02`: [Backend] Recursive Runner : Boucle Plan -> Execute -> Fix
 - [ ] `P3-03`: [Backend] Automation Scheduler (Visual Cron)
-- [ ] `P3-08`: [Frontend] Inbox Triage System (Sidebar Triage section)
+- [IN PROGRESS: INTEG-01] `P3-08`: [Frontend] Inbox Triage System (Sidebar Triage section)
 - [ ] `P3-09`: [Backend] GitHub Sync & Auto-Triage (Issue to Task conversion)
 - [ ] `P3-10`: [Backend] Multi-Forge Support (GitHub/GitLab Adapter)
 
