@@ -4,10 +4,12 @@ import { LLMMessage, LLMProviderOptions, LLMResponse } from '../types/llm';
 export class AnthropicProvider extends LLMProvider {
   id: string = 'anthropic';
   private apiKey: string;
+  private apiBase: string;
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, apiBase: string = 'https://api.anthropic.com/v1') {
     super();
     this.apiKey = apiKey;
+    this.apiBase = apiBase;
   }
 
   async chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
@@ -20,7 +22,7 @@ export class AnthropicProvider extends LLMProvider {
       content: m.content || ''
     }));
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch(`${this.apiBase}/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
