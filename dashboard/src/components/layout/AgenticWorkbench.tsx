@@ -36,6 +36,72 @@ interface AgenticWorkbenchProps {
   activeProject?: any;
 }
 
+// Optimized Markdown component for streaming
+const MemoizedMarkdown = React.memo(({ content, className }: { content: string, className?: string }) => {
+  return (
+    <ReactMarkdown 
+      remarkPlugins={[remarkGfm]} 
+      rehypePlugins={[rehypeHighlight]}
+      components={{
+        pre: ({node, children, ...props}) => <>{children}</>,
+        code: (props: any) => {
+          const {node, inline, className, children, ...rest} = props;
+          const match = /language-(\w+)/.exec(className || '');
+          const lang = match ? match[1] : '';
+          const [copied, setCopied] = useState(false);
+
+          const handleCopy = () => {
+            navigator.clipboard.writeText(String(children));
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          };
+
+          const contentText = String(children);
+          const isShort = contentText.length < 40 && !contentText.includes('\n');
+
+          if (inline) {
+            return (
+              <code className="px-1.5 py-0.5 rounded-md bg-zinc-100 text-zinc-900 font-mono text-[11px] border border-zinc-200" {...props}>
+                {children}
+              </code>
+            );
+          }
+
+          if (isShort && !lang) {
+            return (
+              <code className="block my-2 px-3 py-2 rounded-lg bg-zinc-50 text-zinc-700 font-mono text-[12px] border border-zinc-200" {...props}>
+                {children}
+              </code>
+            );
+          }
+
+          return (
+            <div className="my-4 rounded-xl border border-zinc-200 bg-[#fbfcfd] overflow-hidden shadow-sm group">
+              <div className="flex items-center justify-between px-4 py-2 bg-zinc-50/80 border-b border-zinc-100">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{lang || 'code'}</span>
+                <button 
+                  onClick={handleCopy}
+                  className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-400 hover:text-blue-600 transition-colors"
+                >
+                  {copied ? <Check size={10} className="text-green-500" /> : <Copy size={10} />}
+                  <span>{copied ? 'Copied!' : 'Copy code'}</span>
+                </button>
+              </div>
+              <div className="p-5 overflow-x-auto bg-white/50">
+                <code className={`${className} font-mono text-[12px] leading-relaxed !bg-transparent !p-0`} {...props}>
+                  {children}
+                </code>
+              </div>
+            </div>
+          );
+        }
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+});
+
 const AgenticWorkbench = ({
   messages,
   isLoading = false,
@@ -313,69 +379,20 @@ const AgenticWorkbench = ({
                   {/* Main content (filter out thinking blocks) */}
                   {msg.content && (
                     <div className="text-sm text-zinc-800 prose prose-sm max-w-none prose-zinc prose-pre:p-0 prose-pre:bg-transparent">
-                      <ReactMarkdown 
-                        remarkPlugins={[remarkGfm]} 
-                        rehypePlugins={[rehypeHighlight]}
-                        components={{
-                          pre: ({node, children, ...props}) => <>{children}</>,
-                          code: (props: any) => {
-                            const {node, inline, className, children, ...rest} = props;
-                            const match = /language-(\w+)/.exec(className || '');
-                            const lang = match ? match[1] : '';
-                            const [copied, setCopied] = useState(false);
-
-                            const handleCopy = () => {
-                              navigator.clipboard.writeText(String(children));
-                              setCopied(true);
-                              setTimeout(() => setCopied(false), 2000);
-                            };
-
-                            const content = String(children);
-                            const isShort = content.length < 40 && !content.includes('\n');
-
-                            if (inline) {
-                              return (
-                                <code className="px-1.5 py-0.5 rounded-md bg-zinc-100 text-zinc-900 font-mono text-[11px] border border-zinc-200" {...props}>
-                                  {children}
-                                </code>
-                              );
-                            }
-
-                            if (isShort && !lang) {
-                              return (
-                                <code className="block my-2 px-3 py-2 rounded-lg bg-zinc-50 text-zinc-700 font-mono text-[12px] border border-zinc-200" {...props}>
-                                  {children}
-                                </code>
-                              );
-                            }
-
-                            return (
-                              <div className="my-4 rounded-xl border border-zinc-200 bg-[#fbfcfd] overflow-hidden shadow-sm group">
-                                <div className="flex items-center justify-between px-4 py-2 bg-zinc-50/80 border-b border-zinc-100">
-                                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{lang || 'code'}</span>
-                                  <button 
-                                    onClick={handleCopy}
-                                    className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-400 hover:text-blue-600 transition-colors"
-                                  >
-                                    {copied ? <Check size={10} className="text-green-500" /> : <Copy size={10} />}
-                                    <span>{copied ? 'Copied!' : 'Copy code'}</span>
-                                  </button>
-                                </div>
-                                <div className="p-5 overflow-x-auto bg-white/50">
-                                  <code className={`${className} font-mono text-[12px] leading-relaxed !bg-transparent !p-0`} {...props}>
-                                    {children}
-                                  </code>
-                                </div>
-                              </div>
-                            );
-                          }
-                        }}
-                      >
-                        {msg.content
+                      <MemoizedMarkdown 
+                        content={msg.content
                           .replace(/```thinking[\s\S]*?```/g, '')
                           .replace(/Called \w+ → Success\n?/g, '')
                           .trim()}
-                      </ReactMarkdown>
+                      />
+                      {isLoading && index === messages.length - 1 && (
+                        <motion.span
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: [0, 1, 0] }}
+                          transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
+                          className="inline-block w-1.5 h-4 bg-blue-500 ml-1 align-middle"
+                        />
+                      )}
                     </div>
                   )}
 
