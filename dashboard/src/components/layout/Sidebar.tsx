@@ -35,6 +35,85 @@ interface SidebarProps {
   onAddProject?: () => void;
 }
 
+const ProjectPicker = ({
+  projects,
+  selectedProjectId,
+  onProjectSelect,
+  onAddProject,
+  onNewThread
+}: {
+  projects: any[],
+  selectedProjectId: string | null,
+  onProjectSelect: (id: string) => void,
+  onAddProject: () => void,
+  onNewThread: () => void
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const selectedProject = projects.find(p => p.id === selectedProjectId);
+
+  return (
+    <div className="relative px-2 mb-2">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white border border-zinc-200 shadow-sm text-[11px] font-black uppercase tracking-widest text-zinc-900 transition-all hover:bg-zinc-50"
+      >
+        <span className="text-blue-500">
+          <Folder size={16} />
+        </span>
+        <span className="flex-1 text-left truncate">{selectedProject?.name || 'Select Project'}</span>
+        <ChevronDown size={14} className={`text-zinc-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
+            <motion.div
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              className="absolute top-full left-0 right-0 mt-2 mx-2 bg-white border border-zinc-200 shadow-2xl rounded-2xl overflow-hidden z-20 p-1"
+            >
+              <div className="max-h-60 overflow-y-auto">
+                <button
+                  onClick={() => { onNewThread(); setIsOpen(false); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-bold text-blue-600 hover:bg-blue-50 transition-all uppercase tracking-widest mb-1"
+                >
+                  <PenSquare size={14} />
+                  <span>New Thread</span>
+                </button>
+                <div className="h-px bg-zinc-100 my-1 mx-2" />
+                <div className="px-3 py-1 text-[8px] font-black text-zinc-400 uppercase tracking-widest">Projects</div>
+                {projects.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => { onProjectSelect(p.id); setIsOpen(false); }}
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-bold transition-all ${p.id === selectedProjectId
+                      ? 'bg-zinc-900 text-white'
+                      : 'text-zinc-600 hover:bg-zinc-50'
+                      }`}
+                  >
+                    <Folder size={12} className={p.id === selectedProjectId ? 'text-blue-400' : 'text-zinc-400'} />
+                    <span className="truncate uppercase tracking-wider">{p.name}</span>
+                  </button>
+                ))}
+                <div className="h-px bg-zinc-100 my-1 mx-2" />
+                <button
+                  onClick={() => { onAddProject?.(); setIsOpen(false); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-bold text-zinc-500 hover:bg-zinc-50 transition-all uppercase tracking-widest"
+                >
+                  <Plus size={14} />
+                  <span>Add Project</span>
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, selectedProjectId, onProjectSelect, onAddProject }: SidebarProps) => {
   const { projects, addProject, activeThreadId, setActiveThread } = useHiveStore();
   const { forges, user } = useAuthStore();
@@ -42,6 +121,8 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [isAddRepoOpen, setIsAddRepoOpen] = useState(false);
   const [isCloning, setIsCloning] = useState<string | null>(null);
+
+  const activeProject = projects.find(p => p.id === selectedProjectId);
 
   const handleImportRepo = async (repo: any) => {
     setIsCloning(repo.full_name);
@@ -97,12 +178,13 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
         </button>
       </div>
 
-      <div className="px-2 space-y-0.5 mb-4">
-        <NavItem
-          icon={<PenSquare size={16} />}
-          label="New thread"
-          active={activeView === 'build' && !activeThreadId}
-          onClick={() => { setActiveThread(null); onViewChange('build'); }}
+      <div className="px-2 space-y-0.5 mb-2">
+        <ProjectPicker
+          projects={projects}
+          selectedProjectId={selectedProjectId || null}
+          onProjectSelect={(id) => onProjectSelect?.(id)}
+          onAddProject={() => onAddProject?.()}
+          onNewThread={() => { setActiveThread(null); onViewChange('build'); }}
         />
         <NavItem
           icon={<Clock size={16} />}
@@ -129,42 +211,42 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
       <div className="flex-1 overflow-y-auto px-2 scrollbar-none">
         <div className="flex items-center justify-between px-3 mb-2">
           <div className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em]">Threads</div>
-          <button onClick={onAddProject} className="text-zinc-600 hover:text-white transition-all">
-            <Plus size={14} />
-          </button>
         </div>
 
-        {projects.map(project => (
-          <div key={project.id} className="mb-1">
-            <button
-              onClick={() => { onProjectSelect?.(project.id); setActiveThread(null); }}
-              className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl transition-all ${selectedProjectId === project.id && !activeThreadId
-                ? 'bg-white text-zinc-900 border border-zinc-200 shadow-sm'
-                : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
-                }`}
-            >
-              <Folder size={14} className={selectedProjectId === project.id ? 'text-blue-400' : 'text-zinc-600'} />
-              <span className="truncate">{project.name}</span>
-            </button>
-
-            {selectedProjectId === project.id && (
-              <div className="ml-4 space-y-0.5 mt-1 border-l border-white/5 pl-2">
-                {project.threads?.map((thread: any) => (
-                  <div
-                    key={thread.id}
-                    onClick={() => setActiveThread(thread.id)}
-                    className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-all ${activeThreadId === thread.id
-                      ? 'bg-zinc-100 text-zinc-900'
-                      : 'text-zinc-500 hover:text-zinc-700'
-                      }`}
-                  >
-                    <span className="text-[11px] font-medium truncate">{thread.title}</span>
-                  </div>
-                ))}
+        {activeProject ? (
+          <div className="space-y-0.5">
+            {activeProject.threads?.length > 0 ? (
+              activeProject.threads.map((thread: any) => (
+                <div
+                  key={thread.id}
+                  onClick={() => { setActiveThread(thread.id); onViewChange('build'); }}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all ${activeThreadId === thread.id
+                    ? 'bg-white text-zinc-900 border border-zinc-200 shadow-sm'
+                    : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
+                    }`}
+                >
+                  <MessageSquare size={14} className={activeThreadId === thread.id ? 'text-blue-400' : 'text-zinc-400'} />
+                  <span className="text-[11px] font-bold truncate tracking-tight">{thread.title}</span>
+                </div>
+              ))
+            ) : (
+              <div className="px-3 py-8 text-center">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">No threads yet</p>
+                <button
+                  onClick={() => { setActiveThread(null); onViewChange('build'); }}
+                  className="inline-flex items-center gap-1 text-[10px] font-black text-blue-600 uppercase tracking-widest hover:text-blue-700"
+                >
+                  <Plus size={10} />
+                  <span>Start building</span>
+                </button>
               </div>
             )}
           </div>
-        ))}
+        ) : (
+          <div className="px-3 py-8 text-center">
+            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Select a project to see threads</p>
+          </div>
+        )}
       </div>
 
       <div className="mx-3 h-px bg-zinc-200 mb-4"></div>
