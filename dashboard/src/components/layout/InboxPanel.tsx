@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Inbox, Trash2, Tool, Clock, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Inbox, Trash2, Wrench, Clock, AlertTriangle, CheckCircle } from 'lucide-react';
 
 interface InboxItem {
   id: string;
@@ -96,11 +96,10 @@ const InboxPanel = () => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <h3 className="text-xs font-semibold text-zinc-200 truncate">{item.title}</h3>
-                      <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${
-                        item.severity === 'high' ? 'bg-red-500/10 text-red-400' :
+                      <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${item.severity === 'high' ? 'bg-red-500/10 text-red-400' :
                         item.severity === 'medium' ? 'bg-amber-500/10 text-amber-400' :
-                        'bg-blue-500/10 text-blue-400'
-                      }`}>
+                          'bg-blue-500/10 text-blue-400'
+                        }`}>
                         {item.severity}
                       </span>
                     </div>
@@ -112,7 +111,7 @@ const InboxPanel = () => {
                         onClick={() => handleAction(item.id, 'fix')}
                         className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5"
                       >
-                        <Tool size={12} /> Fix this
+                        <Wrench size={12} /> Fix this
                       </button>
                       <button
                         onClick={() => handleAction(item.id, 'archive')}

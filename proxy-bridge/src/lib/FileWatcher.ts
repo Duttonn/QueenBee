@@ -1,45 +1,57 @@
 import chokidar from 'chokidar';
 import { EventEmitter } from 'events';
+import { broadcast } from './socket-instance';
+import path from 'path';
 
 export class FileWatcher extends EventEmitter {
   private watcher: chokidar.FSWatcher | null = null;
+  private projectPath: string | null = null;
 
   constructor() {
     super();
   }
 
   start(projectPath: string) {
-    console.log(`[Watcher] Starting file watcher for ${projectPath}`);
     if (this.watcher) {
-      this.watcher.close();
+      this.stop();
     }
     
+    this.projectPath = projectPath;
+    console.log(`[FileWatcher] Starting for ${projectPath}`);
+    
     this.watcher = chokidar.watch(projectPath, {
-      ignored: /(^|[\/\\])\..*|node_modules|dist/, // ignore dotfiles, node_modules, dist
+      ignored: /(^|[\/\\])\..*|node_modules|dist/,
       persistent: true,
       ignoreInitial: true,
-      atomic: true
+      depth: 9, // Adjust as needed
     });
 
-    // Use 'all' to capture add/unlink as well
-    this.watcher.on('all', (event, path: string) => {
-      console.log(`[Watcher] File ${event}: ${path}`);
-      const timestamp = Date.now();
+    this.watcher.on('all', (eventType, filePath) => {
+      console.log(`[FileWatcher] Event '${eventType}' for file: ${filePath}`);
       
-      this.emit('file-change', { 
-        eventType: event, 
-        filePath: path,
-        projectPath: projectPath, 
-        timestamp 
-      });
+      const relativePath = this.projectPath ? path.relative(this.projectPath, filePath) : filePath;
+      const eventData = {
+        eventType,
+        filePath,
+        relativePath,
+        projectPath: this.projectPath,
+        timestamp: Date.now()
+      };
+      
+      // Emit locally for EventLoopManager
+      this.emit('file-change', eventData);
+
+      // Emit globally to all clients
+      broadcast('FILE_CHANGE', eventData);
     });
   }
 
   stop() {
     if (this.watcher) {
-      console.log('[Watcher] Stopping file watcher.');
+      console.log(`[FileWatcher] Stopping for ${this.projectPath}`);
       this.watcher.close();
       this.watcher = null;
+      this.projectPath = null;
     }
   }
 }
