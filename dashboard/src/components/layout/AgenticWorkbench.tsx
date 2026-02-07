@@ -21,7 +21,10 @@ import {
   Plus,
   Sparkles,
   Copy,
-  Layers
+  Layers,
+  Eye,
+  Monitor,
+  X
 } from 'lucide-react';
 import { type Message, type ToolCall } from '../../services/api';
 import { useHiveStore } from '../../store/useHiveStore';
@@ -134,6 +137,7 @@ const AgenticWorkbench = ({
 }: AgenticWorkbenchProps) => {
   const [expandedThinking, setExpandedThinking] = useState<Record<number, boolean>>({});
   const [isAgentMenuOpen, setIsAgentMenuOpen] = useState(false);
+  const [showLiveEye, setShowLiveEye] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { spawnAgent, socket, queenStatus } = useHiveStore();
 
@@ -267,6 +271,14 @@ const AgenticWorkbench = ({
           <div className="w-px h-6 bg-gray-100 mx-1"></div>
 
           <button
+            onClick={() => setShowLiveEye(!showLiveEye)}
+            className={`p-2 rounded-lg transition-colors ${showLiveEye ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-zinc-500 hover:text-blue-600'}`}
+            title="Live Eye View"
+          >
+            <Eye size={16} />
+          </button>
+
+          <button
             onClick={onToggleInspector}
             className="p-2 hover:bg-gray-100 rounded-lg text-zinc-500 hover:text-blue-600 transition-colors"
             title="Deep Inspector"
@@ -301,7 +313,44 @@ const AgenticWorkbench = ({
       </div>
 
       {/* Chat Stream */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 relative">
+        <AnimatePresence>
+          {showLiveEye && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="sticky top-0 left-0 right-0 z-20 mb-4"
+            >
+              <div className="bg-white border border-zinc-200 rounded-3xl shadow-2xl overflow-hidden">
+                <div className="px-4 py-2 border-b border-zinc-100 bg-zinc-50/50 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Monitor size={14} className="text-blue-600" />
+                    <span className="text-[10px] font-black text-zinc-900 uppercase tracking-widest">Live Eye — Browser Stream</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                      <span className="text-[9px] font-bold text-green-600 uppercase tracking-widest">2 FPS</span>
+                    </div>
+                    <button onClick={() => setShowLiveEye(false)} className="text-zinc-400 hover:text-zinc-600">
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+                <div className="aspect-video bg-zinc-900 flex items-center justify-center group relative">
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
+                    <p className="text-[10px] font-medium text-white/70">Connecting to CDP Bridge...</p>
+                  </div>
+                  <div className="text-center">
+                    <Bot size={32} className="text-zinc-700 mx-auto mb-2 animate-bounce" />
+                    <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-[0.2em]">Waiting for stream</p>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         {messages.map((msg, index) => (
           <div key={index}>
             {msg.role === 'user' && (
