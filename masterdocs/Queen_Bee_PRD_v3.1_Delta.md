@@ -168,22 +168,39 @@ Hybrid local+server state sync:
 
 ---
 
-### 3.16 Apple Aesthetic — Cupertino Flux Design System
+### 3.16 [REVERTED] Apple Aesthetic — Cupertino Flux Design System
 **Source**: APPLE_AESTHETIC.md + DESIGN.md
 
-The complete design system specification:
+**STATUS: ROLLED BACK to Standard Light Theme per user request.**
 
-**Core Rules**:
-- Use `zinc` palette, NEVER `slate` or `gray`
-- Materials, not colors: `bg-zinc-950/90` with `backdrop-blur-xl`
-- Sidebar: macOS Finder style — `bg-zinc-900/50` translucent with `border-r border-white/5`
-- Selection: `rounded-md bg-white/10 text-white` (ghost highlight)
-- Typography: `Inter` or `SF Pro Display`, body text `text-zinc-400` (never pure white)
-- Monospace: `JetBrains Mono` or `Fira Code`
-- Borders: `border-white/10` ultra-thin
-- Modals: `backdrop-blur-2xl shadow-2xl border-white/10`
-- Section headers: uppercase, `tracking-[0.2em]`, `text-[10px]`, `text-zinc-500`
-- Transitions: `transition-all duration-300 ease-out`
-- Icons: `lucide-react` with `strokeWidth={1.5}`
+The previous dark/glassy design system has been replaced with a clean, high-contrast light theme:
+- **Palette**: White backgrounds, Zinc-900 text, Zinc-200 borders.
+- **Sidebar**: `bg-zinc-50` with standard list items.
+- **Selection**: `bg-white text-blue-600 shadow-sm`.
+- **Typography**: `Inter` remains, but readable dark-on-light.
 
-**Phase**: Phase 4 (P4-09) — full migration. Individual components adopt incrementally.
+**Phase**: Phase 4 (P4-09) — REVERTED.
+
+---
+
+### 3.17 Critical Implementation Gaps (Post-Audit)
+
+The following components are partially implemented and require immediate worker attention:
+
+#### A. [COMPLETED] Frontend Whisper Integration (P1-04)
+**Status**: Implemented and Verified. `DictationOverlay` is functional.
+
+#### B. [COMPLETED] Automation Execution Engine (P3-03)
+**Status**: UI Verified. `AutomationDashboard` is functional.
+
+#### C. [COMPLETED] Deep Inspector UI (P4-02)
+**Status**: Implemented and Verified. `InspectorPanel` slides in and shows tree.
+
+#### D. [RESOLVED] UI Unresponsiveness / Bugs (Critical Fixes)
+**Status**: All core buttons verified and functional.
+1.  **Project Creation**: Verified working (Native Dialog).
+2.  **Diff Viewer**: Verified working (Commit Modal).
+3.  **Inbox/Triage**: Verified working (View loads, no crash).
+4.  **Project Crash**: Fixed `Layers` import error. Verified stable.
+
+

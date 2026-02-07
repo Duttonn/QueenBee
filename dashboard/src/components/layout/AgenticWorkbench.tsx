@@ -20,7 +20,8 @@ import {
   Users,
   Plus,
   Sparkles,
-  Copy
+  Copy,
+  Layers
 } from 'lucide-react';
 import { type Message, type ToolCall } from '../../services/api';
 import { useHiveStore } from '../../store/useHiveStore';
@@ -28,27 +29,47 @@ import ToolCallViewer from '../agents/ToolCallViewer';
 
 interface AgenticWorkbenchProps {
   messages: Message[];
-  isLoading?: boolean;
+  isLoading: boolean;
   diffStats?: { added: number; removed: number };
   changedFiles?: string[];
   mode: 'local' | 'worktree' | 'cloud';
   onModeChange: (mode: 'local' | 'worktree' | 'cloud') => void;
-  activeProject?: any;
+  activeProject: any;
+  onToggleInspector: () => void;
+  onSendMessage: (content: string) => void;
+  onClearThread: () => void;
+  onRunCommand: (cmd: string) => void;
+  activeThreadId: string | null;
+  setActiveThread: (id: string | null) => void;
+  onRun?: () => void;
+  onCommit?: () => void;
+  onBuild?: () => void;
+  onAddThread?: () => void;
 }
 
 const AgenticWorkbench = ({
   messages,
-  isLoading = false,
+  isLoading,
   diffStats = { added: 0, removed: 0 },
   changedFiles = [],
   mode,
   onModeChange,
-  activeProject
+  activeProject,
+  onToggleInspector,
+  onSendMessage,
+  onClearThread,
+  onRunCommand,
+  activeThreadId,
+  setActiveThread,
+  onRun,
+  onCommit,
+  onBuild,
+  onAddThread
 }: AgenticWorkbenchProps) => {
   const [expandedThinking, setExpandedThinking] = useState<Record<number, boolean>>({});
   const [isAgentMenuOpen, setIsAgentMenuOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { spawnAgent, socket, activeThreadId, setActiveThread, queenStatus } = useHiveStore();
+  const { spawnAgent, socket, queenStatus } = useHiveStore();
 
   const handleAddAgent = (role: string) => {
     if (!activeProject) return;
@@ -97,7 +118,7 @@ const AgenticWorkbench = ({
                 <span className="text-xs font-semibold text-zinc-700">{activeProject.name}</span>
               </div>
               <button
-                onClick={() => setActiveThread(null)}
+                onClick={onAddThread}
                 className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-blue-500 transition-colors"
                 title="New Thread"
               >
@@ -114,8 +135,8 @@ const AgenticWorkbench = ({
             <button
               onClick={() => setIsAgentMenuOpen(!isAgentMenuOpen)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-xs font-medium ${activeProject?.agents?.length > 0
-                  ? 'bg-amber-50 border-amber-200 text-amber-700'
-                  : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                ? 'bg-amber-50 border-amber-200 text-amber-700'
+                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
                 }`}
             >
               <Users size={14} />
@@ -179,13 +200,32 @@ const AgenticWorkbench = ({
 
           <div className="w-px h-6 bg-gray-100 mx-1"></div>
 
-          <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-gray-700 transition-colors">
+          <button
+            onClick={onToggleInspector}
+            className="p-2 hover:bg-gray-100 rounded-lg text-zinc-500 hover:text-blue-600 transition-colors"
+            title="Deep Inspector"
+          >
+            <Layers size={16} />
+          </button>
+
+          <button
+            onClick={onRun}
+            className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-gray-700 transition-colors"
+            title="Run Project"
+          >
             <Play size={16} />
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded-lg text-blue-600 transition-colors">
+          <button
+            onClick={onBuild}
+            className="p-2 hover:bg-gray-100 rounded-lg text-blue-600 transition-colors"
+            title="Build Project"
+          >
             <Hammer size={16} />
           </button>
-          <button className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-medium rounded-lg transition-colors">
+          <button
+            onClick={onCommit}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-medium rounded-lg transition-colors"
+          >
             <GitCommit size={12} />
             Commit
             {diffStats.added > 0 && <span className="text-[#22C55E] ml-1">+{diffStats.added}</span>}
@@ -271,25 +311,25 @@ const AgenticWorkbench = ({
                       result={tool.result}
                       error={tool.error}
                       onApprove={() => {
-                        socket?.emit('TOOL_APPROVAL', { 
-                          projectId: activeProject?.id, 
-                          threadId: activeThreadId, 
-                          toolCallId: tool.id || tool.name, 
+                        socket?.emit('TOOL_APPROVAL', {
+                          projectId: activeProject?.id,
+                          threadId: activeThreadId,
+                          toolCallId: tool.id || tool.name,
                           tool: tool.name,
                           args: tool.arguments,
                           projectPath: activeProject?.path,
-                          approved: true 
+                          approved: true
                         });
                       }}
                       onReject={() => {
-                        socket?.emit('TOOL_APPROVAL', { 
-                          projectId: activeProject?.id, 
-                          threadId: activeThreadId, 
-                          toolCallId: tool.id || tool.name, 
+                        socket?.emit('TOOL_APPROVAL', {
+                          projectId: activeProject?.id,
+                          threadId: activeThreadId,
+                          toolCallId: tool.id || tool.name,
                           tool: tool.name,
                           args: tool.arguments,
                           projectPath: activeProject?.path,
-                          approved: false 
+                          approved: false
                         });
                       }}
                     />
@@ -313,13 +353,13 @@ const AgenticWorkbench = ({
                   {/* Main content (filter out thinking blocks) */}
                   {msg.content && (
                     <div className="text-sm text-zinc-800 prose prose-sm max-w-none prose-zinc prose-pre:p-0 prose-pre:bg-transparent">
-                      <ReactMarkdown 
-                        remarkPlugins={[remarkGfm]} 
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
                         rehypePlugins={[rehypeHighlight]}
                         components={{
-                          pre: ({node, children, ...props}) => <>{children}</>,
+                          pre: ({ node, children, ...props }) => <>{children}</>,
                           code: (props: any) => {
-                            const {node, inline, className, children, ...rest} = props;
+                            const { node, inline, className, children, ...rest } = props;
                             const match = /language-(\w+)/.exec(className || '');
                             const lang = match ? match[1] : '';
                             const [copied, setCopied] = useState(false);
@@ -353,7 +393,7 @@ const AgenticWorkbench = ({
                               <div className="my-4 rounded-xl border border-zinc-200 bg-[#fbfcfd] overflow-hidden shadow-sm group">
                                 <div className="flex items-center justify-between px-4 py-2 bg-zinc-50/80 border-b border-zinc-100">
                                   <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{lang || 'code'}</span>
-                                  <button 
+                                  <button
                                     onClick={handleCopy}
                                     className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-400 hover:text-blue-600 transition-colors"
                                   >

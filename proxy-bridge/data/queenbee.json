@@ -13,7 +13,7 @@
       "title": "Auto-Review PRs",
       "description": "Automatically review new PRs on GitHub",
       "schedule": "Every hour",
-      "active": false
+      "active": true
     }
   ],
   "skills": [

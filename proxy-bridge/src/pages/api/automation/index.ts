@@ -1,9 +1,9 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { automationScheduler } from '../../../lib/AutomationScheduler';
+import { cronManager } from '../../../lib/CronManager';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method === 'GET') {
-    return res.status(200).json(automationScheduler.getJobs());
+    return res.status(200).json(cronManager.getJobs());
   }
 
   if (req.method === 'POST') {
@@ -11,16 +11,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     switch (action) {
       case 'ADD':
-        const newJob = automationScheduler.addJob(payload);
+        const newJob = cronManager.addJob(payload);
         return res.status(201).json(newJob);
       case 'PAUSE':
-        automationScheduler.pauseJob(payload.id);
+        cronManager.pauseJob(payload.id);
         return res.status(200).json({ success: true });
       case 'RESUME':
-        automationScheduler.resumeJob(payload.id);
+        cronManager.resumeJob(payload.id);
         return res.status(200).json({ success: true });
       case 'DELETE':
-        automationScheduler.deleteJob(payload.id);
+        cronManager.deleteJob(payload.id);
         return res.status(200).json({ success: true });
       default:
         return res.status(400).json({ error: 'Invalid action' });
