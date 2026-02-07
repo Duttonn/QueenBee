@@ -3,7 +3,6 @@ import { AutonomousRunner } from '../../lib/AutonomousRunner';
 import { logger } from '../../lib/logger';
 import { unifiedLLMService } from '../../lib/UnifiedLLMService';
 import path from 'path';
-import fs from 'fs';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -14,15 +13,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { model, messages, stream, projectPath: rawPath, threadId, mode, agentId } = req.body;
   const providerId = (req.headers['x-codex-provider'] as string) || 'auto';
   const apiKey = req.headers['authorization']?.replace('Bearer ', '') || null;
-
+  
   logger.info(`[Chat] Request received. Provider: ${providerId}, Model: ${model}, Stream: ${stream}, Path: ${rawPath}, Thread: ${threadId}, Mode: ${mode}, Agent: ${agentId}`);
 
-  const projectPath = rawPath
+  const projectPath = rawPath 
     ? (path.isAbsolute(rawPath) ? rawPath : path.resolve(process.cwd(), '..', rawPath))
     : process.cwd();
 
-  // Handle agentic streaming - now includes worktree and cloud modes
-  if (stream && (mode === 'autonomous' || mode === 'local' || mode === 'solo' || mode === 'worktree' || mode === 'cloud')) {
+  // Handle agentic streaming
+  if (stream && (mode === 'autonomous' || mode === 'local' || mode === 'solo')) {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -39,23 +38,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         agentId
       );
       runner.setWritable(res); // Pass the response stream to the runner
-
+      
       const lastMessage = messages[messages.length - 1];
       const history = messages.slice(0, -1);
 
-      console.log(`[Chat] Starting agent stream loop for message: ${lastMessage.content.substring(0, 50)}...`);
-      await runner.streamIntermediateSteps(lastMessage.content, history, { model, apiKey });
-      console.log(`[Chat] Agent stream loop completed successfully`);
-
+      await runner.streamIntermediateSteps(lastMessage.content, { model, apiKey });
+      
       res.end();
     } catch (error: any) {
-      console.error(`[Chat] CRITICAL Agent Streaming Error:`, error);
-
-      // Ensure we don't crash the request if headers are already sent
-      if (!res.headersSent) {
-        res.status(200); // Send 200 to enable client parsing of error event
-      }
-      res.write(`data: ${JSON.stringify({ error: { message: error.message || 'Unknown agent error', type: 'AGENT_STREAM_ERROR', stack: error.stack } })}\n\n`);
+      logger.error(`[Chat] Agent Streaming Error: ${error.message}`);
+      res.write(`data: ${JSON.stringify({ error: { message: error.message, type: 'AGENT_STREAM_ERROR' } })}\n\n`);
       res.end();
     }
     return;
@@ -86,13 +78,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const response = await unifiedLLMService.chat(providerId, messages, { model, apiKey });
     return res.status(200).json({
-      choices: [{
-        message: {
-          role: 'assistant',
-          content: response.content,
-          tool_calls: response.tool_calls
-        }
-      }]
+        choices: [{
+            message: {
+                role: 'assistant',
+                content: response.content,
+                tool_calls: response.tool_calls
+            }
+        }]
     });
   } catch (error: any) {
     logger.error(`[Chat] Non-Streaming Error: ${error.message}`);

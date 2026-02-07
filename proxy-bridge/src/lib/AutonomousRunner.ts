@@ -62,7 +62,7 @@ export class AutonomousRunner {
   /**
    * New method to stream intermediate steps from an existing session
    */
-  async streamIntermediateSteps(userPrompt: string, history: LLMMessage[] = [], options?: LLMProviderOptions) {
+  async streamIntermediateSteps(userPrompt: string, options?: LLMProviderOptions) {
       if (!this.session) {
           const systemPrompt = await this.getEnhancedContext();
           this.session = new AgentSession(this.projectPath, {
@@ -70,14 +70,8 @@ export class AutonomousRunner {
               maxSteps: 15,
               providerId: this.providerId,
               threadId: this.threadId,
-              apiKey: this.apiKey || undefined,
-              mode: this.mode
+              apiKey: this.apiKey || undefined
           });
-
-          this.session.messages = [
-              ...this.session.messages,
-              ...history.filter(m => m.role !== 'system')
-          ];
 
           // Forward events from the session to the client
           this.session.on('event', (data) => this.sendEvent(data));
@@ -99,8 +93,7 @@ export class AutonomousRunner {
         maxSteps: 15,
         providerId: this.providerId,
         threadId: this.threadId,
-        apiKey: this.apiKey || undefined,
-        mode: this.mode
+        apiKey: this.apiKey || undefined
       });
       
       this.session.messages = [
