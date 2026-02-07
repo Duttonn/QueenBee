@@ -34,8 +34,9 @@ import {
 import Sidebar from './Sidebar';
 import AutomationDashboard from './AutomationDashboard';
 import SkillsManager from './SkillsManager';
-import AgenticWorkbench from './AgenticWorkbench';
 import InboxPanel from './InboxPanel';
+import AgenticWorkbench from './AgenticWorkbench';
+
 import InspectorPanel from './InspectorPanel';
 import XtermTerminal from './XtermTerminal';
 import GlobalCommandBar from './GlobalCommandBar';
@@ -339,7 +340,7 @@ const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange,
 };
 
 const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
-  const [activeView, setActiveView] = useState<'build' | 'automations' | 'skills' | 'inbox'>('build');
+  const [activeView, setActiveView] = useState<'build' | 'automations' | 'skills' | 'triage'>('build');
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [isDiffOpen, setIsDiffOpen] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
@@ -542,7 +543,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         <div className="flex-1 flex min-h-0 overflow-hidden relative">
           {activeView === 'automations' ? (
             <AutomationDashboard />
-          ) : activeView === 'inbox' ? (
+          ) : activeView === 'triage' ? (
             <InboxPanel />
           ) : activeView === 'build' ? (
             <>

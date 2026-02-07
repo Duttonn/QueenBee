@@ -4,6 +4,7 @@ import {
   PenSquare,
   Clock,
   Plug,
+  Inbox,
   ChevronDown,
   ChevronRight,
   Folder,
@@ -15,7 +16,7 @@ import {
   Check,
   Globe,
   Link as LinkIcon,
-  Inbox
+
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -23,8 +24,8 @@ import { useHiveStore } from '../../store/useHiveStore';
 import { SystemService } from '../../services/SystemService';
 
 interface SidebarProps {
-  activeView: 'build' | 'automations' | 'skills' | 'inbox';
-  onViewChange: (view: 'build' | 'automations' | 'skills' | 'inbox') => void;
+  activeView: 'build' | 'automations' | 'skills' | 'triage';
+  onViewChange: (view: 'build' | 'automations' | 'skills' | 'triage') => void;
   onOpenSettings?: () => void;
   onSearchClick?: () => void;
   selectedProjectId?: string | null;
@@ -109,9 +110,9 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
         />
         <NavItem
           icon={<Inbox size={16} />}
-          label="Inbox"
-          active={activeView === 'inbox'}
-          onClick={() => onViewChange('inbox')}
+          label="Triage"
+          active={activeView === 'triage'}
+          onClick={() => onViewChange('triage')}
         />
         <NavItem
           icon={<Plug size={16} />}
