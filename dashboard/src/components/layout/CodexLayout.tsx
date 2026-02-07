@@ -30,6 +30,7 @@ import {
   Inbox,
   Layers
 } from 'lucide-react';
+
 import Sidebar from './Sidebar';
 import AutomationDashboard from './AutomationDashboard';
 import SkillsManager from './SkillsManager';
@@ -193,6 +194,24 @@ const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange,
         isProcessing={isProcessing}
         onClose={toggleRecording}
       />
+
+      <AnimatePresence>
+        {value.trim().length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.98 }}
+            className="mb-3 p-4 bg-white/80 backdrop-blur-md border border-gray-200 rounded-2xl shadow-lg max-h-48 overflow-y-auto prose prose-sm prose-zinc"
+          >
+            <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+              <Plus size={10} className="rotate-45" /> Live Preview
+            </div>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+              {value}
+            </ReactMarkdown>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="bg-white border border-zinc-200 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
         {/* Top: Input Area */}
