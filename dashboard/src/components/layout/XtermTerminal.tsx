@@ -3,6 +3,7 @@ import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { io } from 'socket.io-client';
 import 'xterm/css/xterm.css';
+import { API_BASE } from '../../services/api';
 
 const XtermTerminal = () => {
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -15,10 +16,28 @@ const XtermTerminal = () => {
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 12,
-      fontFamily: '"Cascadia Code", Menlo, monospace',
+      fontFamily: '"JetBrains Mono", "Fira Code", monospace',
       theme: {
-        background: '#000000',
-        foreground: '#ffffff'
+        background: '#18181b', // zinc-950
+        foreground: '#e4e4e7', // zinc-200
+        cursor: '#a1a1aa',     // zinc-400
+        selectionBackground: 'rgba(255, 255, 255, 0.1)',
+        black: '#18181b',
+        red: '#ef4444',
+        green: '#22c55e',
+        yellow: '#eab308',
+        blue: '#3b82f6',
+        magenta: '#a855f7',
+        cyan: '#06b6d4',
+        white: '#e4e4e7',
+        brightBlack: '#71717a',
+        brightRed: '#f87171',
+        brightGreen: '#4ade80',
+        brightYellow: '#facc15',
+        brightBlue: '#60a5fa',
+        brightMagenta: '#c084fc',
+        brightCyan: '#22d3ee',
+        brightWhite: '#ffffff'
       }
     });
 
@@ -37,7 +56,7 @@ const XtermTerminal = () => {
     xtermRef.current = term;
 
     // 3. Connect to /api/terminal/shell via Socket.io
-    const socket = io('http://localhost:3000', {
+    const socket = io(API_BASE, {
       path: '/api/terminal/socket'
     });
 
@@ -69,28 +88,31 @@ const XtermTerminal = () => {
   }, []);
 
   return (
-    <div className="flex flex-col h-full bg-black border-t border-slate-800 animate-in slide-in-from-bottom duration-300">
-      <div className="flex items-center justify-between px-4 py-1.5 bg-[#0F172A] border-b border-slate-800">
+    <div className="flex flex-col h-full bg-zinc-950 border-t border-zinc-800 animate-in slide-in-from-bottom duration-300 shadow-2xl">
+      <div className="flex items-center justify-between px-4 py-2 bg-zinc-900/50 backdrop-blur-md border-b border-zinc-800">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Interactive Shell</span>
-          <span className="text-[8px] bg-[#1E293B] text-[#22C55E] px-1.5 rounded font-mono">bash</span>
+          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Terminal</span>
+          <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">
+            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+            <span className="text-[9px] text-zinc-300 font-mono">bash</span>
+          </div>
         </div>
-        <div className="flex gap-4">
+        <div className="flex gap-3">
           <button 
             onClick={() => xtermRef.current?.clear()}
-            className="text-[10px] text-slate-500 hover:text-white"
+            className="text-[10px] font-medium text-zinc-500 hover:text-zinc-300 transition-colors"
           >
             Clear
           </button>
-          <button className="text-[10px] text-slate-500 hover:text-white font-bold">Cmd+J</button>
         </div>
       </div>
       
       {/* Actual Terminal Container */}
       <div 
-        ref={terminalRef} 
-        className="flex-1 p-2 overflow-hidden"
-      />
+        className="flex-1 p-1 overflow-hidden bg-zinc-950"
+      >
+        <div ref={terminalRef} className="h-full w-full" />
+      </div>
     </div>
   );
 };

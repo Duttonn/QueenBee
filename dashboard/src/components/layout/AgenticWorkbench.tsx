@@ -24,7 +24,8 @@ import {
   Layers,
   Eye,
   Monitor,
-  X
+  X,
+  TerminalSquare
 } from 'lucide-react';
 import { type Message, type ToolCall } from '../../services/api';
 import { useHiveStore } from '../../store/useHiveStore';
@@ -39,6 +40,7 @@ interface AgenticWorkbenchProps {
   onModeChange: (mode: 'local' | 'worktree' | 'cloud') => void;
   activeProject: any;
   onToggleInspector: () => void;
+  onToggleTerminal?: () => void;
   onSendMessage: (content: string) => void;
   onClearThread: () => void;
   onRunCommand: (cmd: string) => void;
@@ -125,6 +127,7 @@ const AgenticWorkbench = ({
   onModeChange,
   activeProject,
   onToggleInspector,
+  onToggleTerminal,
   onSendMessage,
   onClearThread,
   onRunCommand,
@@ -284,6 +287,14 @@ const AgenticWorkbench = ({
             title="Deep Inspector"
           >
             <Layers size={16} />
+          </button>
+
+          <button
+            onClick={onToggleTerminal}
+            className="p-2 hover:bg-gray-100 rounded-lg text-zinc-500 hover:text-zinc-700 transition-colors"
+            title="Toggle Terminal"
+          >
+            <TerminalSquare size={16} />
           </button>
 
           <button
