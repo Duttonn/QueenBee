@@ -177,14 +177,17 @@ export const useHiveStore = create<HiveState>()(
             threads: p.threads.map((t: any) =>
               t.id === threadId ? {
                 ...t,
-                messages: t.messages.map((msg: any, idx: number) =>
-                  idx === messageIndex ? {
+                messages: t.messages.map((msg: any, idx: number) => {
+                  if (idx !== messageIndex) return msg;
+                  const toolCalls = msg.toolCalls || [];
+                  const exists = toolCalls.some((tc: any) => tc.id === toolCallId);
+                  return {
                     ...msg,
-                    toolCalls: msg.toolCalls?.map((tc: any) =>
-                      tc.id === toolCallId ? { ...tc, ...updates } : tc
-                    )
-                  } : msg
-                )
+                    toolCalls: exists
+                      ? toolCalls.map((tc: any) => tc.id === toolCallId ? { ...tc, ...updates } : tc)
+                      : [...toolCalls, { id: toolCallId, ...updates }]
+                  };
+                })
               } : t
             )
           } : p
