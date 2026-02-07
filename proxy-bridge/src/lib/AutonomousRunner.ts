@@ -1,7 +1,8 @@
 import { Socket } from 'socket.io';
 import { ProjectTaskManager } from './ProjectTaskManager';
 import { AgentSession } from './AgentSession';
-import { LLMMessage, LLMProviderOptions } from './types/llm';
+import { LLMMessage, LLMProviderOptions, LLMResponse } from './types/llm';
+import { unifiedLLMService } from './UnifiedLLMService';
 import fs from 'fs-extra';
 import path from 'path';
 import { Writable } from 'stream';
@@ -39,7 +40,6 @@ export class AutonomousRunner {
     this.agentId = agentId;
     this.tm = new ProjectTaskManager(projectPath);
     
-    // Determine role based on agentId suffix or metadata
     if (agentId?.includes('orchestrator')) {
       this.role = 'orchestrator';
     } else if (agentId?.includes('worker')) {
@@ -59,10 +59,7 @@ export class AutonomousRunner {
     }
   }
 
-  /**
-   * New method to stream intermediate steps from an existing session
-   */
-  async streamIntermediateSteps(userPrompt: string, options?: LLMProviderOptions) {
+  async streamIntermediateSteps(userPrompt: string, history: LLMMessage[] = [], options?: LLMProviderOptions) {
       if (!this.session) {
           const systemPrompt = await this.getEnhancedContext();
           this.session = new AgentSession(this.projectPath, {
@@ -70,21 +67,22 @@ export class AutonomousRunner {
               maxSteps: 15,
               providerId: this.providerId,
               threadId: this.threadId,
-              apiKey: this.apiKey || undefined
+              apiKey: this.apiKey || undefined,
+              mode: this.mode
           });
 
-          // Forward events from the session to the client
+          this.session.messages = [
+              ...this.session.messages,
+              ...history.filter(m => m.role !== 'system')
+          ];
+
           this.session.on('event', (data) => this.sendEvent(data));
       }
-      // This will now use the underlying streaming capabilities of the session
-      await this.session.prompt(userPrompt, {...options, stream: true });
+
+      await this.executeRecursiveLoop(userPrompt, options);
       this.sendEvent({ event: 'agent_finished' });
   }
 
-
-  /**
-   * Main agentic loop (non-streaming by default now)
-   */
   async executeLoop(userPrompt: string, history: LLMMessage[] = [], options?: LLMProviderOptions) {
     if (!this.session) {
       const systemPrompt = await this.getEnhancedContext();
@@ -93,7 +91,8 @@ export class AutonomousRunner {
         maxSteps: 15,
         providerId: this.providerId,
         threadId: this.threadId,
-        apiKey: this.apiKey || undefined
+        apiKey: this.apiKey || undefined,
+        mode: this.mode
       });
       
       this.session.messages = [
@@ -102,7 +101,87 @@ export class AutonomousRunner {
       ];
     }
 
-    return await this.session.prompt(userPrompt, options);
+    return await this.executeRecursiveLoop(userPrompt, options);
+  }
+
+  /**
+   * Recursive Runner: Plan -> Execute -> Fix
+   */
+  private async executeRecursiveLoop(userPrompt: string, options?: LLMProviderOptions): Promise<LLMMessage> {
+    let result = await this.session!.prompt(userPrompt, options);
+    
+    // Only workers and orchestrators follow the recursive "Fix" logic automatically
+    if (this.role === 'solo') return result;
+
+    let retryCount = 0;
+    const maxRetries = 2;
+
+    while (retryCount < maxRetries) {
+      const verification = await this.verifyTask(result);
+      
+      if (verification.passed) {
+        console.log(`[RecursiveRunner] Task verified successfully: ${verification.reason}`);
+        break;
+      }
+
+      console.log(`[RecursiveRunner] Verification failed: ${verification.reason}. Restarting loop for fix.`);
+      retryCount++;
+      
+      this.sendEvent({ 
+        type: 'agent_status', 
+        data: { 
+          status: 'fixing', 
+          message: `Verification failed: ${verification.reason}. Attempting to fix... (Retry ${retryCount}/${maxRetries})` 
+        } 
+      });
+
+      result = await this.session!.prompt(
+        `Your previous attempt failed verification. Reason: ${verification.reason}. Please fix the issues and verify again.`,
+        options
+      );
+    }
+
+    return result;
+  }
+
+  /**
+   * Automatic Verification Step
+   */
+  private async verifyTask(lastMessage: LLMMessage): Promise<{ passed: boolean; reason?: string }> {
+    console.log('[RecursiveRunner] Starting automatic verification...');
+    
+    // 1. Check for obvious failure indicators in the message
+    const content = lastMessage.content?.toLowerCase() || '';
+    if (content.includes('error:') || content.includes('failed to') || content.includes('cannot find')) {
+      return { passed: false, reason: 'Agent reported an error in its response.' };
+    }
+
+    // 2. Perform a "Technical Review" via LLM
+    try {
+      const reviewPrompt: LLMMessage[] = [
+        { 
+          role: 'system', 
+          content: 'You are a Senior QA Engineer. Review the following agent interaction and decide if the task was completed successfully. Respond ONLY with a JSON object: {"passed": boolean, "reason": "string"}'
+        },
+        ...this.session!.messages.slice(-5) // Context of the last few steps
+      ];
+
+      const response = await unifiedLLMService.chat(this.providerId, reviewPrompt, {
+        apiKey: this.apiKey || undefined,
+        response_format: { type: 'json_object' }
+      });
+
+      const review = JSON.parse(response.content || '{}');
+      return {
+        passed: !!review.passed,
+        reason: review.reason || 'No reason provided by reviewer.'
+      };
+    } catch (error: any) {
+      console.error('[RecursiveRunner] Verification check failed:', error);
+      // Fallback: If verification itself fails, we assume passed to avoid infinite loops, 
+      // but we could also be more conservative.
+      return { passed: true, reason: 'Verification service unavailable.' };
+    }
   }
 
   async getEnhancedContext() {

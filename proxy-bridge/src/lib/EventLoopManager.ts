@@ -7,6 +7,7 @@ import { exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { FileWatcher } from './FileWatcher';
+import { Paths } from './Paths';
 
 /**
  * EventLoopManager: The "Nervous System" of Queen Bee.
@@ -25,7 +26,7 @@ export class EventLoopManager {
     this.orchestrator = new HiveOrchestrator(socket);
     this.dispatcher = new UniversalDispatcher(socket);
     this.toolExecutor = new ToolExecutor();
-    this.appLogPath = path.join(process.cwd(), '..', 'app.log');
+    this.appLogPath = path.join(Paths.getWorkspaceRoot(), 'app.log');
     this.fileWatcher = new FileWatcher();
     this.setupListeners();
   }
@@ -91,13 +92,12 @@ export class EventLoopManager {
         if (approved) {
             try {
                 // We need to know which tool to execute. 
-                // If the client sends back the full tool info:
                 const result = await this.toolExecutor.execute({
                     name: tool,
                     arguments: args,
                     id: toolCallId
                 }, {
-                    projectPath: projectPath || process.cwd(),
+                    projectPath: projectPath || Paths.getProxyBridgeRoot(),
                     projectId,
                     threadId,
                     toolCallId
@@ -117,6 +117,25 @@ export class EventLoopManager {
     });
 
     /**
+     * Deep Inspector Relay (P4-02)
+     * Relays messages between the Dashboard and the target application runtime.
+     */
+    this.socket.on('RUNTIME_QUERY', (data) => {
+      console.log('[EventLoop] Relay RUNTIME_QUERY to target app', data);
+      this.socket.broadcast.emit('RUNTIME_QUERY_RELAY', data);
+    });
+
+    this.socket.on('RUNTIME_EXEC', (data) => {
+      console.log('[EventLoop] Relay RUNTIME_EXEC to target app', data);
+      this.socket.broadcast.emit('RUNTIME_EXEC_RELAY', data);
+    });
+
+    this.socket.on('RUNTIME_RESPONSE', (data) => {
+      console.log('[EventLoop] Relay RUNTIME_RESPONSE to dashboard', data);
+      this.socket.broadcast.emit('RUNTIME_RESPONSE_RELAY', data);
+    });
+
+    /**
      * Scenario: Agent modified a file
      * This is triggered by the FileWatcher.
      */
@@ -124,7 +143,7 @@ export class EventLoopManager {
       console.log(`[EventLoop] File change detected in ${filePath}. Calculating Diff.`);
       
       try {
-        const scriptPath = path.join(__dirname, 'git_diff_extractor.py');
+        const scriptPath = path.join(Paths.getProxyBridgeRoot(), 'src', 'lib', 'git_diff_extractor.py');
         const diffProcess = exec(`python3 "${scriptPath}" "${projectPath}" "${filePath}"`);
         let diffOutput = '';
         diffProcess.stdout?.on('data', (data) => {
@@ -146,20 +165,17 @@ export class EventLoopManager {
 
         const diffJson = JSON.parse(diffOutput);
         
-        // Find which project this belongs to
-        // For now, we assume one active project, but this should be more robust
-        
         broadcast('DIFF_UPDATE', {
           file: filePath,
-          added: diffJson.diff.filter((l: any) => l.type === 'add').length,
-          removed: diffJson.diff.filter((l: any) => l.type === 'del').length
+          added: diffJson.added || 0,
+          removed: diffJson.removed || 0
         });
 
         broadcast('UI_UPDATE', {
           action: 'UPDATE_LIVE_DIFF',
           payload: {
             filePath,
-            diff: diffJson.diff // Send the full structured diff
+            diff: diffJson.files?.[0]?.hunks || [] // Send the full structured diff
           }
         });
 

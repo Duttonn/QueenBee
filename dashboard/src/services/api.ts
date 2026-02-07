@@ -207,16 +207,12 @@ export async function getGitDiff(projectPath: string, filePath?: string): Promis
 /**
  * Execute a shell command (one-shot)
  */
-export async function executeCommand(command: string, cwd?: string): Promise<{ output: string; exitCode: number }> {
-    const response = await fetch(`${API_BASE}/api/terminal/exec`, {
+export async function executeCommand(command: string, cwd?: string): Promise<{ stdout: string; stderr: string; error?: string }> {
+    const response = await fetch(`${API_BASE}/api/execution/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command, cwd }),
     });
-
-    if (!response.ok) {
-        throw new Error('Command execution failed');
-    }
 
     return response.json();
 }
@@ -232,18 +228,25 @@ export function getTerminalSocketUrl(): string {
 /**
  * Create a new worktree for feature development
  */
-export async function createWorktree(projectId: string, featureName: string, sourcePath: string): Promise<{ treePath: string; branchName: string }> {
-    const response = await fetch(`${API_BASE}/api/workflow/start`, {
+export async function createWorktree(projectId: string, featureName: string, sourcePath: string): Promise<{ path: string; branch: string }> {
+    const response = await fetch(`${API_BASE}/api/git/worktree`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, featureName, sourcePath }),
+        body: JSON.stringify({ 
+            path: sourcePath,
+            name: featureName 
+        }),
     });
 
     if (!response.ok) {
         throw new Error('Failed to create worktree');
     }
 
-    return response.json();
+    const data = await response.json();
+    return {
+        path: data.path,
+        branch: data.branch
+    };
 }
 
 /**

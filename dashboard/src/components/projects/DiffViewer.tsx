@@ -130,8 +130,34 @@ const DiffViewer = ({ projectPath, filePath }: DiffViewerProps) => {
       </div>
 
       <div className="bg-zinc-50 p-4 flex justify-end gap-3 border-t border-zinc-200">
-        <button className="px-5 py-2 bg-white text-zinc-600 text-[11px] font-bold uppercase tracking-widest rounded-xl hover:bg-zinc-50 hover:text-zinc-900 transition-all border border-zinc-200 shadow-sm">Discard</button>
-        <button className="px-5 py-2 bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-500 transition-all shadow-lg shadow-blue-500/20">Stage Changes</button>
+        <button 
+          onClick={async () => {
+            if (confirm('Are you sure you want to discard all changes in this file?')) {
+              await fetch(`${API_BASE}/api/git/discard`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: projectPath, file: filePath })
+              });
+              setRefreshTrigger(prev => prev + 1);
+            }
+          }}
+          className="px-5 py-2 bg-white text-zinc-600 text-[11px] font-bold uppercase tracking-widest rounded-xl hover:bg-zinc-50 hover:text-zinc-900 transition-all border border-zinc-200 shadow-sm"
+        >
+          Discard
+        </button>
+        <button 
+          onClick={async () => {
+            await fetch(`${API_BASE}/api/git/stage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: projectPath, file: filePath })
+            });
+            alert('File staged successfully.');
+          }}
+          className="px-5 py-2 bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-500 transition-all shadow-lg shadow-blue-500/20"
+        >
+          Stage Changes
+        </button>
       </div>
     </div>
   );

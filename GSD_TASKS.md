@@ -1,63 +1,57 @@
 # 🐝 QUEEN BEE - GLOBAL STATUS & DISPATCH (GSD)
 # Généré par : Architecte Agent
-# Date : 2026-02-07
-# Source : PRD v3.1 + Audit UX Web + Antigravity Merge Report
+# Date : 2026-02-06
+# Source : PRD v3 Ground Truth + Audit Forensique
 
 ## 📊 Status Global
-- **Phase 0 (Soudure)**: ✅ COMPLETE
-- **Blocker #1**: Agent "lobotomisé" en mode Cloud/Worktree (S-11)
-- **Blocker #2**: Régressions UI majeures (Model Picker, Sidebar, Automation)
+- **Phase 0**: COMPLETE (Sound Foundation Established)
+- **Phase 1**: COMPLETE (Solo Mode Core Operational)
+- **Phase 2**: COMPLETE (Secure Filesystem & Repo Cloner)
+- **Phase 3**: COMPLETE (Agentic Capabilities & Swarm Infrastructure)
+- **Phase 4**: COMPLETE (Advanced Features & Cupertino Aesthetic)
 - **Claim API**: http://127.0.0.1:3000/api/tasks/claim
 
 ## 🧠 Protocol Reminder (Pour les Agents)
 > **Règle d'Or** : Ne touchez PAS à ce fichier manuellement. Utilisez l'API claim.
 > **Isolation** : Travaillez toujours dans `../worktrees/task-{id}`.
+> **Claim** : `curl -X POST http://127.0.0.1:3000/api/tasks/claim -H "Content-Type: application/json" -d '{"taskId":"S-01","agentId":"WORKER-NOM"}'`
 
-## 🔧 PHASE 0.5: POLISH & AGENTIC UNLOCK (Urgences Web)
-> **Règle** : Priorité absolue avant de continuer la Phase 1.
+## 🔧 PHASE 0: SOUDURE (Semaine 1) — Fix What's Broken
+> **Règle** : ZÉRO nouvelle feature. Uniquement réparer les connexions cassées.
 
-- [ ] `S-11`: [Backend] Débloquer la boucle agentique pour TOUS les modes
-  - **Fichiers**: `proxy-bridge/src/pages/api/chat.ts`
-  - **Action**: Remplacer `if (stream && (mode === 'autonomous' || mode === 'local' || mode === 'solo'))` par `if (stream && mode !== 'raw')` pour inclure `cloud` et `worktree`.
-  - **Validation**: Un agent en mode "cloud" doit pouvoir utiliser `write_file`.
-  - **Worker**: BACKEND
+- [DONE] `S-01`: [Backend] Ajouter `.chatStream()` AsyncGenerator à UnifiedLLMService.ts
+- [DONE] `S-02`: [Backend] Convertir `/api/chat` de res.json() vers SSE streaming
+- [DONE] `S-03`: [Integration] Reconnecter AutonomousRunner à /api/chat et gérer le streaming agent (SSE)
+- [DONE] `S-04`: [Frontend] Unifier API_BASE sur le port 3000 partout et supprimer les URL hardcodées
+- [DONE] `S-05`: [Backend] Sécuriser ToolExecutor pour qu'il soit exclusivement server-side
+- [DONE] `S-06`: [Backend] Migration vers Paths.ts pour tous les chemins de fichiers
+- [DONE] `S-07`: [Integration] Propagation des erreurs du ToolExecutor vers l'UI via Socket.io
+- [DONE] `S-08`: [Backend] Réparer la boucle de FileWatcher (Backend -> Socket -> UI)
+- [DONE] `S-09`: [Frontend] Bugfix: Empêcher l'ajout de projets en double dans le Sidebar
+- [DONE] `S-10`: [Configuration] Enforce dynamic model discovery as the default.
 
-- [ ] `S-12`: [Frontend] Fix Model Picker (Z-Index & CSS Overflow)
-  - **Fichiers**: `dashboard/src/components/layout/CodexLayout.tsx` (ou composant dédié)
-  - **Action**: Sortir le menu du flux overflow ou utiliser un Portal. S'assurer qu'il s'affiche AU-DESSUS de la fenêtre de chat.
-  - **Worker**: FRONTEND
+## 🚀 PHASE 1: SOLO MODE COMPLET (Semaines 2-4)
+- [DONE] `P1-01`: [Frontend] Implémenter le streaming UI (Markdown partiel) dans le Composer
+- [DONE] `P1-02`: [Backend] Implémenter le résumé automatique de fin de session (Memory Flush)
+- [DONE] `P1-03`: [Frontend] Améliorer le Diff Viewer (Split-pane + Synchronized scrolling)
+- [DONE] `P1-04`: [Integration] Intégrer la dictée vocale Whisper (Ctrl+M)
+- [DONE] `P1-05`: [Frontend] Ajouter les Security Approvals UI pour les actions sensibles
 
-- [ ] `S-13`: [Frontend] Model Picker: Tri par provider et modèle par défaut intelligent
-  - **Fichiers**: `dashboard/src/components/layout/CodexLayout.tsx`, `dashboard/src/store/useAuthStore.ts`
-  - **Action**: Prendre le premier modèle de la liste `availableModels` au boot. Trier la liste par Provider (Gemini ensemble, Nvidia ensemble).
-  - **Worker**: FRONTEND
+## 📂 PHASE 2: FILESYSTEM & IPC (Abstraction Couche)
+- [DONE] `P2-01`: [Integration] Finaliser l'Hybridation (SystemService switch entre Electron/Web)
+- [DONE] `P2-02`: [Backend] Implémenter RepoClonerService utilisant simple-git
+- [DONE] `P2-03`: [Backend] CloudFSManager : Jail dans `~/.codex/workspaces`
 
-- [ ] `S-14`: [Frontend] Sidebar: Remplacer "New Thread" par Project Picker Dropdown
-  - **Fichiers**: `dashboard/src/components/layout/Sidebar.tsx`
-  - **Action**: Supprimer le bouton "+" inutile. Transformer l'affichage du projet courant en dropdown pour changer de projet/créer un thread dans un projet spécifique.
-  - **Worker**: FRONTEND
+## 🛠 PHASE 3: AGENTIC CAPABILITIES (Swarm Mode)
+- [DONE] `P3-01`: [Backend] ProjectTaskManager : Génération récursive de TASKS.md
+- [DONE] `P3-02`: [Backend] Recursive Runner : Boucle Plan -> Execute -> Fix
+- [DONE] `P3-03`: [Backend] Automation Scheduler (Visual Cron)
+- [DONE] `P3-08`: [Frontend] Inbox Triage System (Sidebar Triage section)
+- [DONE] `P3-09`: [Backend] GitHub Sync & Auto-Triage (Issue to Task conversion)
+- [DONE] `P3-10`: [Backend] Multi-Forge Support (GitHub/GitLab Adapter)
 
-- [ ] `S-15`: [Frontend] Fix Automation Dashboard (CRUD & Folder Picker)
-  - **Fichiers**: `dashboard/src/components/layout/AutomationDashboard.tsx`
-  - **Action**: Connecter les boutons On/Off, Delete. Réparer le folder picker lors de la création d'une automation (doit ouvrir un dialog ou lister les projets).
-  - **Worker**: FRONTEND
-
-- [ ] `S-16`: [Frontend] Unifier Search et Cmd+K
-  - **Fichiers**: `dashboard/src/components/layout/Sidebar.tsx`
-  - **Action**: Connecter le clic sur le bouton "Search" au même trigger que `Cmd+K`.
-  - **Worker**: FRONTEND
-
-- [ ] `S-17`: [Frontend] Restaurer le panneau Settings et le Micro
-  - **Fichiers**: `dashboard/src/components/layout/CodexLayout.tsx`, `dashboard/src/components/VoiceInput.tsx`
-  - **Action**: Ré-afficher le label "Settings" à côté de l'icône. Ajouter un bouton "Stop/Send" dans l'UI du micro pour valider la capture vocale.
-  - **Worker**: FRONTEND
-
-- [DONE] `S-18`: [Integration] Parser les events Tools dans le stream SSE
-  - **Fichiers**: `dashboard/src/services/api.ts`
-  - **Action**: Mettre à jour `sendChatMessageStream` pour qu'il ne parse pas que `content` mais aussi les events `tool_start`, `tool_end` et les affiche dans la console/UI.
-  - **Worker**: INTEGRATION
-
-## 🚀 PHASE 1: SOLO MODE COMPLET (En attente de Phase 0.5)
-- [ ] `P1-01`: [Frontend] Nettoyer le "Live Preview" (enlever le placeholder "gerz")
-- [ ] `P1-02`: [Backend] Implémenter le résumé automatique de fin de session
-...etc
+## 🧠 PHASE 4: ADVANCED FEATURES (Vision & Runtime)
+- [DONE] `P4-01`: [Backend] Browser Control / Live Eye (CDP Bridge)
+- [DONE] `P4-02`: [Integration] Deep Inspector & Runtime Bridge (React DevTools injection)
+- [DONE] `P4-09`: [Frontend] Migration complète vers Cupertino Flux Design System (Apple Aesthetic)
+- [DONE] `P4-10`: [Backend] Account Persistence (Hybrid local+server state sync)
