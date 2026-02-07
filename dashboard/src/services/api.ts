@@ -86,7 +86,8 @@ export async function sendChatMessageStream(
     request: ChatRequest,
     onChunk: (text: string) => void,
     onComplete: (fullText: string) => void,
-    onError: (error: Error) => void
+    onError: (error: Error) => void,
+    onEvent?: (event: { type: string; data: any }) => void
 ): Promise<void> {
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -135,6 +136,7 @@ export async function sendChatMessageStream(
             // 1. OpenAI format: data: {"choices": [{"delta": {"content": "..."}}]}
             // 2. Queen Bee/Gemini format: data: {"content": "..."}
             // 3. Tool call format: data: {"tool_calls": [...]}
+            // 4. Vertical Agent events: data: {"type": "tool_start", "data": {...}}
             const lines = chunk.split('\n');
             for (const line of lines) {
                 if (line.startsWith('data: ')) {
@@ -148,6 +150,11 @@ export async function sendChatMessageStream(
                         if (data.error) {
                             onError(new Error(data.error.message || 'Stream error'));
                             return;
+                        }
+
+                        // Handle Agent Events (tool_start, tool_end, step_start, etc)
+                        if (data.type && data.type !== 'message' && onEvent) {
+                            onEvent(data);
                         }
 
                         // Try OpenAI format first
