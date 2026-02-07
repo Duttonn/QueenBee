@@ -22,12 +22,12 @@ export class AutonomousRunner {
   private writable: Writable | null = null;
 
   constructor(
-    socket: Socket,
-    projectPath: string,
-    providerId: string = 'auto',
-    threadId: string | null = null,
-    apiKey: string | null = null,
-    mode: 'local' | 'worktree' | 'cloud' = 'worktree',
+    socket: Socket, 
+    projectPath: string, 
+    providerId: string = 'auto', 
+    threadId: string | null = null, 
+    apiKey: string | null = null, 
+    mode: 'local' | 'worktree' | 'cloud' = 'worktree', 
     agentId: string | null = null
   ) {
     this.socket = socket;
@@ -38,7 +38,7 @@ export class AutonomousRunner {
     this.mode = mode;
     this.agentId = agentId;
     this.tm = new ProjectTaskManager(projectPath);
-
+    
     // Determine role based on agentId suffix or metadata
     if (agentId?.includes('orchestrator')) {
       this.role = 'orchestrator';
@@ -53,18 +53,9 @@ export class AutonomousRunner {
     this.writable = writable;
   }
 
-  private log(message: string) {
-    if (process.env.DEBUG_AGENT) {
-      console.debug(`[AutonomousRunner] ${message}`);
-    }
-  }
-
   private sendEvent(data: any) {
     if (this.writable) {
-      this.log(`Sending Event: ${JSON.stringify(data).substring(0, 100)}...`);
       this.writable.write(`data: ${JSON.stringify(data)}\n\n`);
-    } else {
-      this.log('Cannot send event, writable is null');
     }
   }
 
@@ -72,35 +63,30 @@ export class AutonomousRunner {
    * New method to stream intermediate steps from an existing session
    */
   async streamIntermediateSteps(userPrompt: string, history: LLMMessage[] = [], options?: LLMProviderOptions) {
-    this.log(`streamIntermediateSteps called with prompt: ${userPrompt}`);
+      if (!this.session) {
+          const systemPrompt = await this.getEnhancedContext();
+          this.session = new AgentSession(this.projectPath, {
+              systemPrompt,
+              maxSteps: 15,
+              providerId: this.providerId,
+              threadId: this.threadId,
+              apiKey: this.apiKey || undefined,
+              mode: this.mode
+          });
 
-    if (!this.session) {
-      this.log('Creating new AgentSession');
-      const systemPrompt = await this.getEnhancedContext();
-      this.session = new AgentSession(this.projectPath, {
-        systemPrompt,
-        maxSteps: 15,
-        providerId: this.providerId,
-        threadId: this.threadId,
-        apiKey: this.apiKey || undefined
-      });
+          this.session.messages = [
+              ...this.session.messages,
+              ...history.filter(m => m.role !== 'system')
+          ];
 
-      // Inject history
-      this.session.messages = [
-        ...this.session.messages,
-        ...history.filter(m => m.role !== 'system')
-      ];
-
-      // Forward events from the session to the client
-      this.session.on('event', (data) => this.sendEvent(data));
-    }
-
-    this.log('Calling session.prompt');
-    // This will now use the underlying streaming capabilities of the session
-    await this.session.prompt(userPrompt, { ...options, stream: true });
-    this.log('session.prompt returned');
-    this.sendEvent({ event: 'agent_finished' });
+          // Forward events from the session to the client
+          this.session.on('event', (data) => this.sendEvent(data));
+      }
+      // This will now use the underlying streaming capabilities of the session
+      await this.session.prompt(userPrompt, {...options, stream: true });
+      this.sendEvent({ event: 'agent_finished' });
   }
+
 
   /**
    * Main agentic loop (non-streaming by default now)
@@ -113,9 +99,10 @@ export class AutonomousRunner {
         maxSteps: 15,
         providerId: this.providerId,
         threadId: this.threadId,
-        apiKey: this.apiKey || undefined
+        apiKey: this.apiKey || undefined,
+        mode: this.mode
       });
-
+      
       this.session.messages = [
         ...this.session.messages,
         ...history.filter(m => m.role !== 'system')
@@ -128,7 +115,7 @@ export class AutonomousRunner {
   async getEnhancedContext() {
     const files = await this.scanFiles(this.projectPath);
     const tasks = await this.tm.getPendingTasks();
-
+    
     let sharedMemory = 'No shared memory recorded yet.';
     const memoryPath = path.join(this.projectPath, 'MEMORY.md');
     if (await fs.pathExists(memoryPath)) {

@@ -16,13 +16,15 @@ export class AgentSession extends EventEmitter {
   private providerId: string;
   private threadId: string | null;
   private apiKey: string | null;
+  private mode: string;
 
   constructor(projectPath: string, options: { 
     systemPrompt?: string, 
     maxSteps?: number,
     providerId?: string,
     threadId?: string,
-    apiKey?: string
+    apiKey?: string,
+    mode?: string
   } = {}) {
     super();
     this.executor = new ToolExecutor();
@@ -31,6 +33,7 @@ export class AgentSession extends EventEmitter {
     this.providerId = options.providerId || 'auto';
     this.threadId = options.threadId || null;
     this.apiKey = options.apiKey || null;
+    this.mode = options.mode || 'local';
 
     if (options.systemPrompt) {
       this.messages.push({ role: 'system', content: options.systemPrompt });
@@ -101,7 +104,8 @@ export class AgentSession extends EventEmitter {
               projectPath: this.projectPath,
               threadId: this.threadId || undefined,
               agentId: this.threadId,
-              toolCallId: toolCall.id
+              toolCallId: toolCall.id,
+              mode: this.mode
             });
 
             this.emit('event', { type: 'tool_end', data: { toolName, result, toolCallId: toolCall.id } });
@@ -130,6 +134,9 @@ export class AgentSession extends EventEmitter {
         }
       }
 
+      // Memory Flush (P1-02)
+      await this.summarizeSession();
+
       if (stepCount >= this.maxSteps) {
         this.emit('event', { type: 'agent_status', data: { status: 'warning', message: 'Maximum agentic steps reached' } });
       } else {
@@ -150,6 +157,38 @@ export class AgentSession extends EventEmitter {
     }
 
     return this.messages[this.messages.length - 1];
+  }
+
+  private async summarizeSession() {
+    console.log('[AgentSession] Performing Memory Flush...');
+    try {
+      const summaryPrompt: LLMMessage = {
+        role: 'system',
+        content: `Summarize the technical changes, architectural findings, and key facts from this session for the MEMORY.md file. 
+        Be extremely concise and professional. Categorize into 'knowledge' or 'architecture' where applicable.`
+      };
+
+      const history = this.messages.slice(-10); // Last 10 messages for context
+      const response = await unifiedLLMService.chat(this.providerId, [summaryPrompt, ...history], {
+        apiKey: this.apiKey || undefined
+      });
+
+      if (response.content) {
+        await this.executor.execute({
+          name: 'write_memory',
+          arguments: {
+            category: 'knowledge',
+            content: response.content
+          }
+        }, {
+          projectPath: this.projectPath,
+          mode: this.mode,
+          agentId: 'memory-flush'
+        });
+      }
+    } catch (error) {
+      console.error('[AgentSession] Failed to summarize session:', error);
+    }
   }
 
   reset() {
