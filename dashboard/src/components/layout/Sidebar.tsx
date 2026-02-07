@@ -14,7 +14,8 @@ import {
   Loader2,
   Check,
   Globe,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Github
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -33,13 +34,15 @@ interface SidebarProps {
 const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, selectedProjectId, onProjectSelect }: SidebarProps) => {
   const { projects, addProject, activeThreadId, setActiveThread } = useHiveStore();
   const { forges, user } = useAuthStore();
-  const gitForge = forges.find(f => f.id === 'github');
+  const connectedForges = forges.filter(f => f.connected);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [isAddRepoOpen, setIsAddRepoOpen] = useState(false);
   const [isCloning, setIsCloning] = useState<string | null>(null);
 
-  const handleImportRepo = async (repo: any) => {
-    setIsCloning(repo.full_name);
+  const handleImportRepo = async (repo: any, forgeId: string) => {
+    setIsCloning(repo.full_name || repo.name);
+    
+    const forge = forges.find(f => f.id === forgeId);
 
     // Detect Electron environment
     const isElectron = typeof window !== 'undefined' && (window as any).electron !== undefined;
@@ -61,8 +64,8 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
         const baseDir = result.filePaths[0];
         const targetDirForClone = `${baseDir}/${repo.name}`;
 
-        console.log(`[System] Starting clone for ${repo.full_name} into ${targetDirForClone}...`);
-        await SystemService.fs.clone(repo.html_url, targetDirForClone);
+        console.log(`[System] Starting clone for ${repo.full_name || repo.name} into ${targetDirForClone}...`);
+        await SystemService.fs.clone(repo.html_url || repo.url, targetDirForClone);
 
         // SAVE TO BACKEND
         const res = await fetch('http://127.0.0.1:3000/api/projects', {
@@ -70,7 +73,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: repo.name,
-            path: targetDirForClone, // Use the actual absolute path chosen by user
+            path: targetDirForClone, 
             type: 'local'
           })
         });
@@ -99,7 +102,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
           body: JSON.stringify({
             repoUrl: repo.html_url || repo.url,
             projectName: repo.name,
-            accessToken: gitForge?.accessToken
+            accessToken: forge?.accessToken
           })
         });
 
@@ -127,14 +130,18 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
     projects.forEach(p => {
       if (newExpanded[p.name] === undefined) newExpanded[p.name] = true;
     });
-    if (gitForge?.repositories) {
-      gitForge.repositories.forEach(repo => {
-        const key = repo.fullName || repo.full_name;
-        if (newExpanded[key] === undefined) newExpanded[key] = false;
-      });
-    }
+    
+    connectedForges.forEach(forge => {
+      if (forge.repositories) {
+        forge.repositories.forEach(repo => {
+          const key = repo.fullName || repo.full_name || repo.name;
+          if (newExpanded[key] === undefined) newExpanded[key] = false;
+        });
+      }
+    });
+    
     setExpandedFolders(newExpanded);
-  }, [projects, gitForge?.repositories]);
+  }, [projects, connectedForges]);
 
   const toggleFolder = (folder: string) => {
     setExpandedFolders(prev => ({ ...prev, [folder]: !prev[folder] }));
@@ -242,39 +249,49 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                   </div>
 
                   <div className="max-h-60 overflow-y-auto">
-                    {gitForge?.connected ? (
-                      gitForge.repositories && gitForge.repositories.length > 0 ? (
-                        gitForge.repositories.map((repo: any) => {
-                          const isImported = projects.some(p => p.id === (repo.id ? repo.id.toString() : ''));
-                          return (
-                            <button
-                              key={repo.id || repo.name}
-                              disabled={isCloning === repo.full_name || isImported}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors disabled:opacity-50"
-                              onClick={() => handleImportRepo(repo)}
-                            >
-                              <div className="w-5 h-5 rounded-md bg-slate-100 flex items-center justify-center flex-shrink-0 text-xs text-slate-600 font-medium">
-                                {isCloning === repo.full_name ? (
-                                  <Loader2 size={12} className="text-blue-500 animate-spin" />
-                                ) : (
-                                  repo.name[0].toUpperCase()
-                                )}
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="text-sm text-gray-700 font-medium truncate">{repo.name}</div>
-                                <div className="text-[10px] text-gray-400 truncate">
-                                  {isImported ? 'Imported' : repo.full_name}
-                                </div>
-                              </div>
-                              {isImported && <Check size={12} className="text-[#22C55E] flex-shrink-0" />}
-                            </button>
-                          );
-                        })
-                      ) : (
-                        <div className="px-3 py-4 text-center text-xs text-gray-400">
-                          No repositories found
-                        </div>
-                      )
+                    {connectedForges.length > 0 ? (
+                      connectedForges.map(forge => (
+                        <React.Fragment key={forge.id}>
+                          <div className="px-3 py-1.5 border-b border-gray-50 bg-gray-50/30">
+                            <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1">
+                              {forge.id === 'github' ? <Github size={10} /> : <Globe size={10} />}
+                              {forge.name}
+                            </div>
+                          </div>
+                          {forge.repositories && forge.repositories.length > 0 ? (
+                            forge.repositories.map((repo: any) => {
+                              const isImported = projects.some(p => p.id === (repo.id ? repo.id.toString() : ''));
+                              return (
+                                <button
+                                  key={`${forge.id}-${repo.id || repo.name}`}
+                                  disabled={isCloning === (repo.full_name || repo.name) || isImported}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors disabled:opacity-50"
+                                  onClick={() => handleImportRepo(repo, forge.id)}
+                                >
+                                  <div className="w-5 h-5 rounded-md bg-slate-100 flex items-center justify-center flex-shrink-0 text-xs text-slate-600 font-medium">
+                                    {isCloning === (repo.full_name || repo.name) ? (
+                                      <Loader2 size={12} className="text-blue-500 animate-spin" />
+                                    ) : (
+                                      repo.name[0].toUpperCase()
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-sm text-gray-700 font-medium truncate">{repo.name}</div>
+                                    <div className="text-[10px] text-gray-400 truncate">
+                                      {isImported ? 'Imported' : (repo.full_name || repo.name)}
+                                    </div>
+                                  </div>
+                                  {isImported && <Check size={12} className="text-[#22C55E] flex-shrink-0" />}
+                                </button>
+                              );
+                            })
+                          ) : (
+                            <div className="px-3 py-4 text-center text-xs text-gray-400">
+                              No repositories found for {forge.name}
+                            </div>
+                          )}
+                        </React.Fragment>
+                      ))
                     ) : (
                       <div className="p-3">
                         <button
@@ -292,7 +309,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                           <div className="w-4 h-4 rounded-full bg-white text-slate-900 flex items-center justify-center">
                             <Plus size={10} />
                           </div>
-                          Connect GitHub
+                          Connect Git Forge
                         </button>
                       </div>
                     )}
@@ -340,7 +357,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                                 body: JSON.stringify({
                                   repoUrl: url,
                                   projectName: url.split('/').pop(),
-                                  accessToken: gitForge?.accessToken
+                                  accessToken: forges.find(f => f.id === 'github')?.accessToken
                                 })
                               });
 
@@ -441,43 +458,6 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
           </div>
         ))}
       </div>
-
-      {gitForge?.connected && gitForge?.repositories && gitForge.repositories.length > 0 && (
-        <div className="flex-1 overflow-y-auto px-2 mt-4 border-t border-gray-100 pt-2">
-          <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-2 mb-2">
-            Repositories
-          </div>
-
-          {gitForge.repositories.map((repo: any) => {
-            const isImported = projects.some(p => p.id === (repo.id ? repo.id.toString() : ''));
-            return (
-              <div key={repo.id || repo.name} className="mb-1">
-                <button
-                  onClick={() => {
-                    const existing = projects.find(p => p.id === (repo.id ? repo.id.toString() : ''));
-                    if (existing) {
-                      onProjectSelect?.(existing.id);
-                      setActiveThread(null);
-                    } else {
-                      handleImportRepo(repo);
-                    }
-                  }}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm font-medium rounded-lg transition-colors ${selectedProjectId === (repo.id ? repo.id.toString() : '')
-                      ? 'bg-blue-50 text-[#3B82F6] border border-blue-100/50 shadow-sm'
-                      : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                >
-                  <div className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-500 font-bold flex-shrink-0">
-                    {isCloning === repo.full_name ? <Loader2 size={10} className="animate-spin" /> : repo.name[0].toUpperCase()}
-                  </div>
-                  <span className="truncate flex-1 text-left">{repo.name}</span>
-                  {isImported && <Check size={10} className="text-[#22C55E] opacity-60" />}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
 
       <div className="p-3 border-t border-gray-200/50 bg-white/50 mt-auto">
         <div className="flex items-center gap-3 p-2 rounded-xl hover:bg-white transition-all shadow-sm border border-transparent hover:border-gray-100 cursor-pointer group">
