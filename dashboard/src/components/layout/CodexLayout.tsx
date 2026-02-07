@@ -155,9 +155,9 @@ interface ComposerBarProps {
   isLoading?: boolean;
   mode: 'local' | 'worktree' | 'cloud';
   onModeChange: (mode: 'local' | 'worktree' | 'cloud') => void;
-  availableModels: string[];
+  availableModels: { name: string, provider: string }[];
   selectedModel: string;
-  onModelSelect: (model: string) => void;
+  onModelSelect: (model: string, provider: string) => void;
 }
 
 const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange, availableModels, selectedModel, onModelSelect }: ComposerBarProps) => {
@@ -214,7 +214,7 @@ const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange,
         )}
       </AnimatePresence>
 
-      <div className="bg-white border border-zinc-200 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="bg-white border border-zinc-200 rounded-3xl shadow-2xl flex flex-col">
         {/* Top: Input Area */}
         <div className="px-4 pt-4 pb-2">
           {showPreview ? (
@@ -289,24 +289,33 @@ const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange,
                       initial={{ opacity: 0, y: 10, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      className="absolute bottom-full left-0 mb-3 w-56 bg-white border border-zinc-200 shadow-2xl rounded-2xl overflow-hidden z-20 p-1"
+                      className="absolute bottom-full left-0 mb-3 w-64 bg-white border border-zinc-200 shadow-2xl rounded-2xl overflow-hidden z-[60] p-1"
                     >
                       <div className="px-3 py-2 text-[9px] font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-50 mb-1">
                         AI Model
                       </div>
-                      <div className="max-h-60 overflow-y-auto">
-                        {availableModels.map((m) => (
-                          <button
-                            key={m}
-                            onClick={() => { onModelSelect(m); setIsModelMenuOpen(false); }}
-                            className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition-all ${m === selectedModel
-                              ? 'bg-zinc-900 text-white shadow-lg'
-                              : 'text-zinc-600 hover:bg-zinc-50'
-                              }`}
-                          >
-                            {m}
-                          </button>
-                        ))}
+                      <div className="max-h-80 overflow-y-auto">
+                        {availableModels.map((m, idx) => {
+                          const showProviderHeader = idx === 0 || availableModels[idx-1].provider !== m.provider;
+                          return (
+                            <React.Fragment key={`${m.provider}-${m.name}`}>
+                              {showProviderHeader && (
+                                <div className="px-3 py-1.5 text-[8px] font-black text-blue-500 uppercase tracking-[0.2em] bg-blue-50/50 mt-1 first:mt-0 mb-1 rounded-lg">
+                                  {m.provider}
+                                </div>
+                              )}
+                              <button
+                                onClick={() => { onModelSelect(m.name, m.provider); setIsModelMenuOpen(false); }}
+                                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition-all ${m.name === selectedModel
+                                  ? 'bg-zinc-900 text-white shadow-lg'
+                                  : 'text-zinc-600 hover:bg-zinc-50'
+                                  }`}
+                              >
+                                {m.name}
+                              </button>
+                            </React.Fragment>
+                          );
+                        })}
                       </div>
                     </motion.div>
                   </>
@@ -349,7 +358,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isCustomizationOpen, setIsCustomizationOpen] = useState(false);
 
-  const { providers, activeProviderId } = useAuthStore();
+  const { providers, activeProviderId, setActiveProvider } = useAuthStore();
   const activeProvider = providers.find(p => p.id === activeProviderId) || providers.find(p => p.connected);
   const { runAutomation, commit, fetchData, addProject: addAppProject } = useAppStore();
   const { projects, activeThreadId, setActiveThread, addThread, addMessage, updateThread, updateLastMessage, updateToolCall } = useHiveStore();
@@ -389,18 +398,24 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     fetchData();
   }, [fetchData]);
 
-  const availableModels = activeProvider?.models || [];
+  const availableModels = providers
+    .filter(p => p.connected)
+    .flatMap(p => p.models.map(m => ({ name: m, provider: p.id })))
+    .sort((a, b) => a.provider.localeCompare(b.provider));
+
   const [selectedModel, setSelectedModel] = useState<string>('');
 
   useEffect(() => {
     if (availableModels.length > 0) {
-      if (!selectedModel || !availableModels.includes(selectedModel)) {
-        setSelectedModel(availableModels[0]);
+      if (!selectedModel || !availableModels.some(m => m.name === selectedModel)) {
+        const geminiFlash = availableModels.find(m => m.name.includes('flash'));
+        setSelectedModel(geminiFlash?.name || availableModels[0].name);
+        if (geminiFlash) setActiveProvider(geminiFlash.provider);
       }
     } else {
       setSelectedModel('');
     }
-  }, [availableModels, selectedModel]);
+  }, [availableModels, selectedModel, setActiveProvider]);
 
   const handleSendMessage = useCallback(async () => {
     if (!inputValue.trim() || isLoading || !selectedProjectId) return;
@@ -423,7 +438,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     addMessage(selectedProjectId, currentThreadId, { role: 'assistant', content: '' });
 
     const providerToUse = activeProvider?.id || 'mock';
-    const modelToUse = selectedModel || availableModels[0] || 'mock-model';
+    const modelToUse = selectedModel || availableModels[0]?.name || 'mock-model';
     const apiKey = activeProvider?.apiKey;
     const thread = activeProject?.threads?.find((t: any) => t.id === currentThreadId);
     const agentId = thread?.agentId;
