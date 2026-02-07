@@ -11,14 +11,7 @@
 - **Phase 4**: COMPLETE (Advanced Features & Cupertino Aesthetic)
 - **Claim API**: http://127.0.0.1:3000/api/tasks/claim
 
-## 🧠 Protocol Reminder (Pour les Agents)
-> **Règle d'Or** : Ne touchez PAS à ce fichier manuellement. Utilisez l'API claim.
-> **Isolation** : Travaillez toujours dans `../worktrees/task-{id}`.
-> **Claim** : `curl -X POST http://127.0.0.1:3000/api/tasks/claim -H "Content-Type: application/json" -d '{"taskId":"S-01","agentId":"WORKER-NOM"}'`
-
 ## 🔧 PHASE 0: SOUDURE (Semaine 1) — Fix What's Broken
-> **Règle** : ZÉRO nouvelle feature. Uniquement réparer les connexions cassées.
-
 - [DONE] `S-01`: [Backend] Ajouter `.chatStream()` AsyncGenerator à UnifiedLLMService.ts
 - [DONE] `S-02`: [Backend] Convertir `/api/chat` de res.json() vers SSE streaming
 - [DONE] `S-03`: [Integration] Reconnecter AutonomousRunner à /api/chat et gérer le streaming agent (SSE)
@@ -53,5 +46,15 @@
 ## 🧠 PHASE 4: ADVANCED FEATURES (Vision & Runtime)
 - [DONE] `P4-01`: [Backend] Browser Control / Live Eye (CDP Bridge)
 - [DONE] `P4-02`: [Integration] Deep Inspector & Runtime Bridge (React DevTools injection)
-- [DONE] `P4-09`: [Frontend] Migration complète vers Cupertino Flux Design System (Apple Aesthetic)
+- [x] **Feature**: Integrated `AutonomousRunner` to fix Agent "Thinking" loop
+- [x] **Feature**: Implemented French Language Support (i18n + Toggle)
+- [x] **BugFix**: Resolved 500 errors in `AgenticWorkbench.tsx` and `GlobalCommandBar.tsx`
+- [x] **BugFix**: Implemented missing `/api/inbox/list` endpoint
+- [x] **Feature**: Enforce Light Theme globally (reverted Dark Theme changes)) <!-- id: 409 -->
+  - [x] Fix Automation Dashboard UI <!-- id: 410 -->
+  - [x] Fix InboxPanel (Triage) Theme (Light Mode) <!-- id: 411 -->
+  - [x] Fix Search Button (Connect to Cmd+K) <!-- id: 412 -->
+  - [x] Verify Settings Icon <!-- id: 414 -->
+  - [x] **Feature**: Voice Dictation Language Support (French)
+  - Status: **Ready for Review** (Merge conflicts on main)
 - [DONE] `P4-10`: [Backend] Account Persistence (Hybrid local+server state sync)
