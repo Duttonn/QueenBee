@@ -603,6 +603,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                   activeThreadId={activeThreadId}
                   setActiveThread={setActiveThread}
                   onToggleInspector={() => setIsInspectorOpen(prev => !prev)}
+                  onToggleTerminal={() => setIsTerminalOpen(prev => !prev)}
                   onRun={handleRunProject}
                   onCommit={handleCommit}
                   onBuild={() => handleRunCommand('npm run build')}
