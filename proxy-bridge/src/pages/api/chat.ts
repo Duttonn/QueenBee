@@ -21,7 +21,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     : process.cwd();
 
   // Handle agentic streaming
-  if (stream && (mode === 'autonomous' || mode === 'local' || mode === 'solo')) {
+  if (stream && mode !== 'raw') {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
