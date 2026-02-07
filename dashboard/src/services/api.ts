@@ -130,21 +130,45 @@ export async function sendChatMessageStream(
             if (done) break;
 
             const chunk = decoder.decode(value, { stream: true });
-            
-            // SSE parsing (simplified)
-            // Expected format: data: {"choices": [{"delta": {"content": "..."}}]}
+
+            // SSE parsing - supports multiple formats:
+            // 1. OpenAI format: data: {"choices": [{"delta": {"content": "..."}}]}
+            // 2. Queen Bee/Gemini format: data: {"content": "..."}
+            // 3. Tool call format: data: {"tool_calls": [...]}
             const lines = chunk.split('\n');
             for (const line of lines) {
                 if (line.startsWith('data: ')) {
+                    const payload = line.substring(6).trim();
+                    if (payload === '[DONE]') continue;
+
                     try {
-                        const data = JSON.parse(line.substring(6));
-                        const content = data.choices?.[0]?.delta?.content || '';
+                        const data = JSON.parse(payload);
+
+                        // Check for errors first
+                        if (data.error) {
+                            onError(new Error(data.error.message || 'Stream error'));
+                            return;
+                        }
+
+                        // Try OpenAI format first
+                        let content = data.choices?.[0]?.delta?.content;
+
+                        // Fallback to direct content (Queen Bee/Gemini format)
+                        if (!content && data.content) {
+                            content = data.content;
+                        }
+
+                        // Fallback to AgentSession format
+                        if (!content && data.type === 'message' && data.data?.content) {
+                            content = data.data.content;
+                        }
+
                         if (content) {
                             fullText += content;
                             onChunk(content);
                         }
                     } catch (e) {
-                        // Not JSON, might be raw text or partial
+                        // Not JSON, might be raw text or partial chunk
                     }
                 }
             }
