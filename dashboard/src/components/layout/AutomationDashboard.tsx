@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '../../store/useAppStore';
+import { useHiveStore } from '../../store/useHiveStore';
 
 // Recipe Card Component
 const AutomationCard = ({ icon, title, description, active, onToggle, onDelete, onRun, lastRunStatus }: {
@@ -35,12 +36,12 @@ const AutomationCard = ({ icon, title, description, active, onToggle, onDelete, 
       <div className="p-3 bg-zinc-50 rounded-2xl group-hover:bg-white group-hover:shadow-sm transition-all">{icon}</div>
       <div className="flex items-center gap-2">
         <button 
-          onClick={onToggle}
+          onClick={(e) => { e.stopPropagation(); onToggle(); }}
           className={`w-10 h-5 rounded-full transition-colors relative ${active ? 'bg-green-500 shadow-sm shadow-green-200' : 'bg-zinc-200'}`}
         >
           <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${active ? 'left-6' : 'left-1'}`} />
         </button>
-        <button onClick={onDelete} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-all rounded-xl">
+        <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-all rounded-xl">
           <Trash2 size={16} />
         </button>
       </div>
@@ -70,6 +71,10 @@ const CreateAutomationModal = ({ isOpen, onClose, onCreate }: { isOpen: boolean;
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [scheduleTime, setScheduleTime] = useState('09:30');
+  const [targetProject, setTargetProject] = useState<string | null>(null);
+  const [isProjectPickerOpen, setIsProjectPickerOpen] = useState(false);
+  
+  const { projects } = useHiveStore();
 
   if (!isOpen) return null;
 
@@ -79,10 +84,13 @@ const CreateAutomationModal = ({ isOpen, onClose, onCreate }: { isOpen: boolean;
       title,
       description,
       schedule: scheduleTime,
+      targetPath: projects.find(p => p.name === targetProject)?.path || '',
+      active: true
     });
     onClose();
     setTitle('');
     setDescription('');
+    setTargetProject(null);
   };
 
   return (
@@ -136,12 +144,44 @@ const CreateAutomationModal = ({ isOpen, onClose, onCreate }: { isOpen: boolean;
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-2">Target Folder</label>
-                <button className="w-full flex items-center justify-between px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-500 hover:border-zinc-300 transition-colors">
-                  <span className="text-sm">Current</span>
-                  <ChevronDown size={14} />
+              <div className="relative">
+                <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-2">Target Project</label>
+                <button 
+                  onClick={() => setIsProjectPickerOpen(!isProjectPickerOpen)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-900 hover:border-zinc-300 transition-colors"
+                >
+                  <span className="text-sm truncate">{targetProject || 'Select...'}</span>
+                  <ChevronDown size={14} className={`transition-transform ${isProjectPickerOpen ? 'rotate-180' : ''}`} />
                 </button>
+                
+                <AnimatePresence>
+                  {isProjectPickerOpen && (
+                    <>
+                      <div className="fixed inset-0 z-[60]" onClick={() => setIsProjectPickerOpen(false)} />
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        className="absolute bottom-full left-0 right-0 mb-2 bg-white border border-zinc-200 shadow-2xl rounded-2xl overflow-hidden z-[70] p-1"
+                      >
+                         <div className="max-h-40 overflow-y-auto">
+                            {projects.map(p => (
+                              <button
+                                key={p.id}
+                                onClick={() => { setTargetProject(p.name); setIsProjectPickerOpen(false); }}
+                                className="w-full text-left px-3 py-2 rounded-xl text-xs font-medium text-zinc-600 hover:bg-zinc-50 transition-all"
+                              >
+                                {p.name}
+                              </button>
+                            ))}
+                            {projects.length === 0 && (
+                              <div className="px-3 py-2 text-[10px] text-zinc-400 italic">No projects found</div>
+                            )}
+                         </div>
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
               </div>
               <div>
                 <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-2">Schedule Time</label>
