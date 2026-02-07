@@ -276,3 +276,24 @@ export async function healthCheck(): Promise<boolean> {
         return false;
     }
 }
+
+/**
+ * Transcribe audio using Whisper
+ */
+export async function transcribeAudio(audioBlob: Blob): Promise<string> {
+    const response = await fetch(`${API_BASE}/api/audio/transcribe`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'audio/webm',
+        },
+        body: audioBlob,
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Transcription failed');
+    }
+
+    const data = await response.json();
+    return data.text;
+}
