@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, Command, Search, Cpu, GitBranch, Zap, Layers, Loader2 } from 'lucide-react';
 import { useHiveStore } from '../../store/useHiveStore';
+import { useAppStore } from '../../store/useAppStore';
 import { useVoiceRecording } from '../../hooks/useVoiceRecording';
 
 const GlobalCommandBar = () => {
-  const [isOpen, setIsOpen] = useState(false);
+  const { isCommandBarOpen: isOpen, setCommandBarOpen: setIsOpen } = useAppStore();
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
