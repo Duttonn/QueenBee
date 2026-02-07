@@ -5,6 +5,7 @@ export class AnthropicProvider extends LLMProvider {
   id: string = 'anthropic';
   private apiKey: string;
   private apiBase: string;
+  private discoveredModel: string | null = null;
 
   constructor(apiKey: string, apiBase: string = 'https://api.anthropic.com/v1') {
     super();
@@ -12,8 +13,48 @@ export class AnthropicProvider extends LLMProvider {
     this.apiBase = apiBase;
   }
 
+  private async getOrDiscoverModel(requestedModel?: string): Promise<string> {
+    if (requestedModel && !requestedModel.includes('gpt') && !requestedModel.includes('gemini')) {
+      return requestedModel;
+    }
+    
+    if (this.discoveredModel) return this.discoveredModel;
+
+    // Anthropic Model Discovery (Experimental / Fallback)
+    // As of now, Anthropic's /v1/models requires specific headers.
+    // If it fails, we use a prioritized list.
+    const priorities = [
+      'claude-3-5-sonnet-20240620',
+      'claude-3-opus-20240229',
+      'claude-3-sonnet-20240229',
+      'claude-3-haiku-20240307'
+    ];
+
+    try {
+        const response = await fetch(`${this.apiBase}/models`, {
+            headers: {
+                'x-api-key': this.apiKey,
+                'anthropic-version': '2023-06-01'
+            }
+        });
+        if (response.ok) {
+            const data = await response.json();
+            if (data.data && data.data.length > 0) {
+                const firstModel = data.data[0].id;
+                this.discoveredModel = firstModel;
+                return firstModel;
+            }
+        }
+    } catch (e) {
+        // Fallback to priority list
+    }
+
+    this.discoveredModel = priorities[0];
+    return priorities[0];
+  }
+
   async chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
-    const model = options?.model || 'claude-3-opus-20240229';
+    const model = await this.getOrDiscoverModel(options?.model);
     
     // Separate system message from others for Anthropic
     const systemMessage = messages.find(m => m.role === 'system');
@@ -58,7 +99,7 @@ export class AnthropicProvider extends LLMProvider {
   }
 
   async *chatStream(messages: LLMMessage[], options?: LLMProviderOptions): AsyncGenerator<LLMResponse> {
-    const model = options?.model || 'claude-3-opus-20240229';
+    const model = await this.getOrDiscoverModel(options?.model);
     const systemMessage = messages.find(m => m.role === 'system');
     const otherMessages = messages.filter(m => m.role !== 'system').map(m => ({
       role: m.role === 'assistant' ? 'assistant' : 'user',
