@@ -42,7 +42,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const lastMessage = messages[messages.length - 1];
       const history = messages.slice(0, -1);
 
-      await runner.streamIntermediateSteps(lastMessage.content, { model, apiKey });
+      await runner.streamIntermediateSteps(lastMessage.content, history, { model, apiKey });
       
       res.end();
     } catch (error: any) {

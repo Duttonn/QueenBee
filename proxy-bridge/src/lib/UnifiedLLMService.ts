@@ -198,6 +198,24 @@ export class UnifiedLLMService {
     }
   }
 
+  async transcribe(providerId: string, audioBlob: any, options?: { apiKey?: string | null }): Promise<{ text: string }> {
+    await this.ready;
+    
+    let provider = await this.getOrLoadProvider(providerId, { apiKey: options?.apiKey || undefined });
+
+    if (!provider || !(provider as any).transcribe) {
+      // Fallback to openai if requested not found or doesn't support transcribe
+      provider = this.providers.get('openai');
+    }
+
+    if (provider && (provider as any).transcribe) {
+      const text = await (provider as any).transcribe(audioBlob);
+      return { text };
+    }
+
+    throw new Error('No transcription provider available. Please configure OpenAI.');
+  }
+
   private async getOrLoadProvider(providerId: string, options?: LLMProviderOptions): Promise<LLMProvider | undefined> {
     // 1. Check existing providers
     let provider = this.providers.get(providerId);

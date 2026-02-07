@@ -1,16 +1,10 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import fs from 'fs-extra';
-import path from 'path';
+import { inboxManager } from '../../../lib/InboxManager';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const inboxPath = path.join(process.cwd(), 'data', 'inbox.json');
-  
   try {
     if (req.method === 'GET') {
-      if (!await fs.pathExists(inboxPath)) {
-        return res.status(200).json([]);
-      }
-      const data = await fs.readJson(inboxPath);
+      const data = await inboxManager.getFindings();
       return res.status(200).json(data);
     }
     

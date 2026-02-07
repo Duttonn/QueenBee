@@ -9,25 +9,30 @@ import { getDb } from './db';
 
 export interface AutomationJob {
   id: string;
-  type: 'GSD_SCAN' | 'SYNC_REPOS' | 'DATA_GEN' | 'MAINTENANCE';
+  type?: 'GSD_SCAN' | 'SYNC_REPOS' | 'DATA_GEN' | 'MAINTENANCE';
+  title?: string;
   schedule: string; // Cron format
   projectId?: string;
   projectPath?: string;
   lastRun?: string;
-  status: 'active' | 'paused';
+  status?: 'active' | 'paused';
+  active?: boolean;
 }
 
 /**
  * CronManager: Manages recurring agent tasks using node-cron.
  */
 export class CronManager {
-  private jobs: Map<string, cron.ScheduledTask> = new Map();
+  private jobs: Map<string, any> = new Map();
   private jobsData: AutomationJob[] = [];
   private storagePath: string;
 
   constructor() {
     this.storagePath = path.join(Paths.getProxyBridgeDataDir(), 'automation_jobs.json');
-    this.loadJobs();
+  }
+
+  async init() {
+    await this.loadJobs();
   }
 
   private async loadJobs() {
@@ -59,25 +64,24 @@ export class CronManager {
       this.jobs.get(job.id)?.stop();
     }
 
-    // Validate cron expression
     if (!cron.validate(job.schedule)) {
       console.error(`[CronManager] Invalid schedule for job ${job.id}: ${job.schedule}`);
       return;
     }
 
     const task = cron.schedule(job.schedule, async () => {
-      console.log(`[CronManager] Running job ${job.id} (${job.type})`);
+      const jobType = job.type || (job.title?.toLowerCase().includes('sync') ? 'SYNC_REPOS' : 'MAINTENANCE');
+      console.log(`[CronManager] Running job ${job.id} (${jobType})`);
       job.lastRun = new Date().toISOString();
       await this.saveJobs();
       
       broadcast('UI_UPDATE', {
         action: 'JOB_RUNNING',
-        payload: { jobId: job.id, type: job.type, timestamp: job.lastRun }
+        payload: { jobId: job.id, type: jobType, timestamp: job.lastRun }
       });
 
-      // Execute logic based on type
       try {
-        switch (job.type) {
+        switch (jobType) {
           case 'SYNC_REPOS':
             await this.handleSyncRepos(job);
             break;
@@ -88,7 +92,7 @@ export class CronManager {
             await this.handleMaintenance(job);
             break;
           default:
-            console.log(`[CronManager] No logic implemented for job type ${job.type}`);
+            console.log(`[CronManager] No logic implemented for job type ${jobType}`);
         }
         
         broadcast('UI_UPDATE', {
@@ -108,16 +112,11 @@ export class CronManager {
   }
 
   private async handleSyncRepos(job: AutomationJob) {
-    console.log('[CronManager] Handling SYNC_REPOS...');
     const db = getDb();
-    
     for (const project of db.projects) {
-      // For the prototype, we assume if project has a fullName or is type 'cloud', we might find its repo
-      // In a real impl, we'd store the owner/repo explicitly
       if (project.type === 'cloud' || project.name.includes('/')) {
         const parts = project.name.split('/');
         if (parts.length === 2) {
-          console.log(`[CronManager] Syncing issues for ${project.name}`);
           await githubSyncService.syncIssuesToTasks(parts[0], parts[1], project.path);
         }
       }
@@ -125,22 +124,15 @@ export class CronManager {
   }
 
   private async handleGsdScan(job: AutomationJob) {
-    console.log('[CronManager] Handling GSD_SCAN...');
     const projectPath = job.projectPath || Paths.getWorkspaceRoot();
-    
-    // Trigger background agentic scan
-    // We create a mock socket for the runner since there's no active user session
     const mockSocket = { 
       emit: (event: string, data: any) => console.log(`[BackgroundAgent] ${event}`, data) 
     } as any;
-    
     const runner = new AutonomousRunner(mockSocket, projectPath);
     await runner.executeLoop("Perform a full scan of the workspace and update GSD_TASKS.md if necessary.");
   }
 
   private async handleMaintenance(job: AutomationJob) {
-    console.log('[CronManager] Handling MAINTENANCE...');
-    // Cleanup old worktrees or temp files
     const worktreesDir = Paths.getWorktreesDir();
     if (await fs.pathExists(worktreesDir)) {
       const entries = await fs.readdir(worktreesDir);
@@ -148,9 +140,7 @@ export class CronManager {
       for (const entry of entries) {
         const fullPath = path.join(worktreesDir, entry);
         const stats = await fs.stat(fullPath);
-        // Delete worktrees older than 7 days
         if (now - stats.mtimeMs > 7 * 24 * 60 * 60 * 1000) {
-          console.log(`[CronManager] Cleaning up old worktree: ${entry}`);
           await fs.remove(fullPath);
         }
       }
@@ -192,6 +182,10 @@ export class CronManager {
     this.jobs.delete(id);
     this.jobsData = this.jobsData.filter(j => j.id !== id);
     this.saveJobs();
+  }
+
+  stopJob(id: string) {
+    this.jobs.get(id)?.stop();
   }
 
   getJobs() {

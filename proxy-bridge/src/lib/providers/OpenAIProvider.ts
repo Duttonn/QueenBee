@@ -131,4 +131,26 @@ export class OpenAIProvider extends LLMProvider {
       }
     }
   }
+
+  async transcribe(audioBlob: Blob): Promise<string> {
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'audio.webm');
+    formData.append('model', 'whisper-1');
+
+    const response = await fetch(`${this.baseUrl}/audio/transcriptions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenAI Transcription failed: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.text;
+  }
 }

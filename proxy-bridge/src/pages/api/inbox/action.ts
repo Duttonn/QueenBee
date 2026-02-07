@@ -1,10 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import fs from 'fs-extra';
-import path from 'path';
+import { inboxManager } from '../../../lib/InboxManager';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const inboxPath = path.join(process.cwd(), 'data', 'inbox.json');
-  
   try {
     if (req.method === 'POST') {
       const { id, action } = req.body;
@@ -13,27 +10,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ error: 'id and action are required' });
       }
 
-      if (!await fs.pathExists(inboxPath)) {
-        return res.status(404).json({ error: 'Inbox empty' });
-      }
-
-      const inbox = await fs.readJson(inboxPath);
-      const itemIndex = inbox.findIndex((item: any) => item.id === id);
-
-      if (itemIndex === -1) {
-        return res.status(404).json({ error: 'Item not found' });
-      }
-
       if (action === 'archive') {
-        inbox.splice(itemIndex, 1);
+        await inboxManager.updateStatus(id, 'archived');
       } else if (action === 'fix') {
-        // In a real implementation, this might trigger a new agent thread
-        // For now, we mark it as "fixing" or similar
-        inbox[itemIndex].status = 'fixing';
+        // Logic to trigger a fix can be added here
+        // For now, we just acknowledge the action
       }
 
-      await fs.writeJson(inboxPath, inbox, { spaces: 2 });
-      return res.status(200).json({ success: true, inbox });
+      return res.status(200).json({ success: true });
     }
     
     res.setHeader('Allow', ['POST']);
