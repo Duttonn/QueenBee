@@ -73,32 +73,32 @@ const AgenticWorkbench = ({
 
   if (!activeProject && messages.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-white text-zinc-400">
+      <div className="flex-1 flex items-center justify-center bg-transparent text-zinc-500">
         <div className="text-center">
-          <Bot size={48} className="mx-auto mb-4 opacity-20" />
-          <p className="text-sm font-medium">Select a thread or repository to start building</p>
+          <Bot size={48} className="mx-auto mb-4 opacity-10" />
+          <p className="text-xs font-bold uppercase tracking-widest">Select a thread to start building</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden">
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-transparent">
       {/* Header */}
-      <div className="h-14 border-b border-gray-100 flex items-center justify-between px-4 flex-shrink-0 bg-white">
+      <div className="h-14 border-b border-white/5 flex items-center justify-between px-6 flex-shrink-0 bg-zinc-900/50 backdrop-blur-xl">
         <div className="flex items-center gap-3">
           {/* Project Title */}
           {activeProject && (
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-zinc-50 border border-zinc-100">
-                <div className="w-4 h-4 rounded bg-blue-500 flex items-center justify-center text-[10px] text-white font-bold">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/5 shadow-sm">
+                <div className="w-4 h-4 rounded bg-blue-600 flex items-center justify-center text-[10px] text-white font-black">
                   {activeProject.name[0]}
                 </div>
-                <span className="text-xs font-semibold text-zinc-700">{activeProject.name}</span>
+                <span className="text-[11px] font-bold text-zinc-200 tracking-tight">{activeProject.name}</span>
               </div>
               <button
                 onClick={() => setActiveThread(null)}
-                className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-blue-500 transition-colors"
+                className="p-2 hover:bg-white/5 rounded-xl text-zinc-500 hover:text-zinc-200 transition-all"
                 title="New Thread"
               >
                 <Plus size={14} />
@@ -113,14 +113,14 @@ const AgenticWorkbench = ({
           <div className="relative">
             <button
               onClick={() => setIsAgentMenuOpen(!isAgentMenuOpen)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-xs font-medium ${activeProject?.agents?.length > 0
-                  ? 'bg-amber-50 border-amber-200 text-amber-700'
-                  : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all text-[11px] font-bold tracking-tight ${activeProject?.agents?.length > 0
+                  ? 'bg-amber-500/10 border-amber-500/20 text-amber-500'
+                  : 'bg-white/5 border-white/5 text-zinc-400 hover:text-zinc-200 hover:bg-white/10'
                 }`}
             >
               <Users size={14} />
               <span>{activeProject?.agents?.length || 0} Agents</span>
-              <ChevronDown size={12} className="opacity-50" />
+              <ChevronDown size={10} className="opacity-50" />
             </button>
 
             <AnimatePresence>
@@ -131,43 +131,43 @@ const AgenticWorkbench = ({
                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="absolute top-full right-0 mt-2 w-56 bg-white border border-gray-200 shadow-xl rounded-xl overflow-hidden z-20 p-1"
+                    className="absolute top-full right-0 mt-3 w-60 bg-zinc-900 border border-white/10 shadow-2xl rounded-2xl overflow-hidden z-20 p-1 backdrop-blur-2xl"
                   >
-                    <div className="px-2 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                    <div className="px-3 py-2 text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em]">
                       Assigned Agents
                     </div>
-                    <div className="max-h-40 overflow-y-auto mb-1">
+                    <div className="max-h-48 overflow-y-auto mb-1">
                       {activeProject?.agents?.length > 0 ? (
                         activeProject.agents.map((agent: any) => (
-                          <div key={agent.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-zinc-700">
-                            <span className="text-base">{agent.avatar || '🐝'}</span>
+                          <div key={agent.id} className="flex items-center gap-3 px-3 py-2 rounded-xl text-[12px] font-bold text-zinc-200">
+                            <span className="text-lg">{agent.avatar || '🐝'}</span>
                             <div className="flex-1 min-w-0">
-                              <p className="truncate">{agent.name}</p>
-                              <p className="text-[10px] text-zinc-400">{agent.role}</p>
+                              <p className="truncate tracking-tight">{agent.name}</p>
+                              <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-widest">{agent.role}</p>
                             </div>
-                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-sm" />
+                            <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
                           </div>
                         ))
                       ) : (
-                        <div className="px-2 py-3 text-center text-[11px] text-zinc-400 italic">
+                        <div className="px-3 py-4 text-center text-[10px] text-zinc-500 font-bold italic">
                           No agents active
                         </div>
                       )}
                     </div>
-                    <div className="border-t border-zinc-50 pt-1">
-                      <div className="px-2 py-1 text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Spawn New</div>
+                    <div className="border-t border-white/5 pt-1 mt-1">
+                      <div className="px-3 py-2 text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em]">Spawn New</div>
                       <button
                         onClick={() => handleAddAgent('Architect')}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:bg-zinc-50 transition-colors text-left"
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-bold text-zinc-400 hover:bg-white/5 hover:text-zinc-100 transition-colors text-left"
                       >
-                        <Sparkles size={12} className="text-purple-500" />
+                        <Sparkles size={12} className="text-purple-400" />
                         <span>Architect Bee</span>
                       </button>
                       <button
                         onClick={() => handleAddAgent('Developer')}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:bg-zinc-50 transition-colors text-left"
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-bold text-zinc-400 hover:bg-white/5 hover:text-zinc-100 transition-colors text-left"
                       >
-                        <Terminal size={12} className="text-blue-500" />
+                        <Terminal size={12} className="text-blue-400" />
                         <span>Developer Bee</span>
                       </button>
                     </div>
@@ -177,56 +177,56 @@ const AgenticWorkbench = ({
             </AnimatePresence>
           </div>
 
-          <div className="w-px h-6 bg-gray-100 mx-1"></div>
+          <div className="w-px h-6 bg-white/5 mx-1"></div>
 
-          <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-gray-700 transition-colors">
+          <button className="p-2 text-zinc-500 hover:text-zinc-200 hover:bg-white/5 rounded-xl transition-all">
             <Play size={16} />
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded-lg text-blue-600 transition-colors">
+          <button className="p-2 text-blue-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-xl transition-all">
             <Hammer size={16} />
           </button>
-          <button className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-medium rounded-lg transition-colors">
-            <GitCommit size={12} />
+          <button className="flex items-center gap-2 px-4 py-1.5 bg-zinc-100 text-zinc-950 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all hover:bg-white scale-100 hover:scale-[1.02] active:scale-[0.98]">
+            <GitCommit size={14} />
             Commit
-            {diffStats.added > 0 && <span className="text-[#22C55E] ml-1">+{diffStats.added}</span>}
-            {diffStats.removed > 0 && <span className="text-red-400">-{diffStats.removed}</span>}
+            {diffStats.added > 0 && <span className="text-green-600 ml-1">+{diffStats.added}</span>}
+            {diffStats.removed > 0 && <span className="text-red-600">-{diffStats.removed}</span>}
           </button>
         </div>
       </div>
 
       {/* Chat Stream */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {messages.map((msg, index) => (
-          <div key={index}>
+          <div key={index} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
             {msg.role === 'user' && (
-              <div className="flex gap-3">
-                <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                  <User size={14} className="text-gray-600" />
+              <div className="flex gap-4">
+                <div className="w-8 h-8 rounded-full bg-zinc-800 border border-white/5 flex items-center justify-center flex-shrink-0 shadow-sm">
+                  <User size={16} className="text-zinc-400" />
                 </div>
-                <div className="flex-1 bg-gray-50 rounded-2xl rounded-tl-sm px-4 py-3">
-                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{msg.content || ''}</p>
+                <div className="flex-1 bg-white/5 border border-white/5 rounded-2xl rounded-tl-sm px-5 py-4 shadow-sm">
+                  <p className="text-sm text-zinc-200 font-medium leading-relaxed whitespace-pre-wrap">{msg.content || ''}</p>
                 </div>
               </div>
             )}
 
             {msg.role === 'assistant' && (
-              <div className="flex gap-3">
-                <div className="w-7 h-7 rounded-full bg-gray-900 flex items-center justify-center flex-shrink-0 group relative">
-                  <Bot size={14} className="text-white" />
+              <div className="flex gap-4">
+                <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center flex-shrink-0 group relative shadow-lg shadow-white/5">
+                  <Bot size={16} className="text-zinc-950" />
                   {isLoading && index === messages.length - 1 && (
-                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-white animate-pulse" />
+                    <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-blue-500 rounded-full border-2 border-zinc-950 animate-pulse" />
                   )}
                 </div>
-                <div className="flex-1 space-y-2">
+                <div className="flex-1 space-y-3">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Assistant</span>
+                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Queen Bee</span>
                     {((msg.content?.includes('```thinking')) || (isLoading && index === messages.length - 1 && queenStatus === 'thinking')) && (
                       <button
                         onClick={() => toggleThinking(index)}
-                        className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-[10px] font-bold text-blue-600 hover:bg-blue-100 transition-colors border border-blue-100"
+                        className="flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 text-[10px] font-black text-blue-400 hover:bg-blue-500/20 transition-all border border-blue-500/20"
                       >
-                        <Sparkles size={10} className={isLoading && index === messages.length - 1 ? "animate-spin" : ""} />
-                        <span>{isLoading && index === messages.length - 1 && !msg.content?.includes('```thinking') ? 'Pondering...' : 'View Thoughts'}</span>
+                        <Sparkles size={11} className={isLoading && index === messages.length - 1 ? "animate-spin" : ""} />
+                        <span className="uppercase tracking-widest">{isLoading && index === messages.length - 1 && !msg.content?.includes('```thinking') ? 'Pondering...' : 'Insights'}</span>
                         {expandedThinking[index] ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
                       </button>
                     )}
@@ -241,19 +241,19 @@ const AgenticWorkbench = ({
                         exit={{ height: 0, opacity: 0 }}
                         className="overflow-hidden"
                       >
-                        <div className="pl-4 border-l-2 border-blue-200 bg-blue-50/30 py-2 my-1 rounded-r-lg space-y-1">
+                        <div className="pl-4 border-l-2 border-blue-500/30 bg-blue-500/5 py-3 my-2 rounded-r-2xl space-y-2 backdrop-blur-sm">
                           {msg.content?.includes('```thinking') ? (
                             msg.content
                               .match(/```thinking\n([\s\S]*?)```/)?.[1]
                               ?.split('\n')
                               .filter(Boolean)
                               .map((line, i) => (
-                                <p key={i} className="text-[11px] text-blue-700/70 font-mono leading-relaxed">{line}</p>
+                                <p key={i} className="text-[11px] text-blue-400/80 font-mono leading-relaxed tracking-tight">{line}</p>
                               ))
                           ) : (
-                            <div className="flex items-center gap-2 text-[11px] text-blue-400 font-mono italic animate-pulse">
-                              <Loader2 size={10} className="animate-spin" />
-                              Connecting to Hive Mind...
+                            <div className="flex items-center gap-3 text-[11px] text-blue-400/60 font-mono italic animate-pulse">
+                              <Loader2 size={12} className="animate-spin" />
+                              Synchronizing with Hive Mind...
                             </div>
                           )}
                         </div>
@@ -295,24 +295,9 @@ const AgenticWorkbench = ({
                     />
                   ))}
 
-                  {/* Render legacy tool calls (placeholders) */}
-                  {msg.content?.includes('Called ') && !msg.toolCalls && (
-                    <div className="flex items-center gap-2 text-xs text-gray-500 my-2">
-                      <Terminal size={12} className="text-gray-400" />
-                      <span className="font-mono">
-                        {msg.content.match(/Called (\w+)/)?.[0]}
-                      </span>
-                      <span className="text-gray-300">→</span>
-                      <span className="text-green-600 flex items-center gap-1">
-                        <Check size={10} />
-                        Success
-                      </span>
-                    </div>
-                  )}
-
                   {/* Main content (filter out thinking blocks) */}
                   {msg.content && (
-                    <div className="text-sm text-zinc-800 prose prose-sm max-w-none prose-zinc prose-pre:p-0 prose-pre:bg-transparent">
+                    <div className="text-sm text-zinc-100 prose prose-invert prose-zinc max-w-none prose-pre:p-0 prose-pre:bg-transparent leading-relaxed">
                       <ReactMarkdown 
                         remarkPlugins={[remarkGfm]} 
                         rehypePlugins={[rehypeHighlight]}
@@ -335,7 +320,7 @@ const AgenticWorkbench = ({
 
                             if (inline) {
                               return (
-                                <code className="px-1.5 py-0.5 rounded-md bg-zinc-100 text-zinc-900 font-mono text-[11px] border border-zinc-200" {...props}>
+                                <code className="px-1.5 py-0.5 rounded bg-white/10 text-white font-mono text-[11px] border border-white/5" {...props}>
                                   {children}
                                 </code>
                               );
@@ -343,25 +328,25 @@ const AgenticWorkbench = ({
 
                             if (isShort && !lang) {
                               return (
-                                <code className="block my-2 px-3 py-2 rounded-lg bg-zinc-50 text-zinc-700 font-mono text-[12px] border border-zinc-200" {...props}>
+                                <code className="block my-3 px-4 py-3 rounded-xl bg-white/5 text-zinc-300 font-mono text-[12px] border border-white/5" {...props}>
                                   {children}
                                 </code>
                               );
                             }
 
                             return (
-                              <div className="my-4 rounded-xl border border-zinc-200 bg-[#fbfcfd] overflow-hidden shadow-sm group">
-                                <div className="flex items-center justify-between px-4 py-2 bg-zinc-50/80 border-b border-zinc-100">
-                                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{lang || 'code'}</span>
+                              <div className="my-6 rounded-2xl border border-white/10 bg-zinc-900/80 overflow-hidden shadow-2xl group animate-in zoom-in-95 duration-300">
+                                <div className="flex items-center justify-between px-5 py-2.5 bg-white/5 border-b border-white/5">
+                                  <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">{lang || 'code'}</span>
                                   <button 
                                     onClick={handleCopy}
-                                    className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-400 hover:text-blue-600 transition-colors"
+                                    className="flex items-center gap-2 text-[10px] font-black text-zinc-500 hover:text-white transition-all"
                                   >
-                                    {copied ? <Check size={10} className="text-green-500" /> : <Copy size={10} />}
-                                    <span>{copied ? 'Copied!' : 'Copy code'}</span>
+                                    {copied ? <Check size={11} className="text-green-500" /> : <Copy size={11} />}
+                                    <span className="uppercase tracking-widest">{copied ? 'Copied' : 'Copy'}</span>
                                   </button>
                                 </div>
-                                <div className="p-5 overflow-x-auto bg-white/50">
+                                <div className="p-6 overflow-x-auto bg-transparent">
                                   <code className={`${className} font-mono text-[12px] leading-relaxed !bg-transparent !p-0`} {...props}>
                                     {children}
                                   </code>
@@ -381,8 +366,8 @@ const AgenticWorkbench = ({
 
                   {/* Error styling for error messages */}
                   {msg.content?.startsWith('Error:') && (
-                    <div className="flex items-center gap-2 text-red-500 text-xs mt-2">
-                      <AlertCircle size={12} />
+                    <div className="flex items-center gap-2 text-red-400 text-xs font-bold uppercase tracking-widest mt-3">
+                      <AlertCircle size={14} />
                       <span>Request failed</span>
                     </div>
                   )}

@@ -59,47 +59,47 @@ const TopToolbar = ({ onOpenSettings, onRun, onCommit, onOpen, onToggleTerminal 
     {/* Run Button */}
     <button
       onClick={onRun}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors text-sm font-medium text-gray-700"
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/5 bg-white/5 hover:bg-white/10 transition-colors text-xs font-bold text-zinc-300"
     >
-      <Play size={14} className="text-gray-500" />
-      <ChevronDown size={12} className="text-gray-400" />
+      <Play size={12} className="text-zinc-500" />
+      <ChevronDown size={10} className="text-zinc-500" />
     </button>
 
     {/* Open Button */}
     <button
       onClick={onOpen}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors text-sm font-medium text-gray-700"
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/5 bg-white/5 hover:bg-white/10 transition-colors text-xs font-bold text-zinc-300"
     >
-      <FolderOpen size={14} className="text-gray-500" />
+      <FolderOpen size={12} className="text-zinc-500" />
       <span>Open</span>
     </button>
 
     {/* Commit Button */}
     <button
       onClick={onCommit}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors text-sm font-medium text-white shadow-sm"
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 transition-colors text-xs font-bold text-white shadow-lg shadow-blue-500/20"
     >
-      <GitCommit size={14} />
+      <GitCommit size={12} />
       <span>Commit</span>
     </button>
 
-    <div className="w-px h-6 bg-gray-200 mx-1"></div>
+    <div className="w-px h-6 bg-white/5 mx-1"></div>
 
     {/* Terminal Toggle */}
     <button
       onClick={onToggleTerminal}
-      className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+      className="p-2 text-zinc-500 hover:text-zinc-300 hover:bg-white/5 rounded-lg transition-colors"
     >
-      <TerminalSquare size={18} />
+      <TerminalSquare size={16} />
     </button>
 
     {/* Settings Button - Added */}
     <button
       onClick={onOpenSettings}
-      className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+      className="p-2 text-zinc-500 hover:text-zinc-300 hover:bg-white/5 rounded-lg transition-colors"
       title="Customize Queen Bee"
     >
-      <Settings size={18} />
+      <Settings size={16} />
     </button>
   </div>
 );
@@ -114,7 +114,7 @@ interface EmptyStateProps {
 }
 
 const EmptyState = ({ onOpenSettings, onRun, onCommit, onOpen, onToggleTerminal }: EmptyStateProps) => (
-  <div className="flex-1 flex flex-col min-h-0 bg-white relative">
+  <div className="flex-1 flex flex-col min-h-0 bg-transparent relative">
     {/* Top Toolbar */}
     <TopToolbar
       onOpenSettings={onOpenSettings}
@@ -127,11 +127,14 @@ const EmptyState = ({ onOpenSettings, onRun, onCommit, onOpen, onToggleTerminal 
     {/* Centered Content - takes remaining space */}
     <div className="flex-1 flex items-center justify-center min-h-0">
       <div className="text-center px-4">
-        <CloudTerminalIcon />
-        <h1 className="text-3xl sm:text-4xl font-semibold text-slate-900 mb-2">Let's build</h1>
-        <button onClick={onOpen} className="inline-flex items-center gap-2 text-base sm:text-lg text-slate-400 hover:text-slate-600 transition-colors">
-          <span>AstroScope</span>
-          <ChevronDown size={18} />
+        <div className="relative inline-flex items-center justify-center mb-8">
+          <Cloud size={64} strokeWidth={1} className="text-zinc-800" />
+          <span className="absolute -bottom-1 -right-2 text-2xl font-mono font-bold text-zinc-700 animate-pulse">_</span>
+        </div>
+        <h1 className="text-4xl sm:text-5xl font-bold text-zinc-100 tracking-tight mb-4">Let's build</h1>
+        <button onClick={onOpen} className="inline-flex items-center gap-2 text-lg text-zinc-500 hover:text-zinc-300 transition-all group">
+          <span className="font-medium tracking-wide">AstroScope</span>
+          <ChevronDown size={18} className="group-hover:translate-y-0.5 transition-transform" />
         </button>
       </div>
     </div>
@@ -552,14 +555,14 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   }, []);
 
   return (
-    <div className="flex h-screen w-full bg-white text-slate-900 overflow-hidden font-sans selection:bg-blue-100">
+    <div className="flex h-screen w-full bg-zinc-950 text-zinc-100 overflow-hidden font-sans selection:bg-white/10 selection:text-white">
 
       {/* Mobile Menu Button */}
       <button
         onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-        className="md:hidden fixed top-4 left-4 z-50 p-2 bg-white border border-gray-200 rounded-xl shadow-sm"
+        className="md:hidden fixed top-4 left-4 z-50 p-2 bg-zinc-900 border border-white/10 rounded-xl shadow-sm"
       >
-        <Menu size={20} className="text-gray-600" />
+        <Menu size={20} className="text-zinc-400" />
       </button>
 
       {/* Sidebar - Responsive */}
@@ -571,7 +574,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="md:hidden fixed inset-0 bg-black/20 z-30"
+              className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-30"
               onClick={() => setIsSidebarOpen(false)}
             />
 
@@ -603,8 +606,8 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         )}
       </AnimatePresence>
 
-      {/* Main Content Area - Always fills remaining space with white bg */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0 relative bg-white">
+      {/* Main Content Area - Always fills remaining space */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 relative bg-zinc-950/90">
 
         {/* Content */}
         <div className="flex-1 flex min-h-0 overflow-hidden relative">
