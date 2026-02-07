@@ -26,7 +26,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
             }
         });
         if (changed) saveDb(db);
-        
+
         return res.status(200).json(db.projects);
     }
 
@@ -40,10 +40,15 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
             return res.status(400).json({ error: 'Path does not exist on server' });
         }
 
-        // Prevent duplicate projects by path
-        const existing = db.projects.find(p => p.path === projectPath);
-        if (existing) {
-            return res.status(200).json(existing); // Return existing instead of error for idempotency
+        // Prevent duplicate projects by path OR name
+        const existingByPath = db.projects.find(p => p.path === projectPath);
+        if (existingByPath) {
+            return res.status(200).json(existingByPath); // Return existing instead of error for idempotency
+        }
+
+        const existingByName = db.projects.find(p => p.name === name);
+        if (existingByName) {
+            return res.status(409).json({ error: `Project with name '${name}' already exists. Use a different name or import the existing project.` });
         }
 
         const newProject: Project = {

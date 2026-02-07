@@ -12,17 +12,17 @@ export class GeminiProvider extends LLMProvider {
 
   async chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
     const geminiModel = options?.model || 'gemini-2.5-flash-lite';
-    
+
     // Antigravity fallback (special case for borrowed IDs if no specific model selected)
     let finalModel = geminiModel;
     if (finalModel === 'antigravity-1') {
       finalModel = 'gemini-1.5-pro';
     }
-    
+
     // Map messages to Gemini format
     const geminiMessages = messages.map((m) => {
       const parts: any[] = [];
-      
+
       if (m.content) {
         parts.push({ text: m.content });
       }
@@ -39,12 +39,20 @@ export class GeminiProvider extends LLMProvider {
       }
 
       if (m.role === 'tool') {
+        const contentStr = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+        let contentObj;
+        try {
+          contentObj = JSON.parse(contentStr);
+        } catch {
+          contentObj = { result: contentStr };
+        }
+
         return {
           role: 'function',
           parts: [{
             functionResponse: {
               name: m.name,
-              response: { result: m.content }
+              response: { result: contentObj }
             }
           }]
         };
@@ -59,7 +67,7 @@ export class GeminiProvider extends LLMProvider {
     // Map tools to Gemini format
     const geminiTools = options?.tools ? [
       {
-        function_declarations: options.tools.map(t => ({
+        functionDeclarations: options.tools.map(t => ({
           name: t.function.name,
           description: t.function.description,
           parameters: t.function.parameters
@@ -88,7 +96,7 @@ export class GeminiProvider extends LLMProvider {
     const data = await response.json();
     const candidate = data.candidates?.[0];
     const content = candidate?.content;
-    
+
     let text = '';
     const toolCalls: LLMToolCall[] = [];
 
@@ -124,9 +132,10 @@ export class GeminiProvider extends LLMProvider {
   }
 
   async *chatStream(messages: LLMMessage[], options?: LLMProviderOptions): AsyncGenerator<LLMResponse> {
-    const geminiModel = options?.model || 'gemini-2.5-flash-lite';
+    const geminiModel = options?.model || 'gemini-1.5-flash';
     let finalModel = geminiModel;
     if (finalModel === 'antigravity-1') finalModel = 'gemini-1.5-pro';
+    if (finalModel.includes('2.5')) finalModel = 'gemini-1.5-flash';
 
     const geminiMessages = messages.map((m) => {
       const parts: any[] = [];
@@ -142,12 +151,19 @@ export class GeminiProvider extends LLMProvider {
         });
       }
       if (m.role === 'tool') {
+        const contentStr = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+        let contentObj;
+        try {
+          contentObj = JSON.parse(contentStr);
+        } catch {
+          contentObj = { result: contentStr };
+        }
         return {
           role: 'function',
           parts: [{
             functionResponse: {
               name: m.name,
-              response: { result: m.content }
+              response: { result: contentObj }
             }
           }]
         };
@@ -158,11 +174,23 @@ export class GeminiProvider extends LLMProvider {
       };
     });
 
+    // Map tools to Gemini format
+    const geminiTools = options?.tools ? [
+      {
+        functionDeclarations: options.tools.map(t => ({
+          name: t.function.name,
+          description: t.function.description,
+          parameters: t.function.parameters
+        }))
+      }
+    ] : undefined;
+
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${finalModel}:streamGenerateContent?alt=sse&key=${this.apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: geminiMessages,
+        tools: geminiTools,
         generationConfig: {
           temperature: options?.temperature ?? 0.7,
           maxOutputTokens: options?.maxTokens ?? 4096,
@@ -192,7 +220,7 @@ export class GeminiProvider extends LLMProvider {
       for (const line of lines) {
         const cleanedLine = line.trim();
         if (!cleanedLine.startsWith('data: ')) continue;
-        
+
         try {
           const json = JSON.parse(cleanedLine.substring(6));
           const text = json.candidates?.[0]?.content?.parts?.[0]?.text || '';

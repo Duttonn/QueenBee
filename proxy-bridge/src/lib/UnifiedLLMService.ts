@@ -42,7 +42,7 @@ export class UnifiedLLMService {
 
     // 4. Defaults / Locals
     if (!this.providers.has('ollama')) {
-        this.providers.set('ollama', new OpenAIProvider('ollama', '', 'http://127.0.0.1:11434/v1'));
+      this.providers.set('ollama', new OpenAIProvider('ollama', '', 'http://127.0.0.1:11434/v1'));
     }
   }
 
@@ -119,10 +119,10 @@ export class UnifiedLLMService {
 
   async chat(providerId: string, messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
     await this.ready;
-    
+
     // 1. Try to find the provider, reloading if necessary
     let provider = await this.getOrLoadProvider(providerId, options);
-    
+
     // 2. If not found and it's 'auto', use autoChat
     if (!provider && providerId === 'auto') {
       return this.autoChat(messages, options);
@@ -145,7 +145,7 @@ export class UnifiedLLMService {
     // Safety: If the requested model is clearly for another provider, don't pass it
     const safeOptions = { ...options };
     const requestedModel = options?.model?.toLowerCase() || '';
-    
+
     if (requestedModel.includes('gemini') && provider.id !== 'gemini' && !provider.id.includes('google')) {
       safeOptions.model = undefined; // Let the provider use its own default
     } else if (requestedModel.includes('gpt') && provider.id !== 'openai') {
@@ -159,9 +159,9 @@ export class UnifiedLLMService {
 
   async *chatStream(providerId: string, messages: LLMMessage[], options?: LLMProviderOptions): AsyncGenerator<LLMResponse> {
     await this.ready;
-    
+
     let provider = await this.getOrLoadProvider(providerId, options);
-    
+
     if (!provider && providerId === 'auto') {
       // For auto mode in streaming, we'll use the first available provider from priority list
       const priority = ['gemini', 'nvidia', 'ollama'];
@@ -261,8 +261,28 @@ export class UnifiedLLMService {
 
   private async autoChat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
     await this.ready;
-    // Simple priority list for auto selection
-    const priority = ['gemini', 'nvidia', 'ollama'];
+
+    // 0. Smart Routing based on Model Name
+    const modelName = options?.model?.toLowerCase();
+    if (modelName) {
+      let bestProviderId: string | null = null;
+      if (modelName.includes('gpt') || modelName.includes('o1-')) bestProviderId = 'openai';
+      else if (modelName.includes('claude')) bestProviderId = 'anthropic';
+      else if (modelName.includes('gemini')) bestProviderId = 'gemini';
+      else if (modelName.includes('mistral') || modelName.includes('mixtral')) bestProviderId = 'mistral';
+      else if (modelName.includes('lama') || modelName.includes('qwen') || modelName.includes('phi')) bestProviderId = 'ollama';
+
+      if (bestProviderId) {
+        const p = this.providers.get(bestProviderId);
+        if (p) {
+          console.log(`[AutoChat] Smart-routed '${modelName}' to provider '${bestProviderId}'`);
+          return await p.chat(messages, options);
+        }
+      }
+    }
+
+    // 1. Simple priority list for auto selection
+    const priority = ['gemini', 'nvidia', 'openai', 'anthropic', 'ollama'];
     let lastError: Error | null = null;
 
     for (const id of priority) {
@@ -276,11 +296,11 @@ export class UnifiedLLMService {
           console.warn(`[AutoChat] Fallback: ${id} failed:`, e.message);
         }
       } else {
-        console.log(`[AutoChat] Provider ${id} not configured, skipping.`);
+        // console.log(`[AutoChat] Provider ${id} not configured, skipping.`);
       }
     }
 
-    throw lastError || new Error('No providers available for auto-chat.');
+    throw lastError || new Error('No providers available for auto-chat. Please configure at least one provider in Settings.');
   }
 
   addProvider(provider: LLMProvider) {

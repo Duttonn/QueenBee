@@ -40,7 +40,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
 
   const handleImportRepo = async (repo: any) => {
     setIsCloning(repo.full_name);
-    
+
     // Detect Electron environment
     const isElectron = typeof window !== 'undefined' && (window as any).electron !== undefined;
 
@@ -60,10 +60,10 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
 
         const baseDir = result.filePaths[0];
         const targetDirForClone = `${baseDir}/${repo.name}`;
-        
+
         console.log(`[System] Starting clone for ${repo.full_name} into ${targetDirForClone}...`);
         await SystemService.fs.clone(repo.html_url, targetDirForClone);
-        
+
         // SAVE TO BACKEND
         const res = await fetch('http://127.0.0.1:3000/api/projects', {
           method: 'POST',
@@ -146,7 +146,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
       <div className="h-4 flex-shrink-0"></div>
 
       <div className="px-3 mb-2 flex-shrink-0">
-        <button 
+        <button
           onClick={onSearchClick}
           className="w-full flex items-center gap-2 px-3 py-2 bg-gray-100/80 rounded-lg text-gray-400 hover:bg-gray-200/50 transition-colors"
         >
@@ -166,7 +166,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
             onViewChange('build');
           }}
         />
-        
+
         {/* Sub-actions for New Thread (Hover/Click) */}
         <div className="absolute left-full top-0 ml-2 hidden group-hover/new:block z-50">
           <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-1 w-48 backdrop-blur-xl">
@@ -178,7 +178,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
               <span>Simple Chat</span>
             </button>
             <button
-              onClick={() => { 
+              onClick={() => {
                 const name = prompt('Feature Name:', 'New Module');
                 if (name) {
                   // Trigger special swarm event
@@ -369,7 +369,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                         <span>Import Remote Repo (Fork)</span>
                       </button>
                     )}
-                    
+
                     <button
                       onClick={onOpenSettings}
                       className="w-full flex items-center gap-2 px-3 py-2 text-xs text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -385,18 +385,17 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
         </div>
 
         {projects.map(project => (
-          <div key={project.name} className="mb-2">
+          <div key={project.id} className="mb-2">
             <button
               onClick={() => {
                 toggleFolder(project.name);
                 onProjectSelect?.(project.id);
                 setActiveThread(null);
               }}
-              className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                selectedProjectId === project.id && !activeThreadId
-                ? 'bg-blue-50 text-[#3B82F6] shadow-sm border border-blue-100/50' 
-                : 'text-gray-700 hover:bg-gray-100'
-              }`}
+              className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm font-medium rounded-lg transition-colors ${selectedProjectId === project.id && !activeThreadId
+                  ? 'bg-blue-50 text-[#3B82F6] shadow-sm border border-blue-100/50'
+                  : 'text-gray-700 hover:bg-gray-100'
+                }`}
             >
               {expandedFolders[project.name] ? (
                 <ChevronDown size={14} className={selectedProjectId === project.id ? 'text-[#3B82F6]' : 'text-gray-400'} />
@@ -416,11 +415,10 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                       onProjectSelect?.(project.id);
                       setActiveThread(thread.id);
                     }}
-                    className={`flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer group transition-colors ${
-                      activeThreadId === thread.id 
-                      ? 'bg-white shadow-sm border border-gray-200/50 text-zinc-900' 
-                      : 'text-gray-600 hover:bg-gray-100'
-                    }`}
+                    className={`flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer group transition-colors ${activeThreadId === thread.id
+                        ? 'bg-white shadow-sm border border-gray-200/50 text-zinc-900'
+                        : 'text-gray-600 hover:bg-gray-100'
+                      }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <MessageSquare size={12} className={activeThreadId === thread.id ? 'text-[#3B82F6]' : 'text-gray-400'} />
@@ -464,11 +462,10 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                       handleImportRepo(repo);
                     }
                   }}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                    selectedProjectId === (repo.id ? repo.id.toString() : '') 
-                    ? 'bg-blue-50 text-[#3B82F6] border border-blue-100/50 shadow-sm' 
-                    : 'text-gray-700 hover:bg-gray-100'
-                  }`}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm font-medium rounded-lg transition-colors ${selectedProjectId === (repo.id ? repo.id.toString() : '')
+                      ? 'bg-blue-50 text-[#3B82F6] border border-blue-100/50 shadow-sm'
+                      : 'text-gray-700 hover:bg-gray-100'
+                    }`}
                 >
                   <div className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center text-[10px] text-slate-500 font-bold flex-shrink-0">
                     {isCloning === repo.full_name ? <Loader2 size={10} className="animate-spin" /> : repo.name[0].toUpperCase()}

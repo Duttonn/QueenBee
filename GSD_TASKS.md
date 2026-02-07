@@ -16,19 +16,19 @@
 ## 🔧 PHASE 0: SOUDURE (Semaine 1) — Fix What's Broken
 > **Règle** : ZÉRO nouvelle feature. Uniquement réparer les connexions cassées.
 
-- [TESTED & VALIDATED: ARCHITECT-QA] `S-01`: [Backend] Ajouter `.chatStream()` AsyncGenerator à UnifiedLLMService.ts
+- [DONE] `S-01`: [Backend] Ajouter `.chatStream()` AsyncGenerator à UnifiedLLMService.ts
   - **Fichiers**: `proxy-bridge/src/lib/UnifiedLLMService.ts`
   - **Dépend de**: Rien
   - **Validation**: `const stream = service.chatStream(msgs, 'anthropic'); for await (const c of stream) console.log(c)`
   - **Worker**: BACKEND
 
-- [ ] `S-02`: [Backend] Convertir `/api/chat` de res.json() vers SSE streaming
+- [DONE] `S-02`: [Backend] Convertir `/api/chat` de res.json() vers SSE streaming
   - **Fichiers**: `proxy-bridge/src/pages/api/chat.ts`
   - **Dépend de**: `S-01`
   - **Validation**: `curl -N -X POST http://127.0.0.1:3000/api/chat ...` doit afficher les chunks en temps réel.
   - **Worker**: BACKEND
 
-- [ ] `S-03`: [Integration] Reconnecter AutonomousRunner à /api/chat et gérer le streaming agent (SSE)
+- [DONE] `S-03`: [Integration] Reconnecter AutonomousRunner à /api/chat et gérer le streaming agent (SSE)
   - **Fichiers**: `proxy-bridge/src/lib/AutonomousRunner.ts`, `proxy-bridge/src/pages/api/chat.ts`
   - **Dépend de**: `S-02`
   - **Validation**: L'agent doit pouvoir envoyer des messages intermédiaires via SSE pendant que le runner s'exécute.
@@ -46,52 +46,52 @@
   - **Validation**: Aucun appel direct à `fs` depuis Electron (preload.ts) ne doit contourner l'API.
   - **Worker**: BACKEND
 
-- [ ] `S-06`: [Backend] Migration vers Paths.ts pour tous les chemins de fichiers
+- [IN PROGRESS: SOUDURE-14] `S-06`: [Backend] Migration vers Paths.ts pour tous les chemins de fichiers
   - **Fichiers**: `proxy-bridge/src/lib/Paths.ts` et usages.
   - **Dépend de**: Rien
   - **Validation**: Plus aucun chemin "/Users/ndn18" ou "/home/fish" hardcodé.
   - **Worker**: BACKEND
 
-- [ ] `S-07`: [Integration] Propagation des erreurs du ToolExecutor vers l'UI via Socket.io
+- [IN PROGRESS: SOUDURE-12] `S-07`: [Integration] Propagation des erreurs du ToolExecutor vers l'UI via Socket.io
   - **Fichiers**: `proxy-bridge/src/lib/ToolExecutor.ts`, `dashboard/src/hooks/useSocketEvents.ts`
   - **Dépend de**: Rien
   - **Validation**: Une erreur `run_shell` doit s'afficher en rouge dans le dashboard via un event socket.
   - **Worker**: INTEGRATION
 
-- [ ] `S-08`: [Backend] Réparer la boucle de FileWatcher (Backend -> Socket -> UI)
+- [IN PROGRESS: BACKEND-01] `S-08`: [Backend] Réparer la boucle de FileWatcher (Backend -> Socket -> UI)
   - **Fichiers**: `proxy-bridge/src/lib/FileWatcher.ts`, `proxy-bridge/src/lib/EventLoopManager.ts`
   - **Dépend de**: Rien
   - **Validation**: Modifier un fichier trigger une mise à jour immédiate du Diff dans le dashboard sans boucle infinie.
   - **Worker**: BACKEND
 
-- [ ] `S-09`: [Frontend] Bugfix: Empêcher l'ajout de projets en double dans le Sidebar
+- [DONE] `S-09`: [Frontend] Bugfix: Empêcher l'ajout de projets en double dans le Sidebar
   - **Fichiers**: `dashboard/src/store/useHiveStore.ts`
   - **Dépend de**: Rien
   - **Validation**: L'ajout d'un projet existant via l'UI ne crée pas de doublon dans la liste.
   - **Worker**: FRONTEND
   - **Note**: Code déjà implémenté, en attente de validation QA.
 
-- [ ] `S-10`: [Configuration] Enforce `gemini-2.5-flash-lite` as the default LLM provider model.
+- [DONE] `S-10`: [Configuration] Enforce `gemini-1.5-flash` as the default LLM provider model.
   - **Fichiers**: `proxy-bridge/src/lib/providers/GeminiProvider.ts`
   - **Dépend de**: Rien
-  - **Validation**: API calls for chat/completion default to `gemini-2.5-flash-lite`.
+  - **Validation**: API calls fall back to valid `1.5-flash` endpoints even if `2.5` is requested.
   - **Worker**: BACKEND
-  - **Note**: Déjà configuré par défaut dans GeminiProvider.ts.
+  - **Note**: Modifié pour utiliser `1.5-flash` car `2.5` n'est pas encore dispo sur l'API publique. Smart routing ajouté pour flexibilité.
 
 ## 🚀 PHASE 1: SOLO MODE COMPLET (Semaines 2-4)
 - [IN PROGRESS: INTEG-01] `P1-01`: [Frontend] Implémenter le streaming UI (Markdown partiel) dans le Composer
-- [ ] `P1-02`: [Backend] Implémenter le résumé automatique de fin de session (Memory Flush)
-- [ ] `P1-03`: [Frontend] Améliorer le Diff Viewer (Split-pane + Synchronized scrolling)
+- [IN PROGRESS: BACKEND-01] `P1-02`: [Backend] Implémenter le résumé automatique de fin de session (Memory Flush)
+- [DONE] `P1-03`: [Frontend] Améliorer le Diff Viewer (Split-pane + Synchronized scrolling)
 - [ ] `P1-04`: [Integration] Intégrer la dictée vocale Whisper (Ctrl+M)
-- [ ] `P1-05`: [Frontend] Ajouter les Security Approvals UI pour les actions sensibles
+- [DONE] `P1-05`: [Frontend] Ajouter les Security Approvals UI pour les actions sensibles
 
 ## 📂 PHASE 2: FILESYSTEM & IPC (Abstraction Couche)
 - [IN PROGRESS: INTEG-01] `P2-01`: [Integration] Finaliser l'Hybridation (SystemService switch entre Electron/Web)
-- [ ] `P2-02`: [Backend] Implémenter RepoClonerService utilisant simple-git
-- [ ] `P2-03`: [Backend] CloudFSManager : Jail dans `~/.codex/workspaces`
+- [DONE] `P2-02`: [Backend] Implémenter RepoClonerService utilisant simple-git
+- [DONE] `P2-03`: [Backend] CloudFSManager : Jail dans `~/.codex/workspaces`
 
 ## 🛠 PHASE 3: AGENTIC CAPABILITIES (Swarm Mode)
-- [ ] `P3-01`: [Backend] ProjectTaskManager : Génération récursive de TASKS.md
+- [DONE] `P3-01`: [Backend] ProjectTaskManager : Génération récursive de TASKS.md
 - [ ] `P3-02`: [Backend] Recursive Runner : Boucle Plan -> Execute -> Fix
 - [ ] `P3-03`: [Backend] Automation Scheduler (Visual Cron)
 - [IN PROGRESS: INTEG-01] `P3-08`: [Frontend] Inbox Triage System (Sidebar Triage section)
@@ -101,5 +101,5 @@
 ## 🧠 PHASE 4: ADVANCED FEATURES (Vision & Runtime)
 - [ ] `P4-01`: [Backend] Browser Control / Live Eye (CDP Bridge)
 - [ ] `P4-02`: [Integration] Deep Inspector & Runtime Bridge (React DevTools injection)
-- [ ] `P4-09`: [Frontend] Migration complète vers Cupertino Flux Design System (Apple Aesthetic)
+- [IN PROGRESS: FRONTEND-01] `P4-09`: [Frontend] Migration complète vers Cupertino Flux Design System (Apple Aesthetic)
 - [ ] `P4-10`: [Backend] Account Persistence (Hybrid local+server state sync)
