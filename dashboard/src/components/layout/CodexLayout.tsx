@@ -352,7 +352,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const { providers, activeProviderId } = useAuthStore();
   const activeProvider = providers.find(p => p.id === activeProviderId) || providers.find(p => p.connected);
   const { runAutomation, commit, fetchData, addProject: addAppProject } = useAppStore();
-  const { projects, activeThreadId, setActiveThread, addThread, addMessage, updateThread, updateLastMessage } = useHiveStore();
+  const { projects, activeThreadId, setActiveThread, addThread, addMessage, updateThread, updateLastMessage, updateToolCall } = useHiveStore();
   const activeProject = projects.find(p => p.id === selectedProjectId);
 
   const [inputValue, setInputValue] = useState('');
@@ -455,12 +455,41 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         (error) => {
           updateLastMessage(selectedProjectId, currentThreadId!, `\n\nError: ${error.message}`);
           setIsLoading(false);
+        },
+        (event) => {
+          // Handle vertical Agent events
+          const thread = useHiveStore.getState().projects
+            .find(p => p.id === selectedProjectId)
+            ?.threads?.find((t: any) => t.id === currentThreadId);
+          const msgIndex = (thread?.messages?.length || 1) - 1;
+
+          if (event.type === 'tool_start') {
+            updateToolCall(selectedProjectId, currentThreadId!, msgIndex, event.data.toolCallId, {
+              status: 'running',
+              name: event.data.toolName,
+              arguments: event.data.args
+            });
+          } else if (event.type === 'tool_end') {
+            updateToolCall(selectedProjectId, currentThreadId!, msgIndex, event.data.toolCallId, {
+              status: 'success',
+              result: event.data.result
+            });
+          } else if (event.type === 'tool_error') {
+            updateToolCall(selectedProjectId, currentThreadId!, msgIndex, event.data.toolCallId, {
+              status: 'error',
+              error: event.data.error
+            });
+          } else if (event.type === 'step_start' || event.type === 'agent_status') {
+            if (event.data.status) {
+              useHiveStore.getState().setQueenStatus(event.data.status);
+            }
+          }
         }
       );
     } catch (error) {
       setIsLoading(false);
     }
-  }, [inputValue, messages, isLoading, selectedProjectId, activeThreadId, activeProvider, selectedModel, availableModels, activeProject?.path, executionMode, addThread, addMessage, updateLastMessage, updateThread]);
+  }, [inputValue, messages, isLoading, selectedProjectId, activeThreadId, activeProvider, selectedModel, availableModels, activeProject?.path, executionMode, addThread, addMessage, updateLastMessage, updateThread, updateToolCall]);
 
   const handleOpen = async () => {
     const result = await NativeService.dialog.showOpen({
