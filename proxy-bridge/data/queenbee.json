@@ -5,7 +5,7 @@
       "title": "Daily Summary",
       "description": "Generate a summary of code changes at 9 AM",
       "schedule": "0 9 * * *",
-      "active": true,
+      "active": false,
       "script": "git log --since=\"24 hours ago\" --oneline | mcp summarize"
     },
     {
@@ -14,6 +14,14 @@
       "description": "Automatically review new PRs on GitHub",
       "schedule": "Every hour",
       "active": true
+    },
+    {
+      "id": "36d90b3d-d264-4b5f-ac57-746acb9eaa1a",
+      "title": "test",
+      "description": "test",
+      "schedule": "09:30",
+      "active": true,
+      "script": ""
     }
   ],
   "skills": [
@@ -43,7 +51,7 @@
     {
       "id": "04b48e43-dbf0-4203-978d-487dc404185c",
       "name": "BlackJackAdvisor",
-      "path": "~/PersonalProjects/BlackJackAdvisor",
+      "path": "/Users/ndn18/PersonalProjects/BlackJackAdvisor",
       "type": "local",
       "threads": [],
       "agents": []
@@ -51,7 +59,7 @@
     {
       "id": "b713f679-bb59-4e97-a149-075bb81dcc64",
       "name": "ProjetHPC",
-      "path": "~/PersonalProjects/School/ProjetHPC/ProjetHPC",
+      "path": "/Users/ndn18/PersonalProjects/School/ProjetHPC/ProjetHPC",
       "type": "local",
       "threads": [],
       "agents": []
@@ -59,7 +67,7 @@
     {
       "id": "c9fdd30d-01e0-4cde-93eb-96ea0ee6750f",
       "name": "Fitch",
-      "path": "~/.codex/workspaces/cloud-c9fdd30d-01e0-4cde-93eb-96ea0ee6750f",
+      "path": "/Users/ndn18/.codex/workspaces/cloud-c9fdd30d-01e0-4cde-93eb-96ea0ee6750f",
       "type": "cloud",
       "threads": [
         {
@@ -74,7 +82,7 @@
     {
       "id": "47519d29-5855-425b-99bc-844d0e415cfa",
       "name": "QueenBee",
-      "path": "~/.codex/workspaces/cloud-47519d29-5855-425b-99bc-844d0e415cfa",
+      "path": "/Users/ndn18/.codex/workspaces/cloud-47519d29-5855-425b-99bc-844d0e415cfa",
       "type": "cloud",
       "threads": [
         {

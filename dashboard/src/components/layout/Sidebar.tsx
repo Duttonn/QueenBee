@@ -16,7 +16,9 @@ import {
   Check,
   Globe,
   Link as LinkIcon,
-
+  Github,
+  Gitlab,
+  Cloud
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -165,14 +167,45 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
         ))}
       </div>
 
+      <div className="mx-3 h-px bg-zinc-200 mb-4"></div>
+
+      <div className="px-5 mb-4">
+        <div className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-3">Remotes</div>
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-[11px] font-bold text-zinc-500 hover:text-zinc-900 cursor-pointer p-1.5 rounded-lg hover:bg-zinc-100 transition-all">
+            <div className="flex items-center gap-2">
+              <Github size={14} className="text-zinc-400" />
+              <span>GitHub</span>
+            </div>
+            <span className="text-[9px] bg-zinc-200 text-zinc-600 px-1.5 py-0.5 rounded-full">12</span>
+          </div>
+          <div className="flex items-center justify-between text-[11px] font-bold text-zinc-500 hover:text-zinc-900 cursor-pointer p-1.5 rounded-lg hover:bg-zinc-100 transition-all">
+            <div className="flex items-center gap-2">
+              <Gitlab size={14} className="text-zinc-400" />
+              <span>GitLab</span>
+            </div>
+            <span className="text-[9px] bg-zinc-200 text-zinc-600 px-1.5 py-0.5 rounded-full">3</span>
+          </div>
+        </div>
+      </div>
+
       <div className="p-3 border-t border-zinc-200 bg-white">
         <div className="flex items-center gap-3 p-2 rounded-2xl hover:bg-zinc-50 transition-all cursor-pointer group">
-          <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-900 text-[10px] font-black shadow-sm border border-zinc-200">
-            {user?.name ? user.name.split(' ').map((n: string) => n[0]).join('') : 'ND'}
+          <div className="relative">
+            <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-900 text-[10px] font-black shadow-sm border border-zinc-200">
+              {user?.name ? user.name.split(' ').map((n: string) => n[0]).join('') : 'ND'}
+            </div>
+            <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-white rounded-full flex items-center justify-center shadow-sm border border-zinc-100">
+              <Cloud size={8} className="text-blue-500" fill="currentColor" />
+            </div>
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-[11px] font-black text-zinc-900 truncate uppercase tracking-widest">{user?.name || 'Natao Dutton'}</div>
-            <div className="text-[9px] text-blue-600 font-bold uppercase tracking-widest">Pro Plan</div>
+            <div className="flex items-center gap-1.5">
+              <div className="text-[9px] text-blue-600 font-bold uppercase tracking-widest">Pro Plan</div>
+              <div className="w-1 h-1 rounded-full bg-zinc-300"></div>
+              <div className="text-[8px] text-zinc-400 font-bold uppercase tracking-widest">Synced</div>
+            </div>
           </div>
           <Settings size={14} className="text-zinc-400 group-hover:text-zinc-600 transition-all" />
         </div>

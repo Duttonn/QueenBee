@@ -10,12 +10,17 @@ import {
   X,
   ChevronDown,
   Trash2,
-  Play as PlayIcon
+  Play as PlayIcon,
+  CheckCircle2,
+  XCircle,
+  Activity,
+  History
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '../../store/useAppStore';
 
 // Recipe Card Component
-const AutomationCard = ({ icon, title, description, active, onToggle, onDelete, onRun }: {
+const AutomationCard = ({ icon, title, description, active, onToggle, onDelete, onRun, lastRunStatus }: {
   icon: React.ReactNode;
   title: string;
   description: string;
@@ -23,29 +28,38 @@ const AutomationCard = ({ icon, title, description, active, onToggle, onDelete, 
   onToggle: () => void;
   onDelete: () => void;
   onRun: () => void;
+  lastRunStatus?: 'success' | 'failed' | 'idle';
 }) => (
-  <div className="bg-white border border-gray-100 rounded-2xl p-5 hover:shadow-lg hover:border-gray-200 transition-all duration-200 group">
-    <div className="flex justify-between items-start mb-3">
-      <div className="text-2xl">{icon}</div>
+  <div className="bg-white border border-zinc-200 rounded-3xl p-6 hover:shadow-xl hover:shadow-zinc-200/50 transition-all group relative overflow-hidden">
+    <div className="flex justify-between items-start mb-4">
+      <div className="p-3 bg-zinc-50 rounded-2xl group-hover:bg-white group-hover:shadow-sm transition-all">{icon}</div>
       <div className="flex items-center gap-2">
         <button 
           onClick={onToggle}
-          className={`w-10 h-5 rounded-full transition-colors relative ${active ? 'bg-green-500' : 'bg-gray-200'}`}
+          className={`w-10 h-5 rounded-full transition-colors relative ${active ? 'bg-green-500 shadow-sm shadow-green-200' : 'bg-zinc-200'}`}
         >
           <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${active ? 'left-6' : 'left-1'}`} />
         </button>
-        <button onClick={onDelete} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all rounded-lg">
-          <Trash2 size={14} />
+        <button onClick={onDelete} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-all rounded-xl">
+          <Trash2 size={16} />
         </button>
       </div>
     </div>
-    <h3 className="text-base font-semibold text-gray-900 mb-1">{title}</h3>
-    <p className="text-sm text-gray-500 leading-relaxed mb-4">{description}</p>
+    
+    <div className="mb-4">
+      <h3 className="text-base font-bold text-zinc-900 mb-1 flex items-center gap-2">
+        {title}
+        {lastRunStatus === 'success' && <CheckCircle2 size={14} className="text-green-500" />}
+        {lastRunStatus === 'failed' && <XCircle size={14} className="text-red-500" />}
+      </h3>
+      <p className="text-sm text-zinc-500 leading-relaxed line-clamp-2">{description}</p>
+    </div>
+
     <button
       onClick={onRun}
-      className="w-full flex items-center justify-center gap-2 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-bold rounded-xl transition-all"
+      className="w-full flex items-center justify-center gap-2 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold uppercase tracking-widest rounded-xl transition-all shadow-sm active:scale-95"
     >
-      <PlayIcon size={12} />
+      <PlayIcon size={12} fill="currentColor" />
       Run Now
     </button>
   </div>
@@ -67,96 +81,145 @@ const CreateAutomationModal = ({ isOpen, onClose, onCreate }: { isOpen: boolean;
       schedule: scheduleTime,
     });
     onClose();
-    // Reset form
     setTitle('');
     setDescription('');
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/20 backdrop-blur-sm"
-        onClick={onClose}
-      ></div>
-
-      {/* Modal */}
-      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">Create Automation</h2>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="p-6 space-y-5">
-          {/* Name Input */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g., Daily code review"
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-            />
-          </div>
-
-          {/* Description Input */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What does it do?"
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-            />
-          </div>
-
-          {/* Workspaces Dropdown */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Workspaces</label>
-            <button className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-500 hover:border-gray-300 transition-colors">
-              <span>Choose a folder</span>
-              <ChevronDown size={16} />
+    <AnimatePresence>
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/10 backdrop-blur-md"
+      >
+        <motion.div 
+          initial={{ scale: 0.9, y: 20 }}
+          animate={{ scale: 1, y: 0 }}
+          exit={{ scale: 0.9, y: 20 }}
+          className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-zinc-200 overflow-hidden"
+        >
+          <div className="flex items-center justify-between px-6 py-5 border-b border-zinc-100 bg-zinc-50/50">
+            <h2 className="text-lg font-bold text-zinc-900 uppercase tracking-widest flex items-center gap-2">
+              <Activity size={18} className="text-blue-600" />
+              New Automation
+            </h2>
+            <button
+              onClick={onClose}
+              className="p-1 hover:bg-zinc-100 rounded-lg text-zinc-400 hover:text-zinc-600 transition-colors"
+            >
+              <X size={20} />
             </button>
           </div>
 
-          {/* Schedule */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Schedule</label>
-            <div className="flex gap-3">
+          <div className="p-8 space-y-6">
+            <div>
+              <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-2">Automation Name</label>
               <input
-                type="time"
-                value={scheduleTime}
-                onChange={(e) => setScheduleTime(e.target.value)}
-                className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g., Daily code review"
+                className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
               />
             </div>
-          </div>
-        </div>
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            className="px-5 py-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium rounded-lg transition-colors"
-          >
-            Create Automation
-          </button>
-        </div>
+            <div>
+              <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-2">Description</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="What does it do?"
+                rows={2}
+                className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-2">Target Folder</label>
+                <button className="w-full flex items-center justify-between px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-500 hover:border-zinc-300 transition-colors">
+                  <span className="text-sm">Current</span>
+                  <ChevronDown size={14} />
+                </button>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-2">Schedule Time</label>
+                <input
+                  type="time"
+                  value={scheduleTime}
+                  onChange={(e) => setScheduleTime(e.target.value)}
+                  className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="px-6 py-5 border-t border-zinc-100 flex justify-end gap-3 bg-zinc-50/50">
+            <button
+              onClick={onClose}
+              className="px-5 py-2 text-xs font-bold uppercase tracking-widest text-zinc-500 hover:text-zinc-800 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              className="px-6 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-zinc-200"
+            >
+              Create Automation
+            </button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
+const ExecutionLog = () => {
+  const [runs] = useState([
+    { id: 1, name: 'GSD Sync', status: 'success', time: '2 mins ago', duration: '1.2s' },
+    { id: 2, name: 'Cloud Backup', status: 'success', time: '1 hour ago', duration: '4.5s' },
+    { id: 3, name: 'Code Review', status: 'failed', time: '3 hours ago', error: 'Lint failed' },
+    { id: 4, name: 'Security Audit', status: 'success', time: 'Yesterday', duration: '12.1s' }
+  ]);
+
+  return (
+    <div className="mt-16 border-t border-zinc-100 pt-10">
+      <div className="flex items-center gap-2 mb-6">
+        <History size={18} className="text-zinc-400" />
+        <h2 className="text-xs font-black text-zinc-400 uppercase tracking-widest">Recent Runs</h2>
+      </div>
+      
+      <div className="bg-white border border-zinc-200 rounded-3xl overflow-hidden">
+        <table className="w-full text-left">
+          <thead className="bg-zinc-50 border-b border-zinc-200">
+            <tr>
+              <th className="px-6 py-3 text-[10px] font-black text-zinc-400 uppercase tracking-widest">Job Name</th>
+              <th className="px-6 py-3 text-[10px] font-black text-zinc-400 uppercase tracking-widest">Status</th>
+              <th className="px-6 py-3 text-[10px] font-black text-zinc-400 uppercase tracking-widest">Time</th>
+              <th className="px-6 py-3 text-[10px] font-black text-zinc-400 uppercase tracking-widest text-right">Duration</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {runs.map((run) => (
+              <tr key={run.id} className="hover:bg-zinc-50/50 transition-colors group">
+                <td className="px-6 py-4">
+                  <span className="text-sm font-bold text-zinc-900">{run.name}</span>
+                </td>
+                <td className="px-6 py-4">
+                  <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${
+                    run.status === 'success' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
+                  }`}>
+                    {run.status === 'success' ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                    {run.status}
+                  </div>
+                </td>
+                <td className="px-6 py-4 text-xs text-zinc-500 font-medium">{run.time}</td>
+                <td className="px-6 py-4 text-xs text-zinc-400 font-mono text-right">{run.duration || run.error}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -177,21 +240,25 @@ const AutomationDashboard = () => {
   };
 
   return (
-    <div className="flex-1 bg-white overflow-y-auto min-h-0">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+    <div className="flex-1 bg-white overflow-y-auto min-h-0 selection:bg-blue-100">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
 
         {/* Header */}
-        <div className="mb-10 flex items-end justify-between">
+        <div className="mb-12 flex items-start justify-between bg-zinc-50/50 p-8 rounded-3xl border border-zinc-100">
           <div>
-            <h1 className="text-3xl sm:text-4xl font-semibold text-gray-900 mb-3">Automations</h1>
-            <p className="text-gray-500 text-lg">Create agents that run in the background.</p>
+            <div className="flex items-center gap-3 mb-2 text-zinc-400">
+              <Activity size={24} className="text-blue-600" />
+              <span className="text-xs font-black uppercase tracking-widest">Automation Engine</span>
+            </div>
+            <h1 className="text-4xl font-bold text-zinc-900 tracking-tight">Agentic Jobs</h1>
+            <p className="text-zinc-500 text-lg font-medium mt-1">Schedule background agents for maintenance and sync.</p>
           </div>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="hidden sm:flex items-center gap-2 px-4 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-xl transition-all shadow-sm hover:shadow-md"
+            className="flex items-center gap-2 px-6 py-3 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold uppercase tracking-widest rounded-2xl transition-all shadow-xl shadow-zinc-200 active:scale-95"
           >
             <Plus size={18} />
-            <span>New Automation</span>
+            <span>Create New</span>
           </button>
         </div>
 
@@ -204,6 +271,7 @@ const AutomationDashboard = () => {
               title={recipe.title}
               description={recipe.description}
               active={recipe.active}
+              lastRunStatus="success"
               onToggle={() => toggleAutomation(recipe.id, !recipe.active)}
               onDelete={() => {
                 if (confirm('Delete this automation?')) deleteAutomation(recipe.id);
@@ -212,8 +280,8 @@ const AutomationDashboard = () => {
                 if (recipe.script) {
                   try {
                     const res = await runAutomation(recipe.script);
-                    alert(`Result: ${res.stdout}`);
-                  } catch (e) { alert('Error running automation'); }
+                    console.log(`Result: ${res.stdout}`);
+                  } catch (e) { console.error('Error running automation'); }
                 } else {
                   alert('No script defined for this automation.');
                 }
@@ -222,9 +290,10 @@ const AutomationDashboard = () => {
           ))}
         </div>
 
+        <ExecutionLog />
+
       </div>
 
-      {/* Create Modal */}
       <CreateAutomationModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
