@@ -15,9 +15,9 @@ export interface AutomationJob {
 }
 
 /**
- * AutomationScheduler: Manages recurring agent tasks.
+ * CronManager: Manages recurring agent tasks using node-cron.
  */
-export class AutomationScheduler {
+export class CronManager {
   private jobs: Map<string, cron.ScheduledTask> = new Map();
   private jobsData: AutomationJob[] = [];
   private storagePath: string;
@@ -128,4 +128,4 @@ export class AutomationScheduler {
   }
 }
 
-export const automationScheduler = new AutomationScheduler();
+export const cronManager = new CronManager();

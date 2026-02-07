@@ -53,6 +53,7 @@ interface AppState {
     // Automations
     addAutomation: (auto: Partial<Automation>) => Promise<void>;
     toggleAutomation: (id: string, active: boolean) => Promise<void>;
+    deleteAutomation: (id: string) => Promise<void>;
     runAutomation: (script: string) => Promise<ExecutionResult>;
 
     // Skills
@@ -110,6 +111,17 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (res.ok) {
             set(state => ({
                 automations: state.automations.map(a => a.id === id ? { ...a, active } : a)
+            }));
+        }
+    },
+
+    deleteAutomation: async (id) => {
+        const res = await fetch(`${API_BASE}/automations?id=${id}`, {
+            method: 'DELETE'
+        });
+        if (res.ok) {
+            set(state => ({
+                automations: state.automations.filter(a => a.id !== id)
             }));
         }
     },

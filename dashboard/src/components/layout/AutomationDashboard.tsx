@@ -8,25 +8,47 @@ import {
   Clock,
   Plus,
   X,
-  ChevronDown
+  ChevronDown,
+  Trash2,
+  Play as PlayIcon
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 
 // Recipe Card Component
-const AutomationCard = ({ icon, title, description, onClick }: {
+const AutomationCard = ({ icon, title, description, active, onToggle, onDelete, onRun }: {
   icon: React.ReactNode;
   title: string;
   description: string;
-  onClick?: () => void;
+  active: boolean;
+  onToggle: () => void;
+  onDelete: () => void;
+  onRun: () => void;
 }) => (
-  <button
-    onClick={onClick}
-    className="bg-white border border-gray-100 rounded-2xl p-5 text-left hover:shadow-lg hover:border-gray-200 transition-all duration-200 group w-full"
-  >
-    <div className="mb-3 text-2xl">{icon}</div>
-    <h3 className="text-base font-semibold text-gray-900 mb-1 group-hover:text-gray-800">{title}</h3>
-    <p className="text-sm text-gray-500 leading-relaxed">{description}</p>
-  </button>
+  <div className="bg-white border border-gray-100 rounded-2xl p-5 hover:shadow-lg hover:border-gray-200 transition-all duration-200 group">
+    <div className="flex justify-between items-start mb-3">
+      <div className="text-2xl">{icon}</div>
+      <div className="flex items-center gap-2">
+        <button 
+          onClick={onToggle}
+          className={`w-10 h-5 rounded-full transition-colors relative ${active ? 'bg-green-500' : 'bg-gray-200'}`}
+        >
+          <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${active ? 'left-6' : 'left-1'}`} />
+        </button>
+        <button onClick={onDelete} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all rounded-lg">
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </div>
+    <h3 className="text-base font-semibold text-gray-900 mb-1">{title}</h3>
+    <p className="text-sm text-gray-500 leading-relaxed mb-4">{description}</p>
+    <button
+      onClick={onRun}
+      className="w-full flex items-center justify-center gap-2 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-bold rounded-xl transition-all"
+    >
+      <PlayIcon size={12} />
+      Run Now
+    </button>
+  </div>
 );
 
 // Create Automation Modal
@@ -142,7 +164,7 @@ const CreateAutomationModal = ({ isOpen, onClose, onCreate }: { isOpen: boolean;
 
 const AutomationDashboard = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const { automations, addAutomation } = useAppStore();
+  const { automations, addAutomation, toggleAutomation, deleteAutomation, runAutomation } = useAppStore();
 
   const getIcon = (title: string) => {
     const lower = title.toLowerCase();
@@ -175,23 +197,25 @@ const AutomationDashboard = () => {
 
         {/* Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {automations.map((recipe, index) => (
+          {automations.map((recipe) => (
             <AutomationCard
-              key={recipe.id || index}
+              key={recipe.id}
               icon={getIcon(recipe.title)}
               title={recipe.title}
               description={recipe.description}
-              onClick={async () => {
-                if (confirm(`Run automation "${recipe.title}"?`)) {
-                  // Logic to run
-                  if (recipe.script) {
-                    try {
-                      const res = await useAppStore.getState().runAutomation(recipe.script);
-                      alert(`Result: ${res.stdout}`);
-                    } catch (e) { alert('Error running automation'); }
-                  } else {
-                    alert('No script defined for this automation.');
-                  }
+              active={recipe.active}
+              onToggle={() => toggleAutomation(recipe.id, !recipe.active)}
+              onDelete={() => {
+                if (confirm('Delete this automation?')) deleteAutomation(recipe.id);
+              }}
+              onRun={async () => {
+                if (recipe.script) {
+                  try {
+                    const res = await runAutomation(recipe.script);
+                    alert(`Result: ${res.stdout}`);
+                  } catch (e) { alert('Error running automation'); }
+                } else {
+                  alert('No script defined for this automation.');
                 }
               }}
             />

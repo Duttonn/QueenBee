@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { getDb, saveDb, Automation } from '../../lib/db';
 import { v4 as uuidv4 } from 'uuid';
+import { cronManager } from '../../lib/CronManager';
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
     const db = getDb();
@@ -21,7 +22,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
             id: uuidv4(),
             title,
             description: description || '',
-            schedule: schedule || 'Manual',
+            schedule: schedule || '0 0 * * *', // Default to daily if not provided
             active: true,
             script: script || '',
             lastRun: undefined
@@ -29,6 +30,12 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
         db.automations.push(newAutomation);
         saveDb(db);
+
+        // Sync with CronManager
+        if (newAutomation.active) {
+            cronManager.scheduleJob(newAutomation);
+        }
+
         return res.status(201).json(newAutomation);
     }
 
@@ -47,6 +54,14 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         }
 
         saveDb(db);
+
+        // Sync with CronManager
+        if (db.automations[index].active) {
+            cronManager.scheduleJob(db.automations[index]);
+        } else {
+            cronManager.stopJob(id);
+        }
+
         return res.status(200).json(db.automations[index]);
     }
 
@@ -56,6 +71,10 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
         db.automations = db.automations.filter(a => a.id !== id);
         saveDb(db);
+
+        // Stop job
+        cronManager.stopJob(id as string);
+
         return res.status(200).json({ success: true });
     }
 

@@ -3,8 +3,12 @@ import { Server } from 'socket.io';
 import { EventLoopManager } from './src/lib/EventLoopManager.js';
 import { setIO } from './src/lib/socket-instance.js';
 import { TaskManager } from './src/lib/TaskManager.js';
+import { cronManager } from './src/lib/CronManager.js';
 
 const PORT = 3001;
+
+// Initialize Cron Jobs
+cronManager.init().catch(err => console.error('Failed to init cron manager', err));
 
 const httpServer = createServer(async (req, res) => {
   // Simple router for Claim API
