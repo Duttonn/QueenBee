@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, Loader2, X } from 'lucide-react';
+import { Mic, Loader2, X, Check } from 'lucide-react';
 
 interface DictationOverlayProps {
   isVisible: boolean;
@@ -62,12 +62,24 @@ const DictationOverlay = ({ isVisible, isProcessing, onClose }: DictationOverlay
                 : 'Speak clearly into your microphone. Press Esc or click outside to cancel.'}
             </p>
 
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-zinc-100 rounded-full text-zinc-400 transition-colors"
-            >
-              <X size={20} />
-            </button>
+            <div className="flex flex-col w-full gap-3">
+              {!isProcessing && (
+                <button
+                  onClick={onClose}
+                  className="w-full flex items-center justify-center gap-2 py-3.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-black uppercase tracking-[0.2em] rounded-2xl transition-all shadow-xl shadow-zinc-200 active:scale-95"
+                >
+                  <Check size={18} />
+                  Stop & Send
+                </button>
+              )}
+              
+              <button
+                onClick={onClose}
+                className="w-full py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-zinc-600 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
           </motion.div>
         </motion.div>
       )}

@@ -113,10 +113,11 @@ const TopToolbar = ({ onOpenSettings, onRun, onCommit, onOpen, onToggleTerminal,
 
     <button
       onClick={onOpenSettings}
-      className="p-2 text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 rounded-lg transition-colors"
+      className="flex items-center gap-2 p-2 text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 rounded-lg transition-colors"
       title="Settings"
     >
       <Settings size={18} />
+      <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Settings</span>
     </button>
   </div>
 );
