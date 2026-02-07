@@ -360,7 +360,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
 
   const { providers, activeProviderId, setActiveProvider } = useAuthStore();
   const activeProvider = providers.find(p => p.id === activeProviderId) || providers.find(p => p.connected);
-  const { runAutomation, commit, fetchData, addProject: addAppProject } = useAppStore();
+  const { runAutomation, commit, fetchData, addProject: addAppProject, setCommandBarOpen } = useAppStore();
   const { projects, activeThreadId, setActiveThread, addThread, addMessage, updateThread, updateLastMessage, updateToolCall } = useHiveStore();
   const activeProject = projects.find(p => p.id === selectedProjectId);
 
@@ -569,7 +569,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
               <Sidebar
                 activeView={activeView}
                 onOpenSettings={() => setIsCustomizationOpen(true)}
-                onSearchClick={() => { }}
+                onSearchClick={() => setCommandBarOpen(true)}
                 selectedProjectId={selectedProjectId}
                 onProjectSelect={(id) => {
                   setSelectedProjectId(id);

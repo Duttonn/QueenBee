@@ -47,6 +47,10 @@ interface AppState {
     automations: Automation[];
     skills: { installed: Skill[]; available: Skill[] };
 
+    // Global UI State
+    isCommandBarOpen: boolean;
+    setCommandBarOpen: (open: boolean) => void;
+
     // Actions
     fetchData: () => Promise<void>;
 
@@ -71,6 +75,9 @@ interface AppState {
 export const useAppStore = create<AppState>((set, get) => ({
     automations: [],
     skills: { installed: [], available: [] },
+    isCommandBarOpen: false,
+
+    setCommandBarOpen: (open) => set({ isCommandBarOpen: open }),
 
     fetchData: async () => {
         try {
