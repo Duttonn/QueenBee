@@ -15,20 +15,20 @@ export class FileWatcher extends EventEmitter {
     }
     
     this.watcher = chokidar.watch(projectPath, {
-      ignored: /(^|[\/\\])\..+/, // ignore dotfiles and dot-directories
+      ignored: /(^|[\/\\])\..*|node_modules|dist/, // ignore dotfiles, node_modules, dist
       persistent: true,
-      ignoreInitial: true, // Don't send a deluge of events on startup
-      atomic: true // Helps with stability on some systems
+      ignoreInitial: true,
+      atomic: true
     });
 
-    this.watcher.on('change', (path: string) => {
-      console.log(`[Watcher] File changed: ${path}`);
+    // Use 'all' to capture add/unlink as well
+    this.watcher.on('all', (event, path: string) => {
+      console.log(`[Watcher] File ${event}: ${path}`);
       const timestamp = Date.now();
       
       this.emit('file-change', { 
-        eventType: 'change', 
+        eventType: event, 
         filePath: path,
-        // Passing projectPath to be used by the listener
         projectPath: projectPath, 
         timestamp 
       });
