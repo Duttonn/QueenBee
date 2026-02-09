@@ -2,7 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 
 /**
- * ProjectTaskManager: Manages the internal GSD (TASKS.md) for user projects.
+ * ProjectTaskManager: Manages the internal PLAN.md for user projects.
  * Implements the "Vertical Slicing" philosophy.
  */
 export class ProjectTaskManager {
@@ -11,16 +11,17 @@ export class ProjectTaskManager {
 
   constructor(projectPath: string) {
     this.projectPath = projectPath;
-    this.tasksFile = path.join(projectPath, 'TASKS.md');
+    this.tasksFile = path.join(projectPath, 'PLAN.md');
   }
 
   /**
-   * Initializes a new TASKS.md if it doesn't exist
+   * Initializes a new PLAN.md if it doesn't exist
    */
-  async ensureInitialized(projectName: string) {
-    if (!(await fs.pathExists(this.tasksFile))) {
-      const template = `# 🚀 PROJET: ${projectName}\n\n## 🏗 PHASE 1: CORE (BLOCKING)\n- [ ] \`FEAT-01\`: **Initial Scan** - Analyze codebase and define structure.\n\n## 🧩 PHASE 2: FEATURES\n\n## 🧪 PHASE 3: QA & POLISH\n`;
-      await fs.writeFile(this.tasksFile, template);
+  async ensureInitialized(projectName: string, projectPath?: string) {
+    const targetFile = projectPath ? path.join(projectPath, 'PLAN.md') : this.tasksFile;
+    if (!(await fs.pathExists(targetFile))) {
+      const template = `# 🗺 Project Plan: ${projectName}\n\n## 🚀 Phase 1: Short-Term (Now)\n- [ ] \`FEAT-01\`: **Initial Scan** - Analyze codebase and define structure.\n\n## 🛠 Phase 2: Mid-Term (Next)\n\n## 🧠 Phase 3: Long-Term (Future)\n`;
+      await fs.writeFile(targetFile, template);
     }
   }
 
@@ -36,35 +37,38 @@ Tu es le module d'intelligence ProjectTaskManager. Ta mission : Transformer une 
 Tu ne dois JAMAIS séparer le Frontend du Backend. Une tâche doit être une "Vertical Slice" : une fonctionnalité complète (DB -> API -> UI).
 
 ## FORMAT DE SORTIE (Markdown)
-Génère le contenu pour un fichier TASKS.md avec :
-- PHASE 1: CORE (Squelette)
-- PHASE 2: FEATURES (Vertical Slices)
-- PHASE 3: QA & POLISH
+Génère le contenu pour un fichier PLAN.md avec :
+- Phase 1: Short-Term (Now)
+- Phase 2: Mid-Term (Next)
+- Phase 3: Long-Term (Future)
 `;
   }
 
   /**
    * Updates the tasks file with new content from the Architect
    */
-  async updateTasks(content: string) {
-    await fs.writeFile(this.tasksFile, content);
+  async updateTasks(content: string, projectPath?: string) {
+    const targetFile = projectPath ? path.join(projectPath, 'PLAN.md') : this.tasksFile;
+    await fs.writeFile(targetFile, content);
   }
 
   /**
-   * Parses TASKS.md to find available (unchecked) tasks
+   * Parses PLAN.md to find available (unchecked) tasks
    */
-  async getPendingTasks() {
-    if (!(await fs.pathExists(this.tasksFile))) return [];
-    const content = await fs.readFile(this.tasksFile, 'utf-8');
+  async getPendingTasks(projectPath?: string) {
+    const targetFile = projectPath ? path.join(projectPath, 'PLAN.md') : this.tasksFile;
+    if (!(await fs.pathExists(targetFile))) return [];
+    const content = await fs.readFile(targetFile, 'utf-8');
     const lines = content.split('\n');
     return lines
       .filter(line => line.startsWith('- [ ]'))
       .map(line => line.replace('- [ ]', '').trim());
   }
 
-  async claimTask(taskId: string, agentId: string): Promise<boolean> {
-    if (!(await fs.pathExists(this.tasksFile))) return false;
-    let content = await fs.readFile(this.tasksFile, 'utf-8');
+  async claimTask(taskId: string, agentId: string, projectPath?: string): Promise<boolean> {
+    const targetFile = projectPath ? path.join(projectPath, 'PLAN.md') : this.tasksFile;
+    if (!(await fs.pathExists(targetFile))) return false;
+    let content = await fs.readFile(targetFile, 'utf-8');
 
     const safeTaskId = taskId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const pattern = `- \\[ \\] \`${safeTaskId}\``;
@@ -77,13 +81,14 @@ Génère le contenu pour un fichier TASKS.md avec :
       `- [IN PROGRESS: ${agentId}] \`${taskId}\``
     );
 
-    await fs.writeFile(this.tasksFile, newContent);
+    await fs.writeFile(targetFile, newContent);
     return true;
   }
 
-  async completeTask(taskId: string, agentId: string): Promise<boolean> {
-    if (!(await fs.pathExists(this.tasksFile))) return false;
-    let content = await fs.readFile(this.tasksFile, 'utf-8');
+  async completeTask(taskId: string, agentId: string, projectPath?: string): Promise<boolean> {
+    const targetFile = projectPath ? path.join(projectPath, 'PLAN.md') : this.tasksFile;
+    if (!(await fs.pathExists(targetFile))) return false;
+    let content = await fs.readFile(targetFile, 'utf-8');
 
     const safeTaskId = taskId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const pattern = `- \\[IN PROGRESS: ${agentId}\\] \`${safeTaskId}\``;
@@ -94,29 +99,31 @@ Génère le contenu pour un fichier TASKS.md avec :
       const fallbackRegex = new RegExp(fallbackPattern);
       if (!fallbackRegex.test(content)) return false;
       const newContent = content.replace(fallbackRegex, `- [DONE] \`${taskId}\``);
-      await fs.writeFile(this.tasksFile, newContent);
+      await fs.writeFile(targetFile, newContent);
       return true;
     }
 
     const newContent = content.replace(regex, `- [DONE] \`${taskId}\``);
-    await fs.writeFile(this.tasksFile, newContent);
+    await fs.writeFile(targetFile, newContent);
     return true;
   }
 
-  async addTask(phase: string, taskId: string, description: string) {
-    if (!(await fs.pathExists(this.tasksFile))) {
-      await this.ensureInitialized('New Project');
+  async addTask(phase: string, taskId: string, description: string, projectPath?: string) {
+    const targetFile = projectPath ? path.join(projectPath, 'PLAN.md') : this.tasksFile;
+    if (!(await fs.pathExists(targetFile))) {
+      await this.ensureInitialized('New Project', projectPath);
     }
-    let content = await fs.readFile(this.tasksFile, 'utf-8');
+    let content = await fs.readFile(targetFile, 'utf-8');
     const newTaskLine = `- [ ] \`${taskId}\`: ${description}`;
     
-    const phaseHeader = `## ${phase}`;
+    // Normalize phase name for matching
+    const phaseHeader = phase.startsWith('##') ? phase : `## ${phase}`;
     if (content.includes(phaseHeader)) {
       content = content.replace(phaseHeader, `${phaseHeader}\n${newTaskLine}`);
     } else {
       content += `\n\n${phaseHeader}\n${newTaskLine}`;
     }
     
-    await fs.writeFile(this.tasksFile, content);
+    await fs.writeFile(targetFile, content);
   }
 }

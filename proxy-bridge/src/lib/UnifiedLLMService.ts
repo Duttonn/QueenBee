@@ -7,9 +7,91 @@ import { LLMMessage, LLMProviderOptions, LLMResponse } from './types/llm';
 import { AuthProfileStore } from './auth-profile-store';
 import { ConfigManager, ModelConfig } from './config-manager';
 
+// Pricing Registry: Cost per 1k tokens (in USD)
+const PRICING_REGISTRY: Record<string, Record<string, { input: number; output: number }>> = {
+  openai: {
+    'gpt-4o': { input: 0.005, output: 0.015 },
+    'gpt-4-turbo': { input: 0.01, output: 0.03 },
+    'gpt-3.5-turbo': { input: 0.0005, output: 0.0015 },
+    'default': { input: 0.002, output: 0.002 } // Fallback for OpenAI
+  },
+  anthropic: {
+    'claude-3-opus-20240229': { input: 0.015, output: 0.075 },
+    'claude-3-sonnet-20240229': { input: 0.003, output: 0.015 },
+    'claude-3-haiku-20240307': { input: 0.00025, output: 0.00125 },
+    'default': { input: 0.003, output: 0.015 }
+  },
+  gemini: {
+    'gemini-1.5-pro': { input: 0.0035, output: 0.0105 },
+    'gemini-1.5-flash': { input: 0.00035, output: 0.00105 },
+    'default': { input: 0.001, output: 0.001 }
+  },
+  mistral: {
+    'mistral-large-latest': { input: 0.004, output: 0.012 },
+    'mistral-small-latest': { input: 0.001, output: 0.003 },
+    'default': { input: 0.002, output: 0.006 }
+  }
+};
+
+const GLOBAL_DEFAULT_PRICE = { input: 0.002, output: 0.002 };
+
 export class UnifiedLLMService {
   private providers: Map<string, LLMProvider> = new Map();
   public ready: Promise<void>;
+  private usageStats: any[] = [];
+
+  private calculateCost(providerId: string, model: string, usage: any): number {
+    if (!usage) return 0;
+    
+    // Normalize provider and model
+    const normalizedProvider = providerId.toLowerCase().includes('google') ? 'gemini' : providerId.toLowerCase();
+    const providerPricing = PRICING_REGISTRY[normalizedProvider];
+    
+    // Find precise model match or partial match
+    let pricing = GLOBAL_DEFAULT_PRICE;
+    
+    if (providerPricing) {
+        // 1. Exact Match
+        if (providerPricing[model]) {
+            pricing = providerPricing[model];
+        } 
+        // 2. Partial Match (e.g. gpt-4o-2024-05-13 -> gpt-4o)
+        else {
+            const matchedKey = Object.keys(providerPricing).find(k => model.includes(k));
+            if (matchedKey) {
+                pricing = providerPricing[matchedKey];
+            } else {
+                pricing = providerPricing['default'] || GLOBAL_DEFAULT_PRICE;
+            }
+        }
+    }
+
+    const inputCost = (usage.prompt_tokens / 1000) * pricing.input;
+    const outputCost = (usage.completion_tokens / 1000) * pricing.output;
+    
+    return inputCost + outputCost;
+  }
+
+  private recordUsage(providerId: string, model: string, usage: any) {
+    if (!usage) return;
+    
+    const cost = this.calculateCost(providerId, model, usage);
+
+    this.usageStats.push({
+      timestamp: new Date().toISOString(),
+      providerId,
+      model,
+      promptTokens: usage.prompt_tokens || 0,
+      completionTokens: usage.completion_tokens || 0,
+      totalTokens: usage.total_tokens || 0,
+      cost
+    });
+    if (this.usageStats.length > 1000) this.usageStats.shift();
+  }
+
+  getUsage() {
+    return this.usageStats;
+  }
 
   private providerAliases: Record<string, string> = {
     'gemini': 'google',
@@ -154,7 +236,9 @@ export class UnifiedLLMService {
       safeOptions.model = undefined;
     }
 
-    return await provider.chat(messages, safeOptions);
+    const response = await provider.chat(messages, safeOptions);
+    this.recordUsage(providerId, response.model || 'unknown', response.usage);
+    return response;
   }
 
   async *chatStream(providerId: string, messages: LLMMessage[], options?: LLMProviderOptions): AsyncGenerator<LLMResponse> {
@@ -201,19 +285,34 @@ export class UnifiedLLMService {
   async transcribe(providerId: string, audioBlob: any, options?: { apiKey?: string | null }): Promise<{ text: string }> {
     await this.ready;
     
+    // 1. Try requested provider
     let provider = await this.getOrLoadProvider(providerId, { apiKey: options?.apiKey || undefined });
-
-    if (!provider || !(provider as any).transcribe) {
-      // Fallback to openai if requested not found or doesn't support transcribe
-      provider = this.providers.get('openai');
-    }
 
     if (provider && (provider as any).transcribe) {
       const text = await (provider as any).transcribe(audioBlob);
       return { text };
     }
 
-    throw new Error('No transcription provider available. Please configure OpenAI.');
+    // 2. Fallback: Loop through priority list to find ANY provider that supports transcribe
+    const priority = ['gemini', 'openai']; 
+    
+    for (const id of priority) {
+      if (id === providerId) continue; // Already tried
+      
+      const p = this.providers.get(id);
+      if (p && (p as any).transcribe) {
+        console.log(`[Transcribe] Falling back to provider: ${id}`);
+        try {
+            const text = await (p as any).transcribe(audioBlob);
+            return { text };
+        } catch (e) {
+            console.warn(`[Transcribe] Fallback provider ${id} failed:`, e);
+            // Continue to next provider
+        }
+      }
+    }
+
+    throw new Error('No transcription provider available. Please configure OpenAI or Gemini.');
   }
 
   private async getOrLoadProvider(providerId: string, options?: LLMProviderOptions): Promise<LLMProvider | undefined> {

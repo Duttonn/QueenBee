@@ -41,7 +41,8 @@ export const useVoiceRecording = (onTranscript: (text: string) => void) => {
           });
 
           if (!response.ok) {
-            throw new Error('Transcription failed');
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || `Transcription failed (${response.status})`);
           }
 
           const data = await response.json();

@@ -1,21 +1,40 @@
 import React, { useState, useEffect } from 'react';
 import { getGitDiff, type DiffStats, API_BASE } from '../../services/api';
 import { parseDiff } from '../../services/diffParser';
-import { File, Check, Minus, Plus, ChevronDown, ChevronRight, LayoutTemplate, Search, GitBranch } from 'lucide-react';
+import { File, Check, Minus, Plus, ChevronDown, ChevronRight, LayoutTemplate, Search, GitBranch, MessageSquare, Send } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 
-const DiffLine = ({ type, content, lineNo }: { type: 'add' | 'del' | 'neutral' | 'empty', content: string, lineNo?: number }) => {
+const DiffLine = ({ 
+  type, 
+  content, 
+  lineNo, 
+  selected, 
+  onClick 
+}: { 
+  type: 'add' | 'del' | 'neutral' | 'empty', 
+  content: string, 
+  lineNo?: number, 
+  selected: boolean, 
+  onClick: () => void 
+}) => {
   const isAdd = type === 'add';
   const isDel = type === 'del';
   const isEmpty = type === 'empty';
 
-  const bgColor = isAdd ? 'bg-emerald-50' : isDel ? 'bg-rose-50' : isEmpty ? 'bg-zinc-50/50' : 'bg-white';
+  const bgColor = selected 
+    ? 'bg-blue-100' 
+    : isAdd ? 'bg-emerald-50' : isDel ? 'bg-rose-50' : isEmpty ? 'bg-zinc-50/50' : 'bg-white';
+  
   const textColor = isAdd ? 'text-emerald-900' : isDel ? 'text-rose-900' : 'text-zinc-600';
   const prefix = isAdd ? '+' : isDel ? '-' : ' ';
   const prefixColor = isAdd ? 'text-emerald-600' : isDel ? 'text-rose-600' : 'text-zinc-300';
   const lineNoColor = isAdd ? 'text-emerald-600/50' : isDel ? 'text-rose-600/50' : 'text-zinc-300';
 
   return (
-    <div className={`flex font-mono text-[11px] leading-5 min-h-[20px] ${bgColor} border-b border-transparent group hover:bg-opacity-80 transition-colors`}>
+    <div 
+      onClick={!isEmpty ? onClick : undefined}
+      className={`flex font-mono text-[11px] leading-5 min-h-[20px] ${bgColor} border-b border-transparent group hover:bg-opacity-80 transition-colors cursor-pointer select-text`}
+    >
       <div className={`w-10 text-right pr-3 select-none flex-shrink-0 ${lineNoColor} border-r border-zinc-100 mr-2 bg-zinc-50/30`}>
         {lineNo}
       </div>
@@ -32,14 +51,20 @@ const DiffLine = ({ type, content, lineNo }: { type: 'add' | 'del' | 'neutral' |
 interface DiffViewerProps {
   projectPath: string;
   filePath?: string;
+  onStartThread?: (prompt: string) => void;
 }
 
-const DiffViewer = ({ projectPath, filePath: initialFilePath }: DiffViewerProps) => {
+const DiffViewer = ({ projectPath, filePath: initialFilePath, onStartThread }: DiffViewerProps) => {
   const [diff, setDiff] = useState<DiffStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(initialFilePath || null);
   const [stagedFiles, setStagedFiles] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState('');
+  
+  // Interactive Lines State
+  const [selectedLines, setSelectedLines] = useState<Set<string>>(new Set()); // Format: "filename:lineNo"
+  const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
+  const [commentText, setCommentText] = useState('');
 
   const fetchDiff = async () => {
     try {
@@ -56,6 +81,49 @@ const DiffViewer = ({ projectPath, filePath: initialFilePath }: DiffViewerProps)
   useEffect(() => {
     fetchDiff();
   }, [projectPath]);
+
+  const toggleLine = (file: string, lineNo: number) => {
+    const key = `${file}:${lineNo}`;
+    const newSelected = new Set(selectedLines);
+    if (newSelected.has(key)) {
+      newSelected.delete(key);
+    } else {
+      newSelected.add(key);
+    }
+    setSelectedLines(newSelected);
+  };
+
+  const handleStageLines = () => {
+    // Placeholder for partial staging
+    alert('Partial line staging will be implemented via "git apply" patch construction.');
+    setSelectedLines(new Set());
+  };
+
+  const handleComment = () => {
+    setIsCommentModalOpen(true);
+  };
+
+  const submitComment = () => {
+    if (!onStartThread || selectedLines.size === 0) return;
+
+    // Construct prompt
+    const linesDetails = Array.from(selectedLines).map(key => {
+        const [file, line] = key.split(':');
+        // Find content (inefficient but works for prototype)
+        const diffFile = diff?.files.find(f => f.path === file);
+        // This is tricky because we need the content. 
+        // For now, let's just pass line numbers and file.
+        // Or we can try to extract content if we have access to the parsed lines easily.
+        return `File: ${file}, Line: ${line}`;
+    }).join('\n');
+
+    const prompt = `I have a request regarding the following code:\n\n${linesDetails}\n\nMy Comment: ${commentText}\n\nPlease analyze the file and fix the issue or address my comment.`;
+    
+    onStartThread(prompt);
+    setIsCommentModalOpen(false);
+    setCommentText('');
+    setSelectedLines(new Set());
+  };
 
   const toggleStage = async (path: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -104,7 +172,7 @@ const DiffViewer = ({ projectPath, filePath: initialFilePath }: DiffViewerProps)
   const pairedLines = leftLines.map((left, i) => ({ left, right: rightLines[i] }));
 
   return (
-    <div className="flex h-full bg-zinc-50 overflow-hidden rounded-2xl border border-zinc-200 shadow-2xl">
+    <div className="flex h-full bg-zinc-50 overflow-hidden rounded-2xl border border-zinc-200 shadow-2xl relative">
       {/* Sidebar */}
       <div className="w-72 bg-white border-r border-zinc-200 flex flex-col">
         <div className="p-3 border-b border-zinc-100">
@@ -144,7 +212,7 @@ const DiffViewer = ({ projectPath, filePath: initialFilePath }: DiffViewerProps)
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0 bg-white">
+      <div className="flex-1 flex flex-col min-w-0 bg-white relative">
         {activeDiff ? (
           <>
             <div className="h-14 border-b border-zinc-100 px-6 flex items-center justify-between bg-white shadow-sm z-10">
@@ -168,20 +236,32 @@ const DiffViewer = ({ projectPath, filePath: initialFilePath }: DiffViewerProps)
                   onClick={() => toggleStage(activeDiff.path)}
                   className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${stagedFiles.has(activeDiff.path) ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-zinc-900 text-white hover:bg-zinc-800'}`}
                 >
-                  {stagedFiles.has(activeDiff.path) ? 'Unstage' : 'Stage'}
+                  {stagedFiles.has(activeDiff.path) ? 'Unstage' : 'Stage File'}
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-auto bg-white">
+            <div className="flex-1 overflow-auto bg-white pb-20">
                 <div className="min-w-full">
                   {pairedLines.map((pair, i) => (
                     <div key={i} className="grid grid-cols-2 group hover:bg-zinc-50/30 transition-colors border-b border-zinc-50/50 last:border-0">
                       <div className="border-r border-zinc-100">
-                        <DiffLine type={pair.left.type} content={pair.left.content} lineNo={pair.left.line} />
+                        <DiffLine 
+                            type={pair.left.type} 
+                            content={pair.left.content} 
+                            lineNo={pair.left.line} 
+                            selected={pair.left.line !== undefined && selectedLines.has(`${activeDiff.path}:${pair.left.line}`)}
+                            onClick={() => pair.left.line !== undefined && toggleLine(activeDiff.path, pair.left.line)}
+                        />
                       </div>
                       <div>
-                        <DiffLine type={pair.right.type} content={pair.right.content} lineNo={pair.right.line} />
+                        <DiffLine 
+                            type={pair.right.type} 
+                            content={pair.right.content} 
+                            lineNo={pair.right.line} 
+                            selected={pair.right.line !== undefined && selectedLines.has(`${activeDiff.path}:${pair.right.line}`)}
+                            onClick={() => pair.right.line !== undefined && toggleLine(activeDiff.path, pair.right.line)}
+                        />
                       </div>
                     </div>
                   ))}
@@ -195,6 +275,85 @@ const DiffViewer = ({ projectPath, filePath: initialFilePath }: DiffViewerProps)
           </div>
         )}
       </div>
+
+      {/* Floating Action Bar for Selected Lines */}
+      <AnimatePresence>
+        {selectedLines.size > 0 && (
+            <motion.div
+                initial={{ y: 100, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 100, opacity: 0 }}
+                className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-zinc-900 text-white p-2 rounded-2xl shadow-2xl flex items-center gap-2 z-50 border border-zinc-800"
+            >
+                <div className="px-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 border-r border-zinc-700">
+                    {selectedLines.size} Lines
+                </div>
+                <button 
+                    onClick={handleStageLines}
+                    className="flex items-center gap-2 px-3 py-2 hover:bg-zinc-800 rounded-xl transition-all text-[11px] font-bold"
+                >
+                    <Check size={14} className="text-emerald-500" />
+                    Stage Lines
+                </button>
+                <button 
+                    onClick={handleComment}
+                    className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl transition-all text-[11px] font-bold shadow-lg shadow-blue-500/20"
+                >
+                    <MessageSquare size={14} />
+                    Ask Agent to Fix
+                </button>
+                <button 
+                    onClick={() => setSelectedLines(new Set())}
+                    className="p-2 hover:bg-zinc-800 rounded-xl text-zinc-500 hover:text-white transition-all"
+                >
+                    <Plus className="rotate-45" size={14} />
+                </button>
+            </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Comment Modal */}
+      <AnimatePresence>
+        {isCommentModalOpen && (
+            <div className="absolute inset-0 bg-black/20 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+                <motion.div 
+                    initial={{ scale: 0.95, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.95, opacity: 0 }}
+                    className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-zinc-200 overflow-hidden"
+                >
+                    <div className="p-4 border-b border-zinc-100 flex justify-between items-center bg-zinc-50">
+                        <h3 className="text-xs font-black text-zinc-900 uppercase tracking-widest">Instruct Agent</h3>
+                        <button onClick={() => setIsCommentModalOpen(false)}><Plus className="rotate-45 text-zinc-400" size={16} /></button>
+                    </div>
+                    <div className="p-4">
+                        <textarea 
+                            value={commentText}
+                            onChange={(e) => setCommentText(e.target.value)}
+                            placeholder="What should the agent do with these lines?"
+                            className="w-full h-32 bg-zinc-50 border border-zinc-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
+                            autoFocus
+                        />
+                        <div className="mt-4 flex justify-end gap-2">
+                            <button 
+                                onClick={() => setIsCommentModalOpen(false)}
+                                className="px-4 py-2 text-xs font-bold text-zinc-500 hover:bg-zinc-100 rounded-lg"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={submitComment}
+                                className="px-4 py-2 bg-zinc-900 text-white text-xs font-bold rounded-lg hover:bg-zinc-800 flex items-center gap-2"
+                            >
+                                <Send size={12} />
+                                Spawn Thread
+                            </button>
+                        </div>
+                    </div>
+                </motion.div>
+            </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

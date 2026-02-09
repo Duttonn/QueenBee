@@ -74,14 +74,14 @@ const MemoizedMarkdown = React.memo(({ content }: { content: string }) => (
             <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity z-10">
               <button
                 onClick={() => navigator.clipboard.writeText(String(children).replace(/\n$/, ''))}
-                className="p-1.5 bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-md transition-all backdrop-blur-sm border border-white/5"
+                className="p-1.5 bg-white hover:bg-zinc-50 text-zinc-400 hover:text-zinc-900 rounded-md transition-all border border-zinc-200 shadow-sm"
                 title="Copy code"
               >
                 <Copy size={14} />
               </button>
             </div>
-            <pre className={`${className} !bg-zinc-900 !m-0 !rounded-xl !p-5 border border-white/5 shadow-2xl`}>
-              <code {...props} className={className}>
+            <pre className={`${className} !bg-zinc-50/50 !m-0 !rounded-2xl !p-5 border border-zinc-200 shadow-sm overflow-x-auto`}>
+              <code {...props} className={`${className} !text-zinc-800`}>
                 {children}
               </code>
             </pre>
@@ -137,6 +137,7 @@ const AgenticWorkbench = ({
   const [isAgentMenuOpen, setIsAgentMenuOpen] = useState(false);
   const [isOpenMenuOpen, setIsOpenMenuOpen] = useState(false);
   const [showLiveEye, setShowLiveEye] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   
   // Branch State
   const [branches, setBranches] = useState<{ current: string, all: string[] }>({ current: 'main', all: [] });
@@ -144,10 +145,10 @@ const AgenticWorkbench = ({
 
   // Tab State
   const [workbenchView, setWorkbenchView] = useState<'chat' | 'plan'>('chat');
-  const [splitDirection, setSplitDirection] = useState<'vertical' | 'horizontal'>('vertical');
+  const [splitDirection, setSplitDirection] = useState<'vertical' | 'horizontal'>('horizontal');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { spawnAgent, socket, queenStatus } = useHiveStore();
+  const { spawnAgent, socket, queenStatus, tasks } = useHiveStore();
 
   useEffect(() => {
     if (activeProject?.path) {
@@ -175,11 +176,23 @@ const AgenticWorkbench = ({
   };
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, expandedThinking]);
+    if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ 
+            behavior: isLoading ? 'auto' : 'smooth',
+            block: 'end' 
+        });
+    }
+  }, [messages, expandedThinking, isLoading]);
 
   const toggleThinking = (index: number) => {
     setExpandedThinking(prev => ({ ...prev, [index]: !prev[index] }));
+  };
+
+  const handleCopyMessage = (content: string, index: number) => {
+      const cleanContent = content.replace(/```thinking[\s\S]*?```/g, '').trim();
+      navigator.clipboard.writeText(cleanContent);
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 2000);
   };
 
   const ChatView = () => (
@@ -251,19 +264,40 @@ const AgenticWorkbench = ({
                     </div>
                   )}
                 </div>
-                <div className="flex-1 min-w-0 space-y-2">
+                <div className="flex-1 min-w-0 space-y-2 group/msg">
                   {!isGrouped && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Assistant</span>
-                      {((msg.content?.includes('```thinking')) || (isLoading && index === messages.length - 1 && queenStatus === 'thinking')) && (
-                        <button
-                          onClick={() => toggleThinking(index)}
-                          className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-[10px] font-bold text-blue-600 hover:bg-blue-100 transition-colors border border-blue-100"
-                        >
-                          <Sparkles size={10} className={isLoading && index === messages.length - 1 ? "animate-spin" : ""} />
-                          <span>{isLoading && index === messages.length - 1 && !msg.content?.includes('```thinking') ? 'Pondering...' : 'View Thoughts'}</span>
-                          {expandedThinking[index] ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                        </button>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Assistant</span>
+                        {((msg.content?.includes('```thinking')) || (isLoading && index === messages.length - 1 && queenStatus === 'thinking')) && (
+                          <button
+                            onClick={() => toggleThinking(index)}
+                            className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-[10px] font-bold text-blue-600 hover:bg-blue-100 transition-colors border border-blue-100"
+                          >
+                            <Sparkles size={10} className={isLoading && index === messages.length - 1 ? "animate-spin" : ""} />
+                            <span>{isLoading && index === messages.length - 1 && !msg.content?.includes('```thinking') ? 'Pondering...' : 'View Thoughts'}</span>
+                            {expandedThinking[index] ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                          </button>
+                        )}
+                      </div>
+
+                      {msg.content && (
+                          <button 
+                            onClick={() => handleCopyMessage(msg.content, index)}
+                            className="opacity-0 group-hover/msg:opacity-100 flex items-center gap-1.5 px-2 py-0.5 rounded-lg hover:bg-zinc-100 text-zinc-400 hover:text-zinc-900 transition-all"
+                          >
+                            {copiedIndex === index ? (
+                                <>
+                                    <Check size={10} className="text-emerald-500" />
+                                    <span className="text-[9px] font-black uppercase text-emerald-600 tracking-widest">Copied</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Copy size={10} />
+                                    <span className="text-[9px] font-black uppercase tracking-widest">Copy Response</span>
+                                </>
+                            )}
+                          </button>
                       )}
                     </div>
                   )}
@@ -601,11 +635,19 @@ const AgenticWorkbench = ({
       {/* Content Area */}
       <div className="flex-1 flex flex-col min-h-0 relative">
         {activeProject && messages.length === 0 && !isLoading && workbenchView === 'chat' ? (
-            <ProjectOverview onNewThread={onAddThread || (() => {})} />
+            <ProjectOverview 
+                onNewThread={onAddThread || (() => {})} 
+                onStartPlanning={() => setWorkbenchView('plan')}
+                hasPlan={tasks.length > 0}
+            />
         ) : workbenchView === 'plan' ? (
             <div className={`flex-1 flex overflow-hidden ${splitDirection === 'vertical' ? 'flex-row' : 'flex-col'}`}>
                 <div className={`flex-1 overflow-hidden border-${splitDirection === 'vertical' ? 'r' : 'b'} border-zinc-200`}>
-                    <ProjectOverview onNewThread={() => setWorkbenchView('chat')} />
+                    <ProjectOverview 
+                        onNewThread={() => setWorkbenchView('chat')} 
+                        onStartPlanning={() => {}} 
+                        hasPlan={tasks.length > 0}
+                    />
                 </div>
                 <div className="flex-1 overflow-hidden relative bg-white border-l border-zinc-100">
                     <ChatView />

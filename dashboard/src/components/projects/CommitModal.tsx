@@ -66,6 +66,38 @@ const CommitModal = ({ isOpen, onClose, projectPath, onCommitSuccess }: CommitMo
     }
   };
 
+  const [isGenerating, setIsGenerating] = useState(false);
+  
+  // Auto-generate commit message when selection changes
+  useEffect(() => {
+    if (!isOpen || selectedFiles.size === 0) return;
+
+    const timer = setTimeout(async () => {
+      setIsGenerating(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/git/generate-message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectPath,
+            files: Array.from(selectedFiles)
+          })
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data.message) setMessage(data.message);
+        }
+      } catch (err) {
+        console.error('Failed to generate commit message', err);
+      } finally {
+        setIsGenerating(false);
+      }
+    }, 1000); // 1s debounce
+
+    return () => clearTimeout(timer);
+  }, [selectedFiles, isOpen, projectPath]);
+
   const handleCommit = async (action: 'commit' | 'push' | 'pr') => {
     if (selectedFiles.size === 0) return;
     
@@ -207,7 +239,15 @@ const CommitModal = ({ isOpen, onClose, projectPath, onCommitSuccess }: CommitMo
           </div>
 
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Commit Message</label>
+            <div className="flex items-center justify-between">
+                <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Commit Message</label>
+                {isGenerating && (
+                    <div className="flex items-center gap-1 text-[10px] font-bold text-blue-500 uppercase tracking-widest animate-pulse">
+                        <Loader2 size={10} className="animate-spin" />
+                        Generating...
+                    </div>
+                )}
+            </div>
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}

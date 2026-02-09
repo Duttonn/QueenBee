@@ -135,8 +135,8 @@ export class ToolExecutor {
             status: tool.arguments.status, 
             prUrl: tool.arguments.prUrl 
           });
-          await ptm.completeTask(tool.arguments.taskId, agentId || 'unknown');
-          result = { success: true, message: `Status for ${tool.arguments.taskId} updated and TASKS.md synced.` };
+          await ptm.completeTask(tool.arguments.taskId, agentId || 'unknown', projectPath);
+          result = { success: true, message: `Status for ${tool.arguments.taskId} updated and PLAN.md synced.` };
           break;
 
         case 'check_status':
@@ -149,17 +149,17 @@ export class ToolExecutor {
           break;
 
         case 'plan_tasks':
-          await ptm.updateTasks(tool.arguments.content);
-          result = { success: true, message: 'TASKS.md updated with the new plan.' };
+          await ptm.updateTasks(tool.arguments.content, projectPath);
+          result = { success: true, message: 'PLAN.md updated with the new plan.' };
           break;
 
         case 'add_task':
-          await ptm.addTask(tool.arguments.phase, tool.arguments.taskId, tool.arguments.description);
-          result = { success: true, taskId: tool.arguments.taskId, message: 'Task added to TASKS.md' };
+          await ptm.addTask(tool.arguments.phase, tool.arguments.taskId, tool.arguments.description, projectPath);
+          result = { success: true, taskId: tool.arguments.taskId, message: 'Task added to PLAN.md' };
           break;
 
         case 'claim_task':
-          const claimed = await ptm.claimTask(tool.arguments.taskId, agentId || 'unknown');
+          const claimed = await ptm.claimTask(tool.arguments.taskId, agentId || 'unknown', projectPath);
           result = { success: claimed, taskId: tool.arguments.taskId, message: claimed ? 'Task claimed' : 'Task not found or already claimed' };
           break;
           
