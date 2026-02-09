@@ -528,13 +528,14 @@ const AgenticWorkbench = ({
         </AnimatePresence>
       </div>
 
-      {/* BP-09: Agent Steps Sidebar */}
-      <div className="relative">
-        <AgentStepsPanel />
-      </div>
-    </div>
-  );
-
+              {/* BP-09: Agent Steps Sidebar */}
+              {workbenchView !== 'plan' && (
+                <div className="relative">
+                  <AgentStepsPanel />
+                </div>
+              )}
+            </div>
+          );
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
       {/* Header */}

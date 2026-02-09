@@ -209,9 +209,10 @@ export async function sendChatMessageStream(
 /**
  * Get git diff for a project
  */
-export async function getGitDiff(projectPath: string, filePath?: string): Promise<DiffStats> {
+export async function getGitDiff(projectPath: string, filePath?: string, staged?: boolean): Promise<DiffStats> {
     const params = new URLSearchParams({ projectPath });
     if (filePath) params.append('filePath', filePath);
+    if (staged) params.append('staged', 'true');
 
     const response = await fetch(`${API_BASE}/api/git/diff?${params}`);
 
