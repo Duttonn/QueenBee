@@ -16,10 +16,18 @@ export const config = {
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
   // Set CORS headers for preflight
-  const FRONTEND_URL = process.env.FRONTEND_URL || 'http://127.0.0.1:5173';
-  res.setHeader('Access-Control-Allow-Origin', FRONTEND_URL);
+  const allowedOrigins = [
+    'http://127.0.0.1:5173', 
+    'http://localhost:5173', 
+    process.env.FRONTEND_URL || 'http://127.0.0.1:5173'
+  ];
+  
+  const origin = req.headers.origin as string;
+  const allowOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+
+  res.setHeader('Access-Control-Allow-Origin', allowOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   if (req.method === 'OPTIONS') {
@@ -37,10 +45,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   console.log('[LogRelay] Initializing Socket.io with CORS...');
   const io = new Server((res.socket as any).server, {
     cors: {
-      origin: [
-        process.env.FRONTEND_URL || "http://127.0.0.1:5173",
-        process.env.API_BASE_URL || "http://127.0.0.1:3000",
-      ],
+      origin: allowedOrigins,
       methods: ["GET", "POST"],
       credentials: true
     },
