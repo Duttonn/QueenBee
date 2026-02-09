@@ -653,9 +653,35 @@ const AgenticWorkbench = ({
 
       {/* Content Area */}
       <div className="flex-1 flex flex-col min-h-0 relative">
-        {activeProject && messages.length === 0 && !isLoading && workbenchView === 'chat' ? (
-            <ProjectOverview 
-                onNewThread={onAddThread || (() => {})} 
+        {activeProject && messages.length === 0 && !isLoading && workbenchView === 'chat' && !activeThreadId ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
+              <div className="w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl flex items-center justify-center shadow-lg mb-6">
+                <Sparkles size={28} className="text-white" />
+              </div>
+              <h2 className="text-2xl font-bold text-zinc-900 mb-2">
+                Let's build <span className="text-amber-600">{activeProject.name}</span>
+              </h2>
+              <p className="text-sm text-zinc-500 max-w-md mb-6">
+                Start a conversation to plan, build, or debug your project with autonomous agents.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={onAddThread || (() => {})}
+                  className="px-5 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold uppercase rounded-xl transition-all shadow-lg active:scale-95"
+                >
+                  New Thread
+                </button>
+                <button
+                  onClick={() => setWorkbenchView('plan')}
+                  className="px-5 py-2.5 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 text-xs font-bold uppercase rounded-xl transition-all"
+                >
+                  View Plan
+                </button>
+              </div>
+            </div>
+        ) : activeProject && messages.length === 0 && !isLoading && workbenchView === 'chat' ? (
+            <ProjectOverview
+                onNewThread={onAddThread || (() => {})}
                 onStartPlanning={() => setWorkbenchView('plan')}
                 hasPlan={tasks.length > 0}
             />

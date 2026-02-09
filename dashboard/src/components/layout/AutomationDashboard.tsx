@@ -14,14 +14,70 @@ import {
   CheckCircle2,
   XCircle,
   Activity,
-  History
+  History,
+  ScanSearch,
+  RefreshCw,
+  FileText,
+  Database,
+  MonitorCheck,
+  Tag,
+  TestTube2,
+  Wrench
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '../../store/useAppStore';
 import { useHiveStore } from '../../store/useHiveStore';
 
+const DAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'] as const;
+const DAY_SHORT: Record<string, string> = { Mo: 'M', Tu: 'T', We: 'W', Th: 'Th', Fr: 'F', Sa: 'Sa', Su: 'Su' };
+
+interface AutomationTemplate {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  schedule: string;
+  days: string[];
+}
+
+const TEMPLATES: AutomationTemplate[] = [
+  { icon: <ScanSearch className="text-blue-500" size={22} />, title: 'GSD Scan', description: 'Run GSD progress check every morning', schedule: '09:00', days: ['Mo','Tu','We','Th','Fr'] },
+  { icon: <RefreshCw className="text-teal-500" size={22} />, title: 'Sync Repos', description: 'Sync all repos every hour', schedule: '00:00', days: ['Mo','Tu','We','Th','Fr','Sa','Su'] },
+  { icon: <GitPullRequest className="text-pink-500" size={22} />, title: 'PR Review', description: 'Review new PRs on push', schedule: '08:00', days: ['Mo','Tu','We','Th','Fr'] },
+  { icon: <FileText className="text-purple-500" size={22} />, title: 'Changelog', description: 'Generate changelog weekly', schedule: '10:00', days: ['Fr'] },
+  { icon: <Database className="text-amber-500" size={22} />, title: 'Data Gen', description: 'Generate test data nightly', schedule: '02:00', days: ['Mo','Tu','We','Th','Fr'] },
+  { icon: <MonitorCheck className="text-green-500" size={22} />, title: 'CI Monitor', description: 'Watch CI pipeline status', schedule: '00:00', days: ['Mo','Tu','We','Th','Fr','Sa','Su'] },
+  { icon: <Tag className="text-orange-500" size={22} />, title: 'Release Notes', description: 'Draft release notes on tag', schedule: '09:00', days: ['Mo','We','Fr'] },
+  { icon: <TestTube2 className="text-cyan-500" size={22} />, title: 'Test Nightly', description: 'Run full test suite nightly', schedule: '03:00', days: ['Mo','Tu','We','Th','Fr'] },
+  { icon: <Wrench className="text-zinc-500" size={22} />, title: 'Maintenance', description: 'Dependency update check weekly', schedule: '08:00', days: ['Mo'] },
+];
+
+const TemplateGrid = ({ onSelect }: { onSelect: (t: AutomationTemplate) => void }) => (
+  <div>
+    <p className="text-xs font-black text-zinc-400 uppercase tracking-widest mb-4">Quick Start Templates</p>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {TEMPLATES.map((t) => (
+        <button
+          key={t.title}
+          onClick={() => onSelect(t)}
+          className="text-left bg-white border border-zinc-200 rounded-xl p-5 hover:border-zinc-300 hover:shadow-lg hover:shadow-zinc-100/80 transition-all group"
+        >
+          <div className="p-2.5 bg-zinc-50 rounded-xl w-fit mb-3 group-hover:bg-white group-hover:shadow-sm transition-all">{t.icon}</div>
+          <h3 className="text-sm font-bold text-zinc-900 mb-1">{t.title}</h3>
+          <p className="text-xs text-zinc-400 leading-relaxed">{t.description}</p>
+        </button>
+      ))}
+    </div>
+  </div>
+);
+
+function formatScheduleDisplay(schedule: string, days?: string[]): string {
+  if (!days || days.length === 0 || days.length === 7) return schedule;
+  const abbrev = days.map(d => DAY_SHORT[d] || d).join('');
+  return `${abbrev} ${schedule}`;
+}
+
 // Recipe Card Component
-const AutomationCard = ({ icon, title, description, active, onToggle, onDelete, onRun, lastRunStatus }: {
+const AutomationCard = ({ icon, title, description, active, onToggle, onDelete, onRun, lastRunStatus, schedule, days }: {
   icon: React.ReactNode;
   title: string;
   description: string;
@@ -30,6 +86,8 @@ const AutomationCard = ({ icon, title, description, active, onToggle, onDelete, 
   onDelete: () => void;
   onRun: () => void;
   lastRunStatus?: 'success' | 'failed' | 'idle';
+  schedule?: string;
+  days?: string[];
 }) => (
   <div className="bg-white border border-zinc-200 rounded-3xl p-6 hover:shadow-xl hover:shadow-zinc-200/50 transition-all group relative overflow-hidden">
     <div className="flex justify-between items-start mb-4">
@@ -54,6 +112,12 @@ const AutomationCard = ({ icon, title, description, active, onToggle, onDelete, 
         {lastRunStatus === 'failed' && <XCircle size={14} className="text-red-500" />}
       </h3>
       <p className="text-sm text-zinc-500 leading-relaxed line-clamp-2">{description}</p>
+      {schedule && (
+        <p className="text-[11px] font-mono text-zinc-400 mt-2 flex items-center gap-1.5">
+          <Clock size={12} />
+          {formatScheduleDisplay(schedule, days)}
+        </p>
+      )}
     </div>
 
     <button
@@ -67,16 +131,37 @@ const AutomationCard = ({ icon, title, description, active, onToggle, onDelete, 
 );
 
 // Create Automation Modal
-const CreateAutomationModal = ({ isOpen, onClose, onCreate }: { isOpen: boolean; onClose: () => void; onCreate: (data: any) => void }) => {
+const CreateAutomationModal = ({ isOpen, onClose, onCreate, initialTemplate }: {
+  isOpen: boolean;
+  onClose: () => void;
+  onCreate: (data: any) => void;
+  initialTemplate?: AutomationTemplate | null;
+}) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [scheduleTime, setScheduleTime] = useState('09:30');
+  const [selectedDays, setSelectedDays] = useState<string[]>(['Mo','Tu','We','Th','Fr']);
   const [targetProject, setTargetProject] = useState<string | null>(null);
   const [isProjectPickerOpen, setIsProjectPickerOpen] = useState(false);
-  
+
   const { projects } = useHiveStore();
 
+  React.useEffect(() => {
+    if (initialTemplate) {
+      setTitle(initialTemplate.title);
+      setDescription(initialTemplate.description);
+      setScheduleTime(initialTemplate.schedule);
+      setSelectedDays(initialTemplate.days);
+    }
+  }, [initialTemplate]);
+
   if (!isOpen) return null;
+
+  const toggleDay = (day: string) => {
+    setSelectedDays(prev =>
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
+    );
+  };
 
   const handleSubmit = () => {
     if (!title) return;
@@ -84,28 +169,32 @@ const CreateAutomationModal = ({ isOpen, onClose, onCreate }: { isOpen: boolean;
       title,
       description,
       schedule: scheduleTime,
+      days: selectedDays,
       targetPath: projects.find(p => p.name === targetProject)?.path || '',
       active: true
     });
     onClose();
     setTitle('');
     setDescription('');
+    setSelectedDays(['Mo','Tu','We','Th','Fr']);
     setTargetProject(null);
   };
 
   return (
     <AnimatePresence>
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/10 backdrop-blur-md"
+        onClick={onClose}
       >
-        <motion.div 
+        <motion.div
           initial={{ scale: 0.9, y: 20 }}
           animate={{ scale: 1, y: 0 }}
           exit={{ scale: 0.9, y: 20 }}
           className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-zinc-200 overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between px-6 py-5 border-b border-zinc-100 bg-zinc-50/50">
             <h2 className="text-lg font-bold text-zinc-900 uppercase tracking-widest flex items-center gap-2">
@@ -114,7 +203,7 @@ const CreateAutomationModal = ({ isOpen, onClose, onCreate }: { isOpen: boolean;
             </h2>
             <button
               onClick={onClose}
-              className="p-1 hover:bg-zinc-100 rounded-lg text-zinc-400 hover:text-zinc-600 transition-colors"
+              className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-400 hover:text-zinc-600 transition-colors"
             >
               <X size={20} />
             </button>
@@ -193,6 +282,26 @@ const CreateAutomationModal = ({ isOpen, onClose, onCreate }: { isOpen: boolean;
                 />
               </div>
             </div>
+
+            <div>
+              <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-2">Days</label>
+              <div className="flex gap-1.5">
+                {DAYS.map(day => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => toggleDay(day)}
+                    className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
+                      selectedDays.includes(day)
+                        ? 'bg-zinc-900 text-white shadow-sm'
+                        : 'bg-zinc-50 text-zinc-400 border border-zinc-200 hover:border-zinc-300'
+                    }`}
+                  >
+                    {day}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="px-6 py-5 border-t border-zinc-100 flex justify-end gap-3 bg-zinc-50/50">
@@ -236,6 +345,7 @@ const ExecutionLog = () => {
 
 const AutomationDashboard = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<AutomationTemplate | null>(null);
   const { automations, addAutomation, toggleAutomation, deleteAutomation, runAutomation } = useAppStore();
 
   const getIcon = (title: string) => {
@@ -272,32 +382,38 @@ const AutomationDashboard = () => {
         </div>
 
         {/* Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {automations.map((recipe) => (
-            <AutomationCard
-              key={recipe.id}
-              icon={getIcon(recipe.title)}
-              title={recipe.title}
-              description={recipe.description}
-              active={recipe.active}
-              lastRunStatus={recipe.lastRun ? 'success' : 'idle'}
-              onToggle={() => toggleAutomation(recipe.id, !recipe.active)}
-              onDelete={() => {
-                if (confirm('Delete this automation?')) deleteAutomation(recipe.id);
-              }}
-              onRun={async () => {
-                if (recipe.script) {
-                  try {
-                    const res = await runAutomation(recipe.script);
-                    console.log(`Result: ${res.stdout}`);
-                  } catch (e) { console.error('Error running automation'); }
-                } else {
-                  alert('No script defined for this automation.');
-                }
-              }}
-            />
-          ))}
-        </div>
+        {automations.length === 0 ? (
+          <TemplateGrid onSelect={(t) => { setSelectedTemplate(t); setShowCreateModal(true); }} />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {automations.map((recipe) => (
+              <AutomationCard
+                key={recipe.id}
+                icon={getIcon(recipe.title)}
+                title={recipe.title}
+                description={recipe.description}
+                active={recipe.active}
+                schedule={recipe.schedule}
+                days={recipe.days}
+                lastRunStatus={recipe.lastRun ? 'success' : 'idle'}
+                onToggle={() => toggleAutomation(recipe.id, !recipe.active)}
+                onDelete={() => {
+                  if (confirm('Delete this automation?')) deleteAutomation(recipe.id);
+                }}
+                onRun={async () => {
+                  if (recipe.script) {
+                    try {
+                      const res = await runAutomation(recipe.script);
+                      console.log(`Result: ${res.stdout}`);
+                    } catch (e) { console.error('Error running automation'); }
+                  } else {
+                    alert('No script defined for this automation.');
+                  }
+                }}
+              />
+            ))}
+          </div>
+        )}
 
         <ExecutionLog />
 
@@ -305,8 +421,9 @@ const AutomationDashboard = () => {
 
       <CreateAutomationModal
         isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
+        onClose={() => { setShowCreateModal(false); setSelectedTemplate(null); }}
         onCreate={addAutomation}
+        initialTemplate={selectedTemplate}
       />
     </div>
   );

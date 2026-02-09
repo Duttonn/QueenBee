@@ -7,6 +7,7 @@ export interface Automation {
     title: string;
     description: string;
     schedule: string;
+    days?: string[];
     active: boolean;
     script?: string;
     lastRun?: string;

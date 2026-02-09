@@ -34,8 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(200).json({ message: `chore: update ${files.length} files` });
     }
 
-    const truncatedDiff = diff.length > 5000 ? diff.substring(0, 5000) + '...
-(truncated)' : diff;
+    const truncatedDiff = diff.length > 5000 ? diff.substring(0, 5000) + '...(truncated)' : diff;
 
     const prompt = `You are a semantic commit message generator. 
     Analyze the following git diff and generate a concise, conventional commit message.
