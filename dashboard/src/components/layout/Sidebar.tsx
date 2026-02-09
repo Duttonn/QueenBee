@@ -21,7 +21,8 @@ import {
   Cloud,
   ListTodo,
   LayoutTemplate,
-  Download
+  Download,
+  Trash2
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -448,7 +449,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                       <div
                         key={thread.id}
                         onClick={() => { setActiveThread(thread.id); onViewChange('build'); }}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all ${activeThreadId === thread.id
+                        className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all group/thread ${activeThreadId === thread.id
                           ? 'bg-white text-zinc-900 border border-zinc-200 shadow-sm'
                           : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
                           }`}
@@ -469,6 +470,18 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                             )}
                           </div>
                         </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('Delete this thread?')) {
+                              useHiveStore.getState().deleteThread(activeProject.id, thread.id);
+                            }
+                          }}
+                          className="opacity-0 group-hover/thread:opacity-100 p-1.5 hover:bg-rose-50 hover:text-rose-500 text-zinc-400 rounded-lg transition-all"
+                          title="Delete Thread"
+                        >
+                          <Trash2 size={12} />
+                        </button>
                       </div>
                     );
                   })

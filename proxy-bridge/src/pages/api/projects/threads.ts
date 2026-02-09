@@ -39,7 +39,22 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
             return res.status(200).json({ status: 'success' });
         }
 
-        res.setHeader('Allow', ['POST']);
+        if (req.method === 'DELETE') {
+            const { projectId, threadId } = req.query;
+            if (!projectId || !threadId) return res.status(400).json({ error: 'projectId and threadId required' });
+
+            const projectIndex = db.projects.findIndex(p => p.id === projectId);
+            if (projectIndex === -1) {
+                return res.status(404).json({ error: 'Project not found' });
+            }
+
+            db.projects[projectIndex].threads = (db.projects[projectIndex].threads || []).filter(t => t.id !== threadId);
+            saveDb(db);
+
+            return res.status(200).json({ status: 'success' });
+        }
+
+        res.setHeader('Allow', ['POST', 'DELETE']);
         res.status(405).end(`Method ${req.method} Not Allowed`);
     } catch (error: any) {
         console.error('[Threads API] Error:', error);

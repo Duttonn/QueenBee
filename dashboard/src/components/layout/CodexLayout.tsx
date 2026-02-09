@@ -20,7 +20,8 @@ import {
   GitCommit,
   Monitor,
   Check,
-  Mic
+  Mic,
+  File as FileIcon
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -75,7 +76,7 @@ const MentionDropdown = ({ files, selectedIndex, onSelect }: { files: string[], 
               : 'text-zinc-600 hover:bg-zinc-50'
               }`}
           >
-            <File size={12} className={idx === selectedIndex ? 'text-blue-400' : 'text-zinc-400'} />
+            <FileIcon size={12} className={idx === selectedIndex ? 'text-blue-400' : 'text-zinc-400'} />
             <span className="truncate">{file}</span>
           </button>
         ))}
@@ -88,7 +89,7 @@ const MentionDropdown = ({ files, selectedIndex, onSelect }: { files: string[], 
 interface ComposerBarProps {
   value: string;
   onChange: (value: string) => void;
-  onSubmit: () => void;
+  onSubmit: (contentOverride?: string, contextInjection?: string) => void;
   onStop?: () => void;
   isLoading?: boolean;
   mode: 'local' | 'worktree' | 'cloud';
@@ -233,11 +234,26 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
                 const input = document.createElement('input');
                 input.type = 'file';
                 input.multiple = true;
-                input.onchange = (e: any) => {
-                  const files = Array.from(e.target.files).map((f: any) => f.name);
+                input.onchange = async (e: any) => {
+                  const files = Array.from(e.target.files) as File[];
                   if (files.length > 0) {
-                    const mentions = files.map(f => `@${f}`).join(' ');
-                    onChange(value ? `${value} ${mentions}` : mentions);
+                    const fileContexts = await Promise.all(files.map(async (file) => {
+                      return new Promise<string>((resolve) => {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                          const content = ev.target?.result as string;
+                          resolve(`\n\nContext for attached file "${file.name}":\n\n\`\`\`\n${content}\n\`\`\``);
+                        };
+                        reader.readAsText(file);
+                      });
+                    }));
+                    
+                    const mentions = files.map(f => `@${f.name}`).join(' ');
+                    const newPrompt = value ? `${value} ${mentions}` : mentions;
+                    
+                    // We append the content to a hidden field or just use it in the next sendMessage
+                    // For now, let's just trigger a send with the augmented content
+                    onSubmit(newPrompt, fileContexts.join(''));
                   }
                 };
                 input.click();
@@ -335,7 +351,7 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
               </button>
             ) : (
               <button
-                onClick={onSubmit}
+                onClick={() => onSubmit()}
                 disabled={!value.trim()}
                 className={`p-2.5 rounded-xl transition-all shadow-lg ${!value.trim()
                   ? 'bg-zinc-100 text-zinc-300'
@@ -455,7 +471,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     }
   }, [availableModels, selectedModel, activeProviderId, setActiveProvider]);
 
-  const handleSendMessage = useCallback(async (contentOverride?: string) => {
+  const handleSendMessage = useCallback(async (contentOverride?: string, contextInjection?: string) => {
     const content = contentOverride || inputValue;
     if (!content.trim() || isLoading || !selectedProjectId) return;
 
@@ -491,22 +507,45 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     // 1. Context Enhancement: Scan for @mentions and inject content
     let augmentedMessages = [...messages];
     
+    if (contextInjection) {
+      augmentedMessages.push({
+        role: 'system',
+        content: `User attached additional context:\n${contextInjection}`
+      });
+    }
+    
     // Find all @filename mentions
     const fileMentions = content.match(/@([a-zA-Z0-9_\-./]+)/g);
-    if (fileMentions && activeProject?.path) {
+    if (fileMentions) {
         for (const mention of fileMentions) {
             const fileName = mention.substring(1);
-            try {
-                const res = await fetch(`${API_BASE}/api/files?path=${encodeURIComponent(fileName)}&projectPath=${encodeURIComponent(activeProject.path)}`);
-                if (res.ok) {
-                    const fileData = await res.json();
-                    augmentedMessages.push({
-                        role: 'system',
-                        content: `Context for file "${fileName}":\n\n\`\`\`\n${fileData.content}\n\`\`\``
-                    });
+            let found = false;
+            
+            // Search in active project first, then others
+            const projectsToSearch = activeProject 
+              ? [activeProject, ...projects.filter(p => p.id !== activeProject.id)]
+              : projects;
+
+            for (const proj of projectsToSearch) {
+                if (!proj.path) continue;
+                try {
+                    const res = await fetch(`${API_BASE}/api/files?path=${encodeURIComponent(fileName)}&projectPath=${encodeURIComponent(proj.path)}`);
+                    if (res.ok) {
+                        const fileData = await res.json();
+                        augmentedMessages.push({
+                            role: 'system',
+                            content: `Context for file "${fileName}" (from project ${proj.name}):\n\n\`\`\`\n${fileData.content}\n\`\`\``
+                        });
+                        found = true;
+                        break; // Found it, move to next mention
+                    }
+                } catch (e) {
+                    // Silently skip if fetch fails
                 }
-            } catch (e) {
-                console.warn(`[CodexLayout] Failed to auto-inject context for ${fileName}:`, e);
+            }
+            
+            if (!found) {
+                console.warn(`[CodexLayout] Could not find file ${fileName} in any project.`);
             }
         }
     }
