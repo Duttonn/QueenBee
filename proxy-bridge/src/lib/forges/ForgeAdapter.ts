@@ -2,7 +2,9 @@ export interface ForgeRepo {
   id: string;
   name: string;
   fullName: string;
+  full_name: string; // Alias for frontend
   url: string;
+  html_url: string; // Alias for frontend
   description: string;
   isPrivate: boolean;
   forge: 'github' | 'gitlab';

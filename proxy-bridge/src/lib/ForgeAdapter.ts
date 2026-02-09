@@ -17,7 +17,12 @@ export class UniversalForgeAdapter {
   async listGitHubRepos(user: string): Promise<ForgeRepository[]> {
     try {
       const output = execSync(`gh repo list ${user} --limit 50 --json name,url,description,sshUrl`).toString();
-      return JSON.parse(output).map((r: any) => ({ ...r, forge: 'github' as const }));
+      return JSON.parse(output).map((r: any) => ({ 
+        ...r, 
+        full_name: r.name,
+        html_url: r.url,
+        forge: 'github' as const 
+      }));
     } catch (e) {
       console.error('[Forge] GitHub scan failed:', e);
       return [];
@@ -34,7 +39,9 @@ export class UniversalForgeAdapter {
         const jsonOutput = execSync(`glab repo list --per-page 50 --json`).toString();
         return JSON.parse(jsonOutput).map((r: any) => ({
           name: r.name,
+          full_name: r.path_with_namespace || r.name,
           url: r.web_url,
+          html_url: r.web_url,
           sshUrl: r.ssh_url_to_repo,
           description: r.description,
           forge: 'gitlab' as const
