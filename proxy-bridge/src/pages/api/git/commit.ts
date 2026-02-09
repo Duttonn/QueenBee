@@ -10,7 +10,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(405).end(`Method ${req.method} Not Allowed`);
     }
 
-    const { message, path: repoPath, addAll = true, push = false, files, skipAudit = false } = req.body;
+    const { message, path: repoPath, addAll = true, push = false, files } = req.body;
 
     if (!repoPath) {
         return res.status(400).json({ error: 'Repository path required' });
@@ -19,17 +19,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const git = simpleGit(repoPath);
 
     try {
-        // Pre-commit security audit
-        if (!skipAudit) {
-            const findings = await securityAudit.auditProject(repoPath);
-            if (findings.length > 0) {
-                console.warn(`[Security] Blocked commit — ${findings.length} finding(s) in ${repoPath}`);
-                return res.status(422).json({
-                    error: 'security_audit_failed',
-                    message: `Security audit found ${findings.length} issue(s). Commit blocked.`,
-                    findings,
-                });
-            }
+        // Pre-commit security audit (always runs, cannot be bypassed)
+        const findings = await securityAudit.auditProject(repoPath);
+        if (findings.length > 0) {
+            console.warn(`[Security] Blocked commit — ${findings.length} finding(s) in ${repoPath}`);
+            return res.status(422).json({
+                error: 'security_audit_failed',
+                message: `Security audit found ${findings.length} issue(s). Commit blocked.`,
+                findings,
+            });
         }
 
         if (files && Array.isArray(files) && files.length > 0) {

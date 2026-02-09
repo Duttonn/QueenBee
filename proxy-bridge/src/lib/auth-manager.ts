@@ -9,8 +9,8 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 
 // OpenClaw "Borrowed" Client IDs for specific features
-const ANTIGRAVITY_CLIENT_ID = process.env.ANTIGRAVITY_CLIENT_ID || "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com";
-const ANTIGRAVITY_CLIENT_SECRET = process.env.ANTIGRAVITY_CLIENT_SECRET || "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f";
+const ANTIGRAVITY_CLIENT_ID = process.env.ANTIGRAVITY_CLIENT_ID || '';
+const ANTIGRAVITY_CLIENT_SECRET = process.env.ANTIGRAVITY_CLIENT_SECRET || '';
 
 const GEMINI_CLI_CLIENT_ID = process.env.GEMINI_CLI_CLIENT_ID; // Usually extracted from local install
 const GEMINI_CLI_CLIENT_SECRET = process.env.GEMINI_CLI_CLIENT_SECRET;
@@ -88,6 +88,10 @@ export class AuthManager {
      * Antigravity OAuth implementation (Borrowed ID)
      */
     private static async initiateAntigravityOAuth(mode: 'electron' | 'web' = 'web') {
+        if (!ANTIGRAVITY_CLIENT_ID || !ANTIGRAVITY_CLIENT_SECRET) {
+            console.warn('[Auth] ANTIGRAVITY_CLIENT_ID or ANTIGRAVITY_CLIENT_SECRET not set. Skipping antigravity OAuth.');
+            throw new Error('Antigravity OAuth credentials not configured. Set ANTIGRAVITY_CLIENT_ID and ANTIGRAVITY_CLIENT_SECRET environment variables.');
+        }
         const scopes = [
             "https://www.googleapis.com/auth/cloud-platform",
             "https://www.googleapis.com/auth/userinfo.email",

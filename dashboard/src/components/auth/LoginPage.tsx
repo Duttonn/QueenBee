@@ -2,12 +2,11 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Github, Sparkles, ArrowRight, Zap, Shield, GitBranch, AlertCircle, Loader2, ExternalLink } from 'lucide-react';
 import { SystemService } from '../../services/SystemService';
+import { API_BASE } from '../../services/api';
 
 interface LoginPageProps {
     onLoginComplete: (data: any) => void;
 }
-
-const API_BASE = 'http://127.0.0.1:3000';
 
 const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
     const [isLoading, setIsLoading] = useState(false);

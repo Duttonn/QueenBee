@@ -26,6 +26,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useHiveStore } from '../../store/useHiveStore';
 import { SystemService } from '../../services/SystemService';
+import { API_BASE } from '../../services/api';
 
 interface SidebarProps {
   activeView: 'build' | 'automations' | 'skills' | 'triage';
@@ -139,7 +140,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
         if (result.canceled || result.filePaths.length === 0) return;
         const targetDir = `${result.filePaths[0]}/${repo.name}`;
         await SystemService.fs.clone(repo.html_url, targetDir);
-        const res = await fetch('http://127.0.0.1:3000/api/projects', {
+        const res = await fetch(`${API_BASE}/api/projects`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: repo.name, path: targetDir, type: 'local' })
@@ -152,7 +153,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
       } finally { setIsCloning(null); }
     } else {
       try {
-        const res = await fetch('http://127.0.0.1:3000/api/projects/import-url', {
+        const res = await fetch(`${API_BASE}/api/projects/import-url`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ repoUrl: repo.html_url, projectName: repo.name, accessToken: gitForge?.accessToken })

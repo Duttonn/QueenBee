@@ -216,50 +216,19 @@ const CreateAutomationModal = ({ isOpen, onClose, onCreate }: { isOpen: boolean;
 };
 
 const ExecutionLog = () => {
-  const [runs] = useState([
-    { id: 1, name: 'GSD Sync', status: 'success', time: '2 mins ago', duration: '1.2s' },
-    { id: 2, name: 'Cloud Backup', status: 'success', time: '1 hour ago', duration: '4.5s' },
-    { id: 3, name: 'Code Review', status: 'failed', time: '3 hours ago', error: 'Lint failed' },
-    { id: 4, name: 'Security Audit', status: 'success', time: 'Yesterday', duration: '12.1s' }
-  ]);
-
   return (
     <div className="mt-16 border-t border-zinc-100 pt-10">
       <div className="flex items-center gap-2 mb-6">
         <History size={18} className="text-zinc-400" />
         <h2 className="text-xs font-black text-zinc-400 uppercase tracking-widest">Recent Runs</h2>
       </div>
-      
+
       <div className="bg-white border border-zinc-200 rounded-3xl overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-zinc-50 border-b border-zinc-200">
-            <tr>
-              <th className="px-6 py-3 text-[10px] font-black text-zinc-400 uppercase tracking-widest">Job Name</th>
-              <th className="px-6 py-3 text-[10px] font-black text-zinc-400 uppercase tracking-widest">Status</th>
-              <th className="px-6 py-3 text-[10px] font-black text-zinc-400 uppercase tracking-widest">Time</th>
-              <th className="px-6 py-3 text-[10px] font-black text-zinc-400 uppercase tracking-widest text-right">Duration</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-100">
-            {runs.map((run) => (
-              <tr key={run.id} className="hover:bg-zinc-50/50 transition-colors group">
-                <td className="px-6 py-4">
-                  <span className="text-sm font-bold text-zinc-900">{run.name}</span>
-                </td>
-                <td className="px-6 py-4">
-                  <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${
-                    run.status === 'success' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
-                  }`}>
-                    {run.status === 'success' ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-                    {run.status}
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-xs text-zinc-500 font-medium">{run.time}</td>
-                <td className="px-6 py-4 text-xs text-zinc-400 font-mono text-right">{run.duration || run.error}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="text-center py-16">
+          <History size={32} className="mx-auto mb-3 text-zinc-300" />
+          <p className="text-sm font-bold text-zinc-400">No execution history yet</p>
+          <p className="text-xs text-zinc-400 mt-1">Run an automation to see results here.</p>
+        </div>
       </div>
     </div>
   );
@@ -311,7 +280,7 @@ const AutomationDashboard = () => {
               title={recipe.title}
               description={recipe.description}
               active={recipe.active}
-              lastRunStatus="success"
+              lastRunStatus={recipe.lastRun ? 'success' : 'idle'}
               onToggle={() => toggleAutomation(recipe.id, !recipe.active)}
               onDelete={() => {
                 if (confirm('Delete this automation?')) deleteAutomation(recipe.id);

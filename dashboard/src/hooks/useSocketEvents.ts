@@ -97,12 +97,46 @@ export const useSocketEvents = () => {
       useHiveStore.getState().setProjects(data.projects);
     };
 
+    const onDiffUpdate = (data: { file: string; added: number; removed: number }) => {
+      console.log(`[SocketHook] Diff Update:`, data);
+      const state = useHiveStore.getState();
+      const projectId = state.selectedProjectId;
+      if (projectId) {
+        state.setProjects(
+          state.projects.map(p =>
+            p.id === projectId
+              ? { ...p, lastDiff: { file: data.file, added: data.added, removed: data.removed, timestamp: Date.now() } }
+              : p
+          )
+        );
+      }
+      useHiveStore.setState({ lastEvent: 'DIFF_UPDATE' });
+    };
+
+    const onFileChange = (data: { filePath: string; relativePath: string; projectPath: string; timestamp: number }) => {
+      console.log(`[SocketHook] File Change:`, data);
+      const state = useHiveStore.getState();
+      const projectId = state.selectedProjectId;
+      if (projectId) {
+        state.setProjects(
+          state.projects.map(p =>
+            p.id === projectId
+              ? { ...p, lastFileChange: { path: data.relativePath || data.filePath, timestamp: data.timestamp } }
+              : p
+          )
+        );
+      }
+      useHiveStore.setState({ lastEvent: 'FILE_CHANGE' });
+    };
+
     socket.on('QUEEN_STATUS', onQueenStatus);
     socket.on('UI_UPDATE', onUIUpdate);
     socket.on('NATIVE_NOTIFICATION', onNativeNotification);
     socket.on('TOOL_EXECUTION', onToolExecution);
     socket.on('TOOL_RESULT', onToolResult);
     socket.on('PROJECT_LIST_UPDATE', onProjectListUpdate);
+    socket.on('DIFF_UPDATE', onDiffUpdate);
+    socket.on('FILE_CHANGE', onFileChange);
 
     return () => {
       socket.off('QUEEN_STATUS', onQueenStatus);
@@ -111,6 +145,8 @@ export const useSocketEvents = () => {
       socket.off('TOOL_EXECUTION', onToolExecution);
       socket.off('TOOL_RESULT', onToolResult);
       socket.off('PROJECT_LIST_UPDATE', onProjectListUpdate);
+      socket.off('DIFF_UPDATE', onDiffUpdate);
+      socket.off('FILE_CHANGE', onFileChange);
     };
   }, [socket, setQueenStatus, updateAgentStatus, spawnAgent, updateToolCall, activeThreadId, projects]);
 };

@@ -1,19 +1,22 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Mic, Command, Search, Cpu, GitBranch, Zap, Layers, Loader2, Bot, X } from 'lucide-react';
+import { Mic, Command, Search, Cpu, GitBranch, Zap, Layers, Loader2, Bot, X, PenSquare, RefreshCw, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useHiveStore } from '../../store/useHiveStore';
 import { useAppStore } from '../../store/useAppStore';
 import { useVoiceRecording } from '../../hooks/useVoiceRecording';
+import { healthCheck } from '../../services/api';
 
 const GlobalCommandBar = () => {
   const { isCommandBarOpen: isOpen, setCommandBarOpen: setIsOpen } = useAppStore();
   const [query, setQuery] = useState('');
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Hive state
-  const { socket, projects } = useHiveStore();
-  const activeProject = projects.length > 0 ? projects[0] : null;
+  const { socket, projects, setSelectedProjectId, addThread, setActiveThread, fetchProjects } = useHiveStore();
+  const selectedProjectId = useHiveStore((s) => s.selectedProjectId);
+  const activeProject = projects.find(p => p.id === selectedProjectId) || (projects.length > 0 ? projects[0] : null);
 
   // Voice Recording Hook
   const { isRecording, toggleRecording, stopRecording } = useVoiceRecording(
@@ -23,9 +26,65 @@ const GlobalCommandBar = () => {
   );
 
   const actions = [
-    { title: 'Spawn New Agent', description: 'Create an autonomous worker for a specific task', icon: <Zap size={18} />, shortcut: 'S', perform: () => console.log('Spawn') },
-    { title: 'Switch Project Workspace', description: 'Navigate between active projects', icon: <Layers size={18} />, perform: () => console.log('Switch') },
-    { title: 'System Status', description: 'Monitor Hive mind CPU and Memory usage', icon: <Cpu size={18} />, perform: () => console.log('Status') },
+    {
+      title: 'Spawn New Agent',
+      description: 'Create a new thread with an autonomous worker',
+      icon: <Zap size={18} />,
+      shortcut: 'S',
+      perform: () => {
+        if (!activeProject) return;
+        const threadId = `thread-${Date.now()}`;
+        addThread(activeProject.id, {
+          id: threadId,
+          title: 'New Agent Thread',
+          agentId: 'codex-agent',
+        });
+        setActiveThread(threadId);
+      }
+    },
+    {
+      title: 'Switch Project Workspace',
+      description: 'Cycle to the next active project',
+      icon: <Layers size={18} />,
+      perform: () => {
+        if (projects.length < 2) return;
+        const currentIdx = projects.findIndex(p => p.id === selectedProjectId);
+        const nextIdx = (currentIdx + 1) % projects.length;
+        setSelectedProjectId(projects[nextIdx].id);
+        setStatusMessage(`Switched to: ${projects[nextIdx].name}`);
+        setTimeout(() => setStatusMessage(null), 2000);
+      }
+    },
+    {
+      title: 'System Status',
+      description: 'Check backend health and connectivity',
+      icon: <Cpu size={18} />,
+      perform: async () => {
+        setStatusMessage('Checking backend...');
+        const ok = await healthCheck();
+        setStatusMessage(ok ? 'Backend is healthy and connected.' : 'Backend is unreachable.');
+        setTimeout(() => setStatusMessage(null), 3000);
+      }
+    },
+    {
+      title: 'New Thread',
+      description: 'Start a fresh conversation thread',
+      icon: <PenSquare size={18} />,
+      perform: () => {
+        setActiveThread(null);
+      }
+    },
+    {
+      title: 'Refresh Projects',
+      description: 'Re-fetch project list from backend',
+      icon: <RefreshCw size={18} />,
+      perform: async () => {
+        setStatusMessage('Refreshing projects...');
+        await fetchProjects();
+        setStatusMessage(`Loaded ${useHiveStore.getState().projects.length} projects.`);
+        setTimeout(() => setStatusMessage(null), 2000);
+      }
+    },
   ];
 
   const filteredActions = actions.filter(a => a.title.toLowerCase().includes(query.toLowerCase()));
@@ -63,6 +122,11 @@ const GlobalCommandBar = () => {
     setIsOpen(false);
     stopRecording();
   };
+
+  // Clear status when closing
+  useEffect(() => {
+    if (!isOpen) setStatusMessage(null);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -111,7 +175,7 @@ const GlobalCommandBar = () => {
               {filteredActions.map((action, idx) => (
                 <button
                   key={idx}
-                  onClick={() => { action.perform(); setIsOpen(false); }}
+                  onClick={() => { action.perform(); if (!['System Status', 'Refresh Projects'].includes(action.title)) setIsOpen(false); }}
                   className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl transition-all ${
                     idx === selectedIdx ? 'bg-zinc-900 text-white shadow-xl shadow-black/10' : 'hover:bg-zinc-50 text-zinc-600'
                   }`}
@@ -148,6 +212,13 @@ const GlobalCommandBar = () => {
             </div>
           )}
         </div>
+
+        {statusMessage && (
+          <div className="px-6 py-3 bg-blue-50 border-t border-blue-100 flex items-center gap-2">
+            <Activity size={14} className="text-blue-500" />
+            <span className="text-xs font-bold text-blue-700">{statusMessage}</span>
+          </div>
+        )}
 
         <div className="px-6 py-3 bg-white border-t border-zinc-100 flex items-center justify-between">
            <div className="flex items-center gap-4">

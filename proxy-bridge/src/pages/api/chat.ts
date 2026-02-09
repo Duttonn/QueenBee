@@ -27,6 +27,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
+    const heartbeat = setInterval(() => {
+      res.write(':heartbeat\n\n');
+    }, 15000);
+
+    const streamTimeout = setTimeout(() => {
+      clearInterval(heartbeat);
+      res.write(`data: ${JSON.stringify({ error: { message: 'Stream timeout after 5 minutes', type: 'STREAM_TIMEOUT' } })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    }, 300000);
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      clearTimeout(streamTimeout);
+      // TODO: abort LLM call if possible
+    });
+
     try {
       const runner = new AutonomousRunner(
         (res as any).socket, // still needed for some fallback logic
@@ -38,17 +55,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         agentId
       );
       runner.setWritable(res); // Pass the response stream to the runner
-      
+
       const lastMessage = messages[messages.length - 1];
       const history = messages.slice(0, -1);
 
       await runner.streamIntermediateSteps(lastMessage.content, history, { model, apiKey });
-      
+
+      res.write('data: [DONE]\n\n');
       res.end();
     } catch (error: any) {
       logger.error(`[Chat] Agent Streaming Error: ${error.message}`);
       res.write(`data: ${JSON.stringify({ error: { message: error.message, type: 'AGENT_STREAM_ERROR' } })}\n\n`);
+      res.write('data: [DONE]\n\n');
       res.end();
+    } finally {
+      clearInterval(heartbeat);
+      clearTimeout(streamTimeout);
     }
     return;
   }
@@ -60,16 +82,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
+    const heartbeat = setInterval(() => {
+      res.write(':heartbeat\n\n');
+    }, 15000);
+
+    const streamTimeout = setTimeout(() => {
+      clearInterval(heartbeat);
+      res.write(`data: ${JSON.stringify({ error: { message: 'Stream timeout after 5 minutes', type: 'STREAM_TIMEOUT' } })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    }, 300000);
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      clearTimeout(streamTimeout);
+      // TODO: abort LLM call if possible
+    });
+
     try {
       const streamGenerator = unifiedLLMService.chatStream(providerId, messages, { model, apiKey });
       for await (const chunk of streamGenerator) {
         res.write(`data: ${JSON.stringify(chunk)}\n\n`);
       }
+      res.write('data: [DONE]\n\n');
       res.end();
     } catch (error: any) {
       logger.error(`[Chat] LLM Streaming Error: ${error.message}`);
       res.write(`data: ${JSON.stringify({ error: { message: error.message, type: 'LLM_STREAM_ERROR' } })}\n\n`);
+      res.write('data: [DONE]\n\n');
       res.end();
+    } finally {
+      clearInterval(heartbeat);
+      clearTimeout(streamTimeout);
     }
     return;
   }

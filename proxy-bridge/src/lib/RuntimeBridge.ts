@@ -16,16 +16,28 @@ export class RuntimeBridge {
    */
   async inspectElement(componentId: string) {
     console.log(`[Inspector] Querying source for component: ${componentId}`);
-    
-    // In a React app, this would talk to the codex-inspector.js script
-    this.socket.emit('RUNTIME_QUERY', { action: 'GET_SOURCE', id: componentId });
-    
-    // Mock response:
-    return {
-      file: 'src/components/Header.tsx',
-      line: 42,
-      props: { label: 'Today\'s Progress' }
-    };
+
+    if (!this.socket.connected) {
+      return {
+        connected: false,
+        error: 'No runtime connected. Start your app with Queen Bee Dev Server to enable inspection.'
+      };
+    }
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        resolve({
+          connected: false,
+          error: 'Runtime query timed out. Ensure the app has the Queen Bee inspector script loaded.'
+        });
+      }, 5000);
+
+      this.socket.emit('RUNTIME_QUERY', { action: 'GET_SOURCE', id: componentId });
+      this.socket.once('RUNTIME_QUERY_RESULT', (data: any) => {
+        clearTimeout(timeout);
+        resolve(data);
+      });
+    });
   }
 
   /**

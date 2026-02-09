@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { io, Socket } from 'socket.io-client';
+import { API_BASE } from '../services/api';
 
 interface HiveState {
   projects: any[];
@@ -53,12 +54,12 @@ export const useHiveStore = create<HiveState>()(
         console.log('[HiveStore] Initializing Socket...');
         
         try {
-          await fetch('http://127.0.0.1:3000/api/logs/stream');
+          await fetch(`${API_BASE}/api/logs/stream`);
         } catch (e) {
           console.error('[HiveStore] Failed to boot socket server:', e);
         }
 
-        const socket = io('http://127.0.0.1:3000', {
+        const socket = io(API_BASE, {
           path: '/api/logs/stream',
           transports: ['websocket', 'polling']
         });
@@ -68,7 +69,7 @@ export const useHiveStore = create<HiveState>()(
       fetchProjects: async () => {
         try {
           console.log('[HiveStore] Fetching Projects...');
-          const res = await fetch('http://127.0.0.1:3000/api/projects');
+          const res = await fetch(`${API_BASE}/api/projects`);
           if (res.ok) {
             const fetchedProjects = await res.json();
             console.log(`[HiveStore] Projects loaded from backend: ${fetchedProjects.length}`);
@@ -106,8 +107,8 @@ export const useHiveStore = create<HiveState>()(
           const path = activeProject?.path;
           
           const url = path 
-            ? `http://127.0.0.1:3000/api/tasks/list?projectPath=${encodeURIComponent(path)}`
-            : 'http://127.0.0.1:3000/api/tasks/list';
+            ? `${API_BASE}/api/tasks/list?projectPath=${encodeURIComponent(path)}`
+            : `${API_BASE}/api/tasks/list`;
 
           const res = await fetch(url);
           if (res.ok) {
@@ -174,7 +175,7 @@ export const useHiveStore = create<HiveState>()(
 
         // 2. Persist to backend
         try {
-          await fetch('http://127.0.0.1:3000/api/projects/threads', {
+          await fetch(`${API_BASE}/api/projects/threads`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ projectId, thread: { ...thread, messages: [] } })
@@ -202,7 +203,7 @@ export const useHiveStore = create<HiveState>()(
         const thread = get().projects.find(p => p.id === projectId)?.threads.find((t: any) => t.id === threadId);
         if (thread) {
             try {
-                await fetch('http://127.0.0.1:3000/api/projects/threads', {
+                await fetch(`${API_BASE}/api/projects/threads`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ projectId, thread: { ...thread, messages: undefined } })
@@ -236,7 +237,7 @@ export const useHiveStore = create<HiveState>()(
         // Persist to backend
         const thread = get().projects.find(p => p.id === projectId)?.threads.find((t: any) => t.id === threadId);
         if (thread) {
-            fetch('http://127.0.0.1:3000/api/projects/threads', {
+            fetch(`${API_BASE}/api/projects/threads`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ projectId, thread })
@@ -298,7 +299,7 @@ export const useHiveStore = create<HiveState>()(
         // Persist full message block
         const thread = get().projects.find(p => p.id === projectId)?.threads.find((t: any) => t.id === threadId);
         if (thread) {
-            fetch('http://127.0.0.1:3000/api/projects/threads', {
+            fetch(`${API_BASE}/api/projects/threads`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ projectId, thread })
