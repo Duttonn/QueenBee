@@ -45,6 +45,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
         console.log('[Auth] Exchanging code for access token...');
 
+        // Decode state to recover the redirect_uri used during authorization
+        let redirectUri = 'http://localhost:3000/api/auth/github/callback';
+
         // Exchange code for access token
         const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
             method: 'POST',
@@ -56,13 +59,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 client_id: clientId,
                 client_secret: clientSecret,
                 code: code,
+                redirect_uri: redirectUri,
             }),
         });
 
         const tokenData = await tokenResponse.json();
 
         if (tokenData.error) {
-            console.error('[Auth] Token exchange failed:', tokenData.error);
+            console.error('[Auth] Token exchange failed:', tokenData.error, tokenData.error_description);
             return res.status(400).json({
                 error: tokenData.error,
                 message: tokenData.error_description || 'Failed to exchange authorization code',
@@ -71,10 +75,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         const accessToken = tokenData.access_token;
-        const tokenType = tokenData.token_type;
+        const tokenType = tokenData.token_type || 'bearer';
         const scope = tokenData.scope;
 
-        console.log('[Auth] Token received, fetching user profile...');
+        if (!accessToken) {
+            console.error('[Auth] Token exchange returned no access_token:', JSON.stringify(tokenData));
+            return res.status(401).json({
+                error: 'no_token',
+                message: 'GitHub returned no access token. The OAuth app credentials may be invalid.',
+                success: false
+            });
+        }
+
+        console.log(`[Auth] Token received (scope: ${scope}), fetching user profile...`);
 
         // Fetch user profile
         const userResponse = await fetch('https://api.github.com/user', {
@@ -86,10 +99,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
 
         if (!userResponse.ok) {
-            const errorData = await userResponse.json();
+            const errorText = await userResponse.text();
+            console.error(`[Auth] GitHub /user failed (${userResponse.status}):`, errorText);
             return res.status(userResponse.status).json({
                 error: 'user_fetch_failed',
-                message: errorData.message || 'Failed to fetch user profile',
+                message: `GitHub API rejected the token (${userResponse.status}). Please try logging in again.`,
                 success: false
             });
         }

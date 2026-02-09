@@ -161,13 +161,32 @@ const AgenticWorkbench = ({
   const handleBranchSwitch = async (branch: string) => {
       if (!activeProject?.path) return;
       try {
+          // 1. Check for changes (simplified check, or just try stash)
+          // We'll blindly try to stash. If nothing to stash, it says "No local changes to save".
+          // Using 'executeCommand' which returns stdout/stderr.
+          
+          const stashRes = await executeCommand(`git stash push -m "Auto-stash before switch to ${branch}"`, activeProject.path);
+          if (stashRes.stdout.includes('Saved working directory')) {
+              console.log('[Git] Auto-stashed changes');
+              // Ideally store this event to prompt user later
+          }
+
+          // 2. Checkout
           await executeCommand(`git checkout ${branch}`, activeProject.path);
+          
+          // 3. Refresh state
           const data = await getGitBranches(activeProject.path);
           setBranches({ current: data.current, all: data.all });
           setIsBranchMenuOpen(false);
-          // Ideally refresh diffs here too, but that's handled by parent usually
-      } catch (e) {
+          
+          // Optional: Prompt to pop? For now, we just ensure the switch works.
+          if (stashRes.stdout.includes('Saved working directory')) {
+             // We could notify the user: "Changes stashed. Use 'git stash pop' to restore."
+             // Or NativeService.notify...
+          }
+      } catch (e: any) {
           console.error("Failed to switch branch", e);
+          alert(`Failed to switch branch: ${e.message || e.stderr}`);
       }
   };
 

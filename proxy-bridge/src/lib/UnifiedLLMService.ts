@@ -294,12 +294,13 @@ export class UnifiedLLMService {
     }
 
     // 2. Fallback: Loop through priority list to find ANY provider that supports transcribe
+    // Ensure we try to load them if they aren't in memory
     const priority = ['gemini', 'openai']; 
     
     for (const id of priority) {
       if (id === providerId) continue; // Already tried
       
-      const p = this.providers.get(id);
+      const p = await this.getOrLoadProvider(id); // Ensure it's loaded
       if (p && (p as any).transcribe) {
         console.log(`[Transcribe] Falling back to provider: ${id}`);
         try {
@@ -336,7 +337,7 @@ export class UnifiedLLMService {
     }
 
     // 4. Try to load from store (in case it was added after startup)
-    console.log(`[LLMService] Provider '${providerId}' not found in memory, checking AuthProfileStore...`);
+    // console.log(`[LLMService] Provider '${providerId}' not found in memory, checking AuthProfileStore...`);
     const profiles = await AuthProfileStore.listProfiles();
     for (const profile of profiles) {
       const pId = profile.id || profile.provider;
@@ -347,7 +348,24 @@ export class UnifiedLLMService {
       }
     }
 
-    // 5. Try pattern match in memory
+    // 5. Check Environment Variables (Last Resort for lazy loading)
+    // This catches cases where env vars exist but initFromEnv didn't map them correctly or they were skipped
+    if (providerId === 'gemini' || alias === 'gemini') {
+        const key = process.env.GEMINI_API_KEY;
+        if (key) {
+            this.providers.set('gemini', new GeminiProvider(key));
+            return this.providers.get('gemini');
+        }
+    }
+    if (providerId === 'openai' || alias === 'openai') {
+        const key = process.env.OPENAI_API_KEY;
+        if (key) {
+            this.providers.set('openai', new OpenAIProvider('openai', key));
+            return this.providers.get('openai');
+        }
+    }
+
+    // 6. Try pattern match in memory
     for (const [id, p] of this.providers.entries()) {
       if (id.startsWith(`${providerId}:`) || (alias && id.startsWith(`${alias}:`))) {
         return p;

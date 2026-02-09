@@ -30,7 +30,7 @@ const CommitModal = ({ isOpen, onClose, projectPath, onCommitSuccess }: CommitMo
       // Fetch diff stats and files
       fetch(`${API_BASE}/api/git/diff?projectPath=${encodeURIComponent(projectPath)}`)
         .then(res => res.json())
-        .then(data => {
+        .then(async (data) => {
           if (data.status === 'success') {
             setStats({
               files: data.files.length,
@@ -38,8 +38,23 @@ const CommitModal = ({ isOpen, onClose, projectPath, onCommitSuccess }: CommitMo
               removed: data.removed
             });
             setFiles(data.files);
-            // Select all by default
-            setSelectedFiles(new Set(data.files.map((f: any) => f.path)));
+            
+            // Fetch actual staged files from git status
+            try {
+                const statusRes = await fetch(`${API_BASE}/api/git/status?path=${encodeURIComponent(projectPath)}`);
+                const statusData = await statusRes.json();
+                
+                if (statusData.staged && statusData.staged.length > 0) {
+                    // Pre-select files that are already staged in git index
+                    setSelectedFiles(new Set(statusData.staged));
+                } else {
+                    // Default to empty selection (User Preference)
+                    setSelectedFiles(new Set());
+                }
+            } catch (e) {
+                console.error("Failed to fetch staged status, defaulting to empty", e);
+                setSelectedFiles(new Set());
+            }
           }
         })
         .catch(console.error);

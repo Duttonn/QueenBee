@@ -240,7 +240,9 @@ export const useHiveStore = create<HiveState>()(
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ projectId, thread })
-            }).catch(e => console.error('[HiveStore] Persistence failed', e));
+            }).then(res => {
+                if (!res.ok) console.error(`[HiveStore] Persistence failed: ${res.status}`);
+            }).catch(e => console.error('[HiveStore] Persistence network error', e));
         }
       },
 
