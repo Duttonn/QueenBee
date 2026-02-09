@@ -113,16 +113,33 @@ const InspectorPanel = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
           <div className="flex-1 overflow-y-auto p-4">
             <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-4">Component Tree</div>
-            <div className="space-y-1">
-              <TreeItem name="CodexLayout" />
-              <div className="pl-4 space-y-1">
-                <TreeItem name="Sidebar" />
-                <TreeItem name="AgenticWorkbench" active />
-                <div className="pl-4">
-                  <TreeItem name="ComposerBar" />
+            
+            {!selectedNode && componentTree.length === 0 ? (
+              <div className="h-64 flex flex-col items-center justify-center text-center px-4">
+                <div className="w-12 h-12 rounded-2xl bg-zinc-50 flex items-center justify-center mb-4">
+                  <Layers size={24} className="text-zinc-200" />
+                </div>
+                <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest leading-relaxed">
+                  Inspector Not Connected
+                </p>
+                <p className="text-[10px] text-zinc-400 mt-2 leading-relaxed">
+                  Start your application with the Queen Bee Dev Server to enable live component inspection.
+                </p>
+                <div className="mt-6 p-3 bg-zinc-50 border border-zinc-100 rounded-xl text-left w-full">
+                  <div className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-2">How to connect:</div>
+                  <code className="text-[9px] text-blue-600 font-mono">
+                    npm install @queen-bee/bridge<br/>
+                    import '@queen-bee/bridge/register'
+                  </code>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-1">
+                {componentTree.map(node => (
+                  <TreeItem key={node.id} name={node.name} />
+                ))}
+              </div>
+            )}
           </div>
         </motion.div>
       )}

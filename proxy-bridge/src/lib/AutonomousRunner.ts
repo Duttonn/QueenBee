@@ -3,6 +3,7 @@ import { ProjectTaskManager } from './ProjectTaskManager';
 import { AgentSession } from './AgentSession';
 import { LLMMessage, LLMProviderOptions, LLMResponse } from './types/llm';
 import { unifiedLLMService } from './UnifiedLLMService';
+import { logContext } from './logger';
 import fs from 'fs-extra';
 import path from 'path';
 import { Writable } from 'stream';
@@ -21,6 +22,7 @@ export class AutonomousRunner {
   private tm: ProjectTaskManager;
   private session: AgentSession | null = null;
   private writable: Writable | null = null;
+  private requestId: string | null = null;
 
   constructor(
     socket: Socket, 
@@ -39,6 +41,7 @@ export class AutonomousRunner {
     this.mode = mode;
     this.agentId = agentId;
     this.tm = new ProjectTaskManager(projectPath);
+    this.requestId = logContext.getStore()?.requestId || null;
     
     if (agentId?.includes('orchestrator')) {
       this.role = 'orchestrator';
@@ -55,8 +58,9 @@ export class AutonomousRunner {
 
   private sendEvent(data: any) {
     if (this.writable) {
-      console.log(`[AutonomousRunner] Sending Event: ${data.type || data.event}`);
-      this.writable.write(`data: ${JSON.stringify(data)}\n\n`);
+      const payload = this.requestId ? { ...data, requestId: this.requestId } : data;
+      console.log(`[AutonomousRunner] Sending Event: ${payload.type || payload.event}`);
+      this.writable.write(`data: ${JSON.stringify(payload)}\n\n`);
     }
   }
 

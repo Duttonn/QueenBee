@@ -311,6 +311,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const [isCustomizationOpen, setIsCustomizationOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
   const [executionMode, setExecutionMode] = useState<'local' | 'worktree' | 'cloud'>('local');
   const [composerMode, setComposerMode] = useState<'code' | 'chat' | 'plan'>('code');
   const [effort, setEffort] = useState<'low' | 'medium' | 'high'>('high');
@@ -415,6 +416,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     addMessage(selectedProjectId, currentThreadId, userMessage);
     if (!contentOverride) setInputValue('');
     setIsLoading(true);
+    setStreamError(null);
     addMessage(selectedProjectId, currentThreadId, { role: 'assistant', content: '' });
 
     const activeProvider = providers.find(p => p.id === activeProviderId);
@@ -482,7 +484,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           } catch { }
         },
         (error) => {
-          updateLastMessage(selectedProjectId, currentThreadId!, `\n\nError: ${error.message}`);
+          setStreamError(error.message);
           setIsLoading(false);
         },
         (event) => {
@@ -686,6 +688,8 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                   activeProject={activeProject}
                   messages={messages}
                   isLoading={isLoading}
+                  streamError={streamError}
+                  onClearError={() => setStreamError(null)}
                   onSendMessage={handleSendMessage}
                   onClearThread={handleClearThread}
                   onRunCommand={handleRunCommand}

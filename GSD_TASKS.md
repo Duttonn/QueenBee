@@ -145,7 +145,7 @@
   - **Worker**: BACKEND
   - **Estimate**: 2h
 
-- [ ] `BP-08`: [Frontend] Add SSE retry + error recovery in chat streaming
+- [DONE] `BP-08`: [Frontend] Add SSE retry + error recovery in chat streaming
   - **Files**: `dashboard/src/services/api.ts`, `dashboard/src/components/layout/AgenticWorkbench.tsx`
   - **Problem**: If SSE stream drops mid-response, UI likely shows partial message with no error indicator. No retry logic. User must manually re-send.
   - **Fix**: Detect stream drop (ReadableStream error / incomplete JSON). Show "Connection lost — retry?" banner. Auto-retry once with exponential backoff. Mark partial messages visually.
@@ -155,7 +155,7 @@
 
 ### 🔵 CODEX PARITY — UX Features
 
-- [ ] `BP-09`: [Frontend] Add agent step/plan panel showing tool execution progress
+- [DONE] `BP-09`: [Frontend] Add agent step/plan panel showing tool execution progress
   - **Files**: `dashboard/src/components/agents/ToolCallViewer.tsx`, `dashboard/src/components/layout/AgenticWorkbench.tsx`
   - **Problem**: Codex shows a clear step-by-step panel ("Reading file...", "Writing code...", "Running tests...") with running/done/failed states. Queen Bee shows tool calls inline in chat but lacks a persistent progress sidebar.
   - **Fix**: Add a collapsible "Agent Steps" panel in AgenticWorkbench that aggregates TOOL_EXECUTION and TOOL_RESULT socket events into a timeline view with status icons.
@@ -163,7 +163,7 @@
   - **Worker**: FRONTEND
   - **Estimate**: 4h
 
-- [ ] `BP-10`: [Integration] Wire Deep Inspector to real runtime data or show honest empty state
+- [DONE] `BP-10`: [Integration] Wire Deep Inspector to real runtime data or show honest empty state
   - **Files**: `proxy-bridge/src/lib/EventLoopManager.ts` (lines 123-136), `dashboard/src/components/inspector/InspectorPanel.tsx`
   - **Problem**: RUNTIME_QUERY just re-broadcasts to all clients. There's no actual React DevTools hook injection or component tree extraction. Inspector shows nothing useful.
   - **Fix (Option A)**: Wire to actual Vite plugin that injects `__REACT_DEVTOOLS_GLOBAL_HOOK__` and extracts component tree. OR **Fix (Option B)**: Show honest "Inspector not connected — start your app with Queen Bee Dev Server to enable" message instead of mock/empty UI.
@@ -179,7 +179,7 @@
   - **Worker**: BACKEND
   - **Estimate**: 2h
 
-- [ ] `BP-12`: [Backend] Add request correlation IDs across API + Socket events
+- [DONE] `BP-12`: [Backend] Add request correlation IDs across API + Socket events
   - **Files**: `proxy-bridge/src/middleware.ts`, `proxy-bridge/src/lib/socket-instance.ts`, `proxy-bridge/src/lib/logger.ts`
   - **Problem**: Errors log without request context. Debugging production issues requires correlating API calls → tool executions → socket events, but there's no shared ID.
   - **Fix**: Generate `X-Request-Id` (uuid) in middleware. Pass through to ToolExecutor, AutonomousRunner, and all socket broadcasts. Include in all log lines.

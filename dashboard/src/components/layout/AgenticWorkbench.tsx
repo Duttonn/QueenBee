@@ -37,11 +37,14 @@ import {
 import { type Message, type ToolCall, getGitBranches, executeCommand } from '../../services/api';
 import { useHiveStore } from '../../store/useHiveStore';
 import ToolCallViewer from '../agents/ToolCallViewer';
+import AgentStepsPanel from '../agents/AgentStepsPanel';
 import { ProjectOverview } from '../projects/ProjectOverview';
 
 interface AgenticWorkbenchProps {
   messages: Message[];
   isLoading: boolean;
+  streamError?: string | null;
+  onClearError?: () => void;
   diffStats?: { added: number; removed: number; filesCount: number };
   changedFiles?: string[];
   mode: 'local' | 'worktree' | 'cloud';
@@ -113,6 +116,8 @@ const MemoizedMarkdown = React.memo(({ content }: { content: string }) => (
 const AgenticWorkbench = ({
   messages,
   isLoading,
+  streamError,
+  onClearError,
   diffStats = { added: 0, removed: 0, filesCount: 0 },
   changedFiles = [],
   mode,
@@ -215,7 +220,8 @@ const AgenticWorkbench = ({
   };
 
   const ChatView = () => (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4 relative h-full">
+    <div className="flex-1 flex overflow-hidden relative h-full">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 relative h-full">
         <AnimatePresence>
           {showLiveEye && (
             <motion.div
@@ -470,6 +476,58 @@ const AgenticWorkbench = ({
 
         <div className="h-32 flex-shrink-0" /> {/* Spacer for floating composer bar */}
         <div ref={messagesEndRef} />
+
+        {/* BP-08: Stream Error Banner */}
+        <AnimatePresence>
+          {streamError && (
+            <motion.div
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 50 }}
+              className="fixed bottom-32 left-1/2 -translate-x-1/2 z-[60] w-full max-w-lg px-4"
+            >
+              <div className="bg-white border border-rose-100 rounded-2xl shadow-2xl p-4 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center">
+                    <AlertCircle size={20} className="text-rose-500" />
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-black text-rose-400 uppercase tracking-widest leading-none mb-1">Connection Lost</div>
+                    <div className="text-xs font-bold text-zinc-700 line-clamp-1">
+                      {streamError}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={onClearError}
+                    className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-400 transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+                      if (lastUserMsg) {
+                        onClearError?.();
+                        onSendMessage(lastUserMsg.content);
+                      }
+                    }}
+                    className="px-4 py-2 bg-zinc-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-zinc-800 transition-all shadow-lg active:scale-95"
+                  >
+                    Retry
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* BP-09: Agent Steps Sidebar */}
+      <div className="relative">
+        <AgentStepsPanel />
+      </div>
     </div>
   );
 

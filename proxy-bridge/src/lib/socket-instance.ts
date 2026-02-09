@@ -1,4 +1,5 @@
 import { Server } from 'socket.io';
+import { logContext } from './logger';
 
 // Use global to persist across hot-reloads in Next.js development
 const globalForSocket = global as unknown as { io: Server | undefined };
@@ -14,7 +15,12 @@ export function setIO(server: Server) {
 export function broadcast(event: string, data: any) {
   const io = getIO();
   if (io) {
-    io.emit(event, data);
+    const context = logContext.getStore();
+    const payload = context?.requestId 
+      ? { ...data, requestId: context.requestId }
+      : data;
+      
+    io.emit(event, payload);
   } else {
     console.warn(`[SocketInstance] Cannot broadcast '${event}': IO not initialized.`);
   }
