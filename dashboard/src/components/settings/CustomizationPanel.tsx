@@ -45,8 +45,7 @@ interface FileNode {
     children?: FileNode[];
 }
 
-const API_BASE = 'http://localhost:3000';
-// Removed hardcoded APP_ROOT for portability
+import { API_BASE } from '../../services/api';
 
 const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
     const [activeTab, setActiveTab] = useState<Tab>('appearance');

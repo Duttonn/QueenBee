@@ -171,7 +171,7 @@ const FeatureBox = ({ icon, title, desc }: { icon: string; title: string; desc: 
     </div>
 );
 
-const API_BASE = 'http://localhost:3000';
+import { API_BASE } from '../../services/api';
 
 interface TestResult {
     success: boolean;
