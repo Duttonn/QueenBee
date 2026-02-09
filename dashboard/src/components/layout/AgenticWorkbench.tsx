@@ -64,6 +64,8 @@ interface AgenticWorkbenchProps {
   onAddThread?: () => void;
   onOpenIn?: (app: 'vscode' | 'finder' | 'terminal' | 'xcode') => void;
   onStop?: () => void;
+  workbenchView: 'code' | 'chat' | 'plan';
+  onViewChange: (view: 'code' | 'chat' | 'plan') => void;
 }
 
 const MemoizedMarkdown = React.memo(({ content }: { content: string }) => (
@@ -137,7 +139,9 @@ const AgenticWorkbench = ({
   onBuild,
   onAddThread,
   onOpenIn,
-  onStop
+  onStop,
+  workbenchView,
+  onViewChange
 }: AgenticWorkbenchProps) => {
   console.log(`[AgenticWorkbench] Rendering: activeThreadId=${activeThreadId}, messages=${messages.length}, isLoading=${isLoading}`);
   const [expandedThinking, setExpandedThinking] = useState<Record<number, boolean>>({});
@@ -151,7 +155,6 @@ const AgenticWorkbench = ({
   const [isBranchMenuOpen, setIsBranchMenuOpen] = useState(false);
 
   // Tab State
-  const [workbenchView, setWorkbenchView] = useState<'chat' | 'plan'>('chat');
   const [splitDirection, setSplitDirection] = useState<'vertical' | 'horizontal'>('horizontal');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -595,14 +598,21 @@ const AgenticWorkbench = ({
               {/* Workbench Tabs */}
               <div className="flex bg-zinc-100 p-1 rounded-xl border border-zinc-200 shadow-inner">
                 <button
-                  onClick={() => setWorkbenchView('chat')}
+                  onClick={() => onViewChange('code')}
+                  className={`flex items-center gap-2 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${workbenchView === 'code' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}
+                >
+                  <Code size={12} />
+                  Code
+                </button>
+                <button
+                  onClick={() => onViewChange('chat')}
                   className={`flex items-center gap-2 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${workbenchView === 'chat' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}
                 >
                   <Bot size={12} />
                   Chat
                 </button>
                 <button
-                  onClick={() => setWorkbenchView('plan')}
+                  onClick={() => onViewChange('plan')}
                   className={`flex items-center gap-2 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${workbenchView === 'plan' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}
                 >
                   <LayoutTemplate size={12} />
@@ -752,7 +762,7 @@ const AgenticWorkbench = ({
 
       {/* Content Area */}
       <div className="flex-1 flex flex-col min-h-0 relative">
-        {activeProject && messages.length === 0 && !isLoading && workbenchView === 'chat' && !activeThreadId ? (
+        {activeProject && messages.length === 0 && !isLoading && (workbenchView === 'chat' || workbenchView === 'code') && !activeThreadId ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
               <div className="w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl flex items-center justify-center shadow-lg mb-6">
                 <Sparkles size={28} className="text-white" />
@@ -771,24 +781,24 @@ const AgenticWorkbench = ({
                   New Thread
                 </button>
                 <button
-                  onClick={() => setWorkbenchView('plan')}
+                  onClick={() => onViewChange('plan')}
                   className="px-5 py-2.5 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 text-xs font-bold uppercase rounded-xl transition-all"
                 >
                   View Plan
                 </button>
               </div>
             </div>
-        ) : activeProject && messages.length === 0 && !isLoading && workbenchView === 'chat' ? (
+        ) : activeProject && messages.length === 0 && !isLoading && (workbenchView === 'chat' || workbenchView === 'code') ? (
             <ProjectOverview
                 onNewThread={onAddThread || (() => {})}
-                onStartPlanning={() => setWorkbenchView('plan')}
+                onStartPlanning={() => onViewChange('plan')}
                 hasPlan={tasks.length > 0}
             />
         ) : workbenchView === 'plan' ? (
             <div className={`flex-1 flex overflow-hidden ${splitDirection === 'vertical' ? 'flex-row' : 'flex-col'}`}>
                 <div className={`flex-1 overflow-hidden border-${splitDirection === 'vertical' ? 'r' : 'b'} border-zinc-200`}>
                     <ProjectOverview 
-                        onNewThread={() => setWorkbenchView('chat')} 
+                        onNewThread={() => onViewChange('chat')} 
                         onStartPlanning={() => {}} 
                         hasPlan={tasks.length > 0}
                     />
