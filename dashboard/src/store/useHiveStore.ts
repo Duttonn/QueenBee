@@ -29,6 +29,7 @@ interface HiveState {
   setActiveThread: (id: string | null) => void;
   addThread: (projectId: string, thread: any) => Promise<string>; // Returns threadId
   updateThread: (projectId: string, threadId: string, updates: any) => void;
+  deleteThread: (projectId: string, threadId: string) => Promise<void>;
   addMessage: (projectId: string, threadId: string, message: any) => void;
   clearThreadMessages: (projectId: string, threadId: string) => void;
   updateLastMessage: (projectId: string, threadId: string, content: string) => void;
@@ -227,6 +228,32 @@ export const useHiveStore = create<HiveState>()(
                     body: JSON.stringify({ projectId, thread: { ...thread, messages: undefined } })
                 });
             } catch (e) { }
+        }
+      },
+
+      deleteThread: async (projectId, threadId) => {
+        console.log(`[HiveStore] deleteThread: ${threadId}`);
+        
+        set((state) => {
+          const updatedProjects = state.projects.map(p =>
+            p.id === projectId ? {
+              ...p,
+              threads: p.threads.filter((t: any) => t.id !== threadId)
+            } : p
+          );
+          
+          return {
+            projects: updatedProjects,
+            activeThreadId: state.activeThreadId === threadId ? null : state.activeThreadId
+          };
+        });
+
+        try {
+          await fetch(`${API_BASE}/api/projects/threads?projectId=${projectId}&threadId=${threadId}`, {
+            method: 'DELETE'
+          });
+        } catch (e) {
+          console.error('[HiveStore] Failed to delete thread:', e);
         }
       },
 
