@@ -86,7 +86,8 @@ export class AgentSession extends EventEmitter {
           break; // End of loop
         }
 
-        for (const toolCall of response.tool_calls) {
+        // Execute all tool calls in parallel for better performance
+        const toolExecutionPromises = response.tool_calls.map(async (toolCall) => {
           const toolName = toolCall.function.name;
           let args = {};
           try {
@@ -112,32 +113,37 @@ export class AgentSession extends EventEmitter {
 
             this.emit('event', { type: 'tool_end', data: { toolName, result, toolCallId: toolCall.id } });
 
-            const toolMessage: LLMMessage = {
+            return {
               role: 'tool',
               tool_call_id: toolCall.id,
               name: toolName,
               content: JSON.stringify(result)
-            };
-            
-            this.messages.push(toolMessage);
-            this.emit('event', { type: 'message', data: { ...toolMessage, threadId: this.threadId } });
+            } as LLMMessage;
           } catch (error: any) {
             this.emit('event', { type: 'tool_error', data: { toolName, error: error.message, toolCallId: toolCall.id } });
             
-            const toolErrorMessage: LLMMessage = {
+            return {
               role: 'tool',
               tool_call_id: toolCall.id,
               name: toolName,
               content: JSON.stringify({ error: error.message })
-            };
-            this.messages.push(toolErrorMessage);
-            this.emit('event', { type: 'message', data: { ...toolErrorMessage, threadId: this.threadId } });
+            } as LLMMessage;
           }
+        });
+
+        const toolMessages = await Promise.all(toolExecutionPromises);
+        
+        for (const toolMessage of toolMessages) {
+          this.messages.push(toolMessage);
+          this.emit('event', { type: 'message', data: { ...toolMessage, threadId: this.threadId } });
         }
       }
 
-      // Memory Flush (P1-02)
-      await this.summarizeSession();
+      // Memory Flush (P1-02) - Only if we actually did something technical
+      const hadTechnicalActivity = this.messages.some(m => m.role === 'tool');
+      if (hadTechnicalActivity) {
+        await this.summarizeSession();
+      }
 
       if (stepCount >= this.maxSteps) {
         this.emit('event', { type: 'agent_status', data: { status: 'warning', message: 'Maximum agentic steps reached' } });

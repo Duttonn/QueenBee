@@ -32,6 +32,7 @@ import {
   sendChatMessageStream, 
   getGitDiff, 
   executeCommand,
+  getProjectFiles,
   API_BASE,
   type Message,
   type ToolCall 
@@ -56,6 +57,33 @@ import XtermTerminal from './XtermTerminal';
 import DictationOverlay from './DictationOverlay';
 import { NativeService } from '../../services/NativeService';
 
+// Mention Dropdown Component
+const MentionDropdown = ({ files, selectedIndex, onSelect }: { files: string[], selectedIndex: number, onSelect: (f: string) => void }) => {
+  if (files.length === 0) return null;
+  return (
+    <div className="absolute bottom-full left-0 mb-2 w-64 bg-white border border-zinc-200 shadow-2xl rounded-2xl overflow-hidden z-[70] p-1">
+      <div className="px-3 py-2 text-[9px] font-black text-zinc-400 uppercase tracking-widest border-b border-zinc-50 mb-1">
+        Mention File
+      </div>
+      <div className="max-h-60 overflow-y-auto">
+        {files.map((file, idx) => (
+          <button
+            key={file}
+            onClick={() => onSelect(file)}
+            className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition-all flex items-center gap-2 ${idx === selectedIndex
+              ? 'bg-zinc-900 text-white shadow-lg'
+              : 'text-zinc-600 hover:bg-zinc-50'
+              }`}
+          >
+            <File size={12} className={idx === selectedIndex ? 'text-blue-400' : 'text-zinc-400'} />
+            <span className="truncate">{file}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 // Composer Bar Component
 interface ComposerBarProps {
   value: string;
@@ -70,12 +98,21 @@ interface ComposerBarProps {
   onModelSelect: (model: string, provider: string) => void;
   composerMode?: 'code' | 'chat' | 'plan';
   onComposerModeChange?: (mode: 'code' | 'chat' | 'plan') => void;
-  effort?: 'low' | 'medium' | 'high';
-  onEffortChange?: (effort: 'low' | 'medium' | 'high') => void;
+  projectFiles: string[];
 }
 
-const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onModeChange, availableModels, selectedModel, onModelSelect, composerMode, onComposerModeChange, effort, onEffortChange }: ComposerBarProps) => {
+const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onModeChange, availableModels, selectedModel, onModelSelect, composerMode, onComposerModeChange, projectFiles }: ComposerBarProps) => {
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
+  const [mentionSearch, setMentionSearch] = useState<string | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const filteredFiles = React.useMemo(() => {
+    if (mentionSearch === null) return [];
+    return projectFiles
+      .filter(f => f.toLowerCase().includes(mentionSearch.toLowerCase()))
+      .slice(0, 10);
+  }, [mentionSearch, projectFiles]);
 
   const { isRecording, isProcessing, toggleRecording } = useVoiceRecording(
     useCallback((transcript) => {
@@ -84,22 +121,77 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
   );
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'm') {
-        e.preventDefault();
-        toggleRecording();
+    setSelectedIndex(0);
+  }, [mentionSearch]);
+
+  const handleSelectFile = (file: string) => {
+    if (mentionSearch === null) return;
+    const lastAtIndex = value.lastIndexOf('@');
+    const newValue = value.substring(0, lastAtIndex) + `@${file} `;
+    onChange(newValue);
+    setMentionSearch(null);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    onChange(val);
+
+    const cursorPosition = e.target.selectionStart;
+    const textBeforeCursor = val.substring(0, cursorPosition);
+    const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+    
+    if (lastAtIndex !== -1) {
+      const textAfterAt = textBeforeCursor.substring(lastAtIndex + 1);
+      // Only show if @ is followed by non-whitespace and is the start of a "word"
+      if (!/\s/.test(textAfterAt)) {
+        setMentionSearch(textAfterAt);
+        return;
       }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleRecording]);
+    }
+    setMentionSearch(null);
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (mentionSearch !== null && filteredFiles.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex(prev => (prev + 1) % filteredFiles.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex(prev => (prev - 1 + filteredFiles.length) % filteredFiles.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        handleSelectFile(filteredFiles[selectedIndex]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMentionSearch(null);
+        return;
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey && value.trim() && !isLoading) {
       e.preventDefault();
       onSubmit();
     }
   };
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'm') {
+        e.preventDefault();
+        toggleRecording();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [toggleRecording]);
 
   return (
     <div className="absolute bottom-6 left-4 right-4 sm:left-0 sm:right-0 sm:mx-auto sm:w-full sm:max-w-3xl sm:px-4 z-50">
@@ -109,12 +201,21 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
         onClose={toggleRecording}
       />
 
-      <div className="bg-white border border-zinc-200 rounded-3xl shadow-2xl flex flex-col">
+      <div className="bg-white border border-zinc-200 rounded-3xl shadow-2xl flex flex-col relative">
+        {mentionSearch !== null && filteredFiles.length > 0 && (
+          <MentionDropdown 
+            files={filteredFiles} 
+            selectedIndex={selectedIndex} 
+            onSelect={handleSelectFile} 
+          />
+        )}
+
         {/* Top: Input Area */}
         <div className="px-4 pt-4 pb-2">
           <textarea
+            ref={textareaRef}
             value={value}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             placeholder="Ask Queen Bee anything, @ to add files, / for commands..."
             disabled={isLoading}
@@ -135,7 +236,8 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
                 input.onchange = (e: any) => {
                   const files = Array.from(e.target.files).map((f: any) => f.name);
                   if (files.length > 0) {
-                    onChange(value ? `${value} @${files.join(' @')}` : `@${files.join(' @')}`);
+                    const mentions = files.map(f => `@${f}`).join(' ');
+                    onChange(value ? `${value} ${mentions}` : mentions);
                   }
                 };
                 input.click();
@@ -266,6 +368,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const [composerMode, setComposerMode] = useState<'code' | 'chat' | 'plan'>('code');
   const [effort, setEffort] = useState<'low' | 'medium' | 'high'>('high');
   const [diffStats, setDiffStats] = useState({ added: 0, removed: 0, filesCount: 0 });
+  const [projectFiles, setProjectFiles] = useState<string[]>([]);
 
   const { 
     projects, 
@@ -287,6 +390,14 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const { activeProviderId, providers, setActiveProvider } = useAuthStore();
 
   const activeProject = projects.find(p => p.id === selectedProjectId);
+
+  useEffect(() => {
+    if (activeProject?.path) {
+      getProjectFiles(activeProject.path).then(setProjectFiles).catch(console.error);
+    } else {
+      setProjectFiles([]);
+    }
+  }, [activeProject?.path]);
 
   const fetchData = async () => {
     try {
@@ -377,8 +488,32 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     const agentId = thread?.agentId;
     let didModify = false;
 
+    // 1. Context Enhancement: Scan for @mentions and inject content
+    let augmentedMessages = [...messages];
+    
+    // Find all @filename mentions
+    const fileMentions = content.match(/@([a-zA-Z0-9_\-./]+)/g);
+    if (fileMentions && activeProject?.path) {
+        for (const mention of fileMentions) {
+            const fileName = mention.substring(1);
+            try {
+                const res = await fetch(`${API_BASE}/api/files?path=${encodeURIComponent(fileName)}&projectPath=${encodeURIComponent(activeProject.path)}`);
+                if (res.ok) {
+                    const fileData = await res.json();
+                    augmentedMessages.push({
+                        role: 'system',
+                        content: `Context for file "${fileName}":\n\n\`\`\`\n${fileData.content}\n\`\`\``
+                    });
+                }
+            } catch (e) {
+                console.warn(`[CodexLayout] Failed to auto-inject context for ${fileName}:`, e);
+            }
+        }
+    }
+    
+    augmentedMessages.push(userMessage);
+
     // Plan Mode Context
-    let augmentedMessages = [...messages, userMessage];
     if (activeView === 'build' && activeThreadId === null && !threadExists) {
         // ...
     }
@@ -711,6 +846,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                 onModelSelect={setSelectedModel}
                 composerMode={composerMode}
                 onComposerModeChange={setComposerMode}
+                projectFiles={projectFiles}
               />
             </>
           ) : (
