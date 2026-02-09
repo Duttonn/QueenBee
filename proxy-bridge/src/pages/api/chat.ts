@@ -11,11 +11,11 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { model, messages, stream, projectPath: rawPath, threadId, mode, agentId } = req.body;
+  const { model, messages, stream, projectPath: rawPath, threadId, mode, agentId, composerMode } = req.body;
   const providerId = (req.headers['x-codex-provider'] as string) || 'auto';
   const apiKey = req.headers['authorization']?.replace('Bearer ', '') || null;
   
-  logger.info(`[Chat] Request received. Provider: ${providerId}, Model: ${model}, Stream: ${stream}, Path: ${rawPath}, Thread: ${threadId}, Mode: ${mode}, Agent: ${agentId}`);
+  logger.info(`[Chat] Request received. Provider: ${providerId}, Model: ${model}, Stream: ${stream}, Path: ${rawPath}, Thread: ${threadId}, Mode: ${mode}, Agent: ${agentId}, Composer: ${composerMode}`);
 
   const projectPath = rawPath 
     ? (path.isAbsolute(rawPath) ? rawPath : path.resolve(process.cwd(), '..', rawPath))
@@ -53,7 +53,8 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
         threadId,
         apiKey,
         mode,
-        agentId
+        agentId,
+        composerMode
       );
       runner.setWritable(res); // Pass the response stream to the runner
 

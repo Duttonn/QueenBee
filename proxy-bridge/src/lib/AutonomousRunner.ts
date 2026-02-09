@@ -18,6 +18,7 @@ export class AutonomousRunner {
   private apiKey: string | null;
   private agentId: string | null;
   private mode: 'local' | 'worktree' | 'cloud';
+  private composerMode: 'code' | 'chat' | 'plan';
   private role: AgentRole;
   private tm: ProjectTaskManager;
   private session: AgentSession | null = null;
@@ -31,7 +32,8 @@ export class AutonomousRunner {
     threadId: string | null = null, 
     apiKey: string | null = null, 
     mode: 'local' | 'worktree' | 'cloud' = 'worktree', 
-    agentId: string | null = null
+    agentId: string | null = null,
+    composerMode: 'code' | 'chat' | 'plan' = 'code'
   ) {
     this.socket = socket;
     this.projectPath = projectPath;
@@ -40,6 +42,7 @@ export class AutonomousRunner {
     this.apiKey = apiKey;
     this.mode = mode;
     this.agentId = agentId;
+    this.composerMode = composerMode;
     this.tm = new ProjectTaskManager(projectPath);
     this.requestId = logContext.getStore()?.requestId || null;
     
@@ -216,6 +219,21 @@ export class AutonomousRunner {
       }
     }
 
+    let modeDirective = '';
+    if (this.composerMode === 'chat') {
+      modeDirective = `
+# MODE: CHAT (Exploration & Planning)
+- Focus on architectural discussion, explaining code, and planning.
+- Do not modify files unless explicitly requested.
+- Provide high-level context and trade-off analysis.`;
+    } else if (this.composerMode === 'code') {
+      modeDirective = `
+# MODE: CODE (Implementation & Build)
+- Focus on technical precision and direct implementation.
+- Be proactive in using tools (write_file, replace, run_shell) to complete the task.
+- Minimize conversational filler; prioritize correct, production-ready code.`;
+    }
+
     let roleDirective = '';
     if (this.role === 'orchestrator') {
       roleDirective = `
@@ -247,6 +265,7 @@ export class AutonomousRunner {
     }
 
     return `
+${modeDirective}
 ${roleDirective}
 
 # PROJECT CONTEXT
