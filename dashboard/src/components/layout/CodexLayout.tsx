@@ -1,158 +1,66 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Search,
+  Plus,
+  ArrowUp,
+  Cpu,
+  Zap,
+  Layers,
+  Bot,
+  User,
+  MessageSquare,
+  Settings,
+  Menu,
+  X,
+  Play,
+  Loader2,
+  ChevronDown,
+  Eye,
+  GitCommit,
+  Monitor,
+  Check,
+  Mic
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github.css';
-import {
-  Terminal,
-  X,
-  ChevronDown,
-  Camera,
-  Plus,
-  Lock,
-  Mic,
-  ArrowUp,
-  Menu,
-  Cloud,
-  Search,
-  PenSquare,
-  Clock,
-  Play,
-  GitCommit,
-  FolderOpen,
-  TerminalSquare,
-  Copy,
-  ArrowUpFromLine,
-  Loader2,
-  Settings,
-  Eye,
-  Inbox,
-  Layers
-} from 'lucide-react';
 
-import Sidebar from './Sidebar';
-import AutomationDashboard from './AutomationDashboard';
-import SkillsManager from './SkillsManager';
-import InboxPanel from './InboxPanel';
-import AgenticWorkbench from './AgenticWorkbench';
-
-import InspectorPanel from './InspectorPanel';
-import XtermTerminal from './XtermTerminal';
-import GlobalCommandBar from './GlobalCommandBar';
-import DictationOverlay from './DictationOverlay';
-import { sendChatMessage, sendChatMessageStream, getGitDiff, type Message } from '../../services/api';
+import { 
+  getProjects, 
+  sendChatMessageStream, 
+  getGitDiff, 
+  executeCommand,
+  type Message,
+  type ToolCall 
+} from '../../services/api';
+import { useHiveStore } from '../../store/useHiveStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useAppStore } from '../../store/useAppStore';
-import { useHiveStore } from '../../store/useHiveStore';
-import CustomizationPanel from '../settings/CustomizationPanel';
-import DiffViewer from '../projects/DiffViewer';
-import { NativeService } from '../../services/NativeService';
 import { useVoiceRecording } from '../../hooks/useVoiceRecording';
-
-// Cloud Terminal Icon Component
-const CloudTerminalIcon = () => (
-  <div className="relative inline-flex items-center justify-center mb-6">
-    <Cloud size={48} strokeWidth={1.5} className="text-zinc-900" />
-    <span className="absolute -bottom-1 -right-2 text-lg font-mono font-bold text-zinc-900">_</span>
-  </div>
-);
-
-// Top Toolbar Component
-interface TopToolbarProps {
-  onOpenSettings: () => void;
-  onRun?: () => void;
-  onCommit?: () => void;
-  onOpen?: () => void;
-  onToggleTerminal?: () => void;
-  onToggleInspector?: () => void;
-}
-
-const TopToolbar = ({ onOpenSettings, onRun, onCommit, onOpen, onToggleTerminal, onToggleInspector }: TopToolbarProps) => (
-  <div className="flex items-center justify-end gap-2 p-3 flex-shrink-0">
-    <button
-      onClick={onRun}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 transition-colors text-sm font-medium text-zinc-700"
-    >
-      <Play size={14} className="text-zinc-500" />
-      <ChevronDown size={12} className="text-zinc-400" />
-    </button>
-
-    <button
-      onClick={onOpen}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 transition-colors text-sm font-medium text-zinc-700"
-    >
-      <FolderOpen size={14} className="text-zinc-500" />
-      <span>Open</span>
-    </button>
-
-    <button
-      onClick={onCommit}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors text-sm font-medium text-white shadow-sm"
-    >
-      <GitCommit size={14} />
-      <span>Commit</span>
-    </button>
-
-    <div className="w-px h-6 bg-zinc-200 mx-1"></div>
-
-    <button
-      onClick={onToggleInspector}
-      className="p-2 text-zinc-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-      title="Deep Inspector"
-    >
-      <Layers size={18} />
-    </button>
-
-    <button
-      onClick={onToggleTerminal}
-      className="p-2 text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 rounded-lg transition-colors"
-    >
-      <TerminalSquare size={18} />
-    </button>
-
-    <button
-      onClick={onOpenSettings}
-      className="flex items-center gap-2 p-2 text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 rounded-lg transition-colors"
-      title="Settings"
-    >
-      <Settings size={18} />
-      <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Settings</span>
-    </button>
-  </div>
-);
-
-// Empty State Component
-const EmptyState = ({ onOpenSettings, onRun, onCommit, onOpen, onToggleTerminal, onToggleInspector }: any) => (
-  <div className="flex-1 flex flex-col min-h-0 bg-white relative">
-    <TopToolbar
-      onOpenSettings={onOpenSettings}
-      onRun={onRun}
-      onCommit={onCommit}
-      onOpen={onOpen}
-      onToggleTerminal={onToggleTerminal}
-      onToggleInspector={onToggleInspector}
-    />
-
-    <div className="flex-1 flex items-center justify-center min-h-0">
-      <div className="text-center px-4">
-        <CloudTerminalIcon />
-        <h1 className="text-3xl sm:text-4xl font-semibold text-zinc-900 mb-2">Let's build</h1>
-        <button onClick={onOpen} className="inline-flex items-center gap-2 text-base sm:text-lg text-zinc-400 hover:text-zinc-600 transition-colors">
-          <span>Select Project</span>
-          <ChevronDown size={18} />
-        </button>
-      </div>
-    </div>
-    <div className="h-24 flex-shrink-0"></div>
-  </div>
-);
+import Sidebar from './Sidebar';
+import AgenticWorkbench from './AgenticWorkbench';
+import GlobalCommandBar from './GlobalCommandBar';
+import InspectorPanel from './InspectorPanel';
+import CustomizationPanel from '../settings/CustomizationPanel';
+import UniversalAuthModal from './UniversalAuthModal';
+import CommitModal from '../projects/CommitModal';
+import DiffViewer from '../projects/DiffViewer';
+import { ProjectOverview } from '../projects/ProjectOverview';
+import InboxPanel from './InboxPanel';
+import SkillsManager from './SkillsManager';
+import AutomationDashboard from './AutomationDashboard';
+import XtermTerminal from './XtermTerminal';
+import DictationOverlay from './DictationOverlay';
+import { NativeService } from '../../services/NativeService';
 
 // Composer Bar Component
 interface ComposerBarProps {
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
+  onStop?: () => void;
   isLoading?: boolean;
   mode: 'local' | 'worktree' | 'cloud';
   onModeChange: (mode: 'local' | 'worktree' | 'cloud') => void;
@@ -161,7 +69,7 @@ interface ComposerBarProps {
   onModelSelect: (model: string, provider: string) => void;
 }
 
-const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange, availableModels, selectedModel, onModelSelect }: ComposerBarProps) => {
+const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onModeChange, availableModels, selectedModel, onModelSelect }: ComposerBarProps) => {
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -328,20 +236,30 @@ const ComposerBar = ({ value, onChange, onSubmit, isLoading, mode, onModeChange,
           <div className="flex items-center gap-2">
             <button
               onClick={toggleRecording}
-              className={`p-2 rounded-xl transition-all ${isRecording ? 'bg-red-50 text-red-600' : 'hover:bg-zinc-200 text-zinc-400 hover:text-zinc-600'}`}
+              className={`p-2 rounded-xl transition-all ${isRecording ? 'bg-rose-50 text-rose-600' : 'hover:bg-zinc-200 text-zinc-400 hover:text-zinc-600'}`}
             >
               {isProcessing ? <Loader2 size={18} className="animate-spin text-blue-600" /> : <Mic size={18} strokeWidth={1.5} />}
             </button>
-            <button
-              onClick={onSubmit}
-              disabled={!value.trim() || isLoading}
-              className={`p-2 rounded-xl transition-all shadow-lg ${!value.trim() || isLoading
-                ? 'bg-zinc-100 text-zinc-300'
-                : 'bg-zinc-900 text-white hover:bg-zinc-800 scale-105 active:scale-95'
-                }`}
-            >
-              {isLoading ? <Loader2 size={18} className="animate-spin" /> : <ArrowUp size={18} strokeWidth={2.5} />}
-            </button>
+            {isLoading ? (
+              <button
+                onClick={onStop}
+                className="p-2.5 rounded-xl transition-all shadow-xl bg-rose-500 text-white hover:bg-rose-600 active:scale-95 animate-pulse"
+                title="Stop Generation"
+              >
+                <div className="w-3 h-3 bg-white rounded-[2px]" />
+              </button>
+            ) : (
+              <button
+                onClick={onSubmit}
+                disabled={!value.trim()}
+                className={`p-2.5 rounded-xl transition-all shadow-lg ${!value.trim()
+                  ? 'bg-zinc-100 text-zinc-300'
+                  : 'bg-zinc-900 text-white hover:bg-zinc-800 active:scale-95'
+                  }`}
+              >
+                <Play size={18} fill="currentColor" />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -354,37 +272,51 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [isDiffOpen, setIsDiffOpen] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [isCommitModalOpen, setIsCommitModalOpen] = useState(false);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isCustomizationOpen, setIsCustomizationOpen] = useState(false);
-
-  const { providers, activeProviderId, setActiveProvider } = useAuthStore();
-  const activeProvider = providers.find(p => p.id === activeProviderId) || providers.find(p => p.connected);
-  const { runAutomation, commit, fetchData, addProject: addAppProject, setCommandBarOpen } = useAppStore();
-  const { projects, activeThreadId, setActiveThread, addThread, addMessage, updateThread, updateLastMessage, updateToolCall } = useHiveStore();
-  const activeProject = projects.find(p => p.id === selectedProjectId);
-
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [executionMode, setExecutionMode] = useState<'local' | 'worktree' | 'cloud'>(
-    (typeof window !== 'undefined' && (window as any).electron) ? 'worktree' : 'cloud'
-  );
-  const [diffStats, setDiffStats] = useState({ added: 0, removed: 0 });
+  const [executionMode, setExecutionMode] = useState<'local' | 'worktree' | 'cloud'>('local');
+  const [diffStats, setDiffStats] = useState({ added: 0, removed: 0, filesCount: 0 });
+
+  const { 
+    projects, 
+    fetchProjects, 
+    fetchTasks, 
+    addProject: addAppProject, 
+    activeThreadId, 
+    setActiveThread, 
+    addThread, 
+    addMessage, 
+    updateLastMessage,
+    replaceLastMessage,
+    updateThread,
+    updateToolCall,
+    selectedProjectId,
+    setSelectedProjectId
+  } = useHiveStore();
+  const { isCommandBarOpen, setCommandBarOpen } = useAppStore();
+  const { activeProviderId, providers, setActiveProvider } = useAuthStore();
+
+  const activeProject = projects.find(p => p.id === selectedProjectId);
+
+  const fetchData = async () => {
+    try {
+      await Promise.all([fetchProjects(), fetchTasks()]);
+      if (activeProject?.path) {
+        const diff = await getGitDiff(activeProject.path);
+        setDiffStats({ added: diff.added, removed: diff.removed, filesCount: diff.files.length });
+      }
+    } catch (e) {
+      console.error("Failed to fetch data", e);
+    }
+  };
 
   useEffect(() => {
-    const handleStartSwarm = async (e: any) => {
-      if (!selectedProjectId) return;
+    const handleStartSwarm = (e: any) => {
       const { name } = e.detail;
-      const threadId = `swarm-${Date.now()}`;
-      await addThread(selectedProjectId, {
-        id: threadId,
-        title: `Swarm: ${name}`,
-        diff: '+0 -0',
-        time: 'Just now',
-        agentId: 'orchestrator-bee'
-      });
-      setActiveThread(threadId);
       setActiveView('build');
       setTimeout(() => setInputValue(`I want to implement the following feature: ${name}. Please create a plan in TASKS.md and start spawning workers.`), 500);
     };
@@ -397,31 +329,42 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+  }, []); // Only run once on mount to avoid infinite loops
 
-  const availableModels = providers
+  const availableModels = React.useMemo(() => providers
     .filter(p => p.connected)
     .flatMap(p => p.models.map(m => ({ name: m, provider: p.id })))
-    .sort((a, b) => a.provider.localeCompare(b.provider));
+    .sort((a, b) => a.provider.localeCompare(b.provider)), [providers]);
 
   const [selectedModel, setSelectedModel] = useState<string>('');
 
   useEffect(() => {
     if (availableModels.length > 0) {
-      if (!selectedModel || !availableModels.some(m => m.name === selectedModel)) {
+      const isCurrentModelValid = selectedModel && availableModels.some(m => m.name === selectedModel);
+      if (!isCurrentModelValid) {
         const geminiFlash = availableModels.find(m => m.name.includes('flash'));
-        setSelectedModel(geminiFlash?.name || availableModels[0].name);
-        if (geminiFlash) setActiveProvider(geminiFlash.provider);
+        const nextModel = geminiFlash?.name || availableModels[0].name;
+        const nextProvider = geminiFlash?.provider || availableModels[0].provider;
+
+        if (selectedModel !== nextModel) {
+          setSelectedModel(nextModel);
+        }
+        if (activeProviderId !== nextProvider) {
+          setActiveProvider(nextProvider);
+        }
       }
-    } else {
+    } else if (selectedModel !== '') {
       setSelectedModel('');
     }
-  }, [availableModels, selectedModel, setActiveProvider]);
+  }, [availableModels, selectedModel, activeProviderId, setActiveProvider]);
 
   const handleSendMessage = useCallback(async () => {
     if (!inputValue.trim() || isLoading || !selectedProjectId) return;
 
-    let currentThreadId = activeThreadId;
+    // Ensure the current thread ID actually belongs to the selected project
+    const threadExists = activeProject?.threads?.some((t: any) => t.id === activeThreadId);
+    let currentThreadId = threadExists ? activeThreadId : null;
+    
     if (!currentThreadId) {
       currentThreadId = Date.now().toString();
       await addThread(selectedProjectId, {
@@ -438,6 +381,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     setIsLoading(true);
     addMessage(selectedProjectId, currentThreadId, { role: 'assistant', content: '' });
 
+    const activeProvider = providers.find(p => p.id === activeProviderId);
     const providerToUse = activeProvider?.id || 'mock';
     const modelToUse = selectedModel || availableModels[0]?.name || 'mock-model';
     const apiKey = activeProvider?.apiKey;
@@ -461,7 +405,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           setIsLoading(false);
           try {
             const diff = await getGitDiff(activeProject?.path || '../');
-            setDiffStats({ added: diff.added, removed: diff.removed });
+            setDiffStats({ added: diff.added, removed: diff.removed, filesCount: diff.files.length });
             updateThread(selectedProjectId, currentThreadId!, {
               diff: `+${diff.added} -${diff.removed}`,
               time: 'Just now'
@@ -473,7 +417,6 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           setIsLoading(false);
         },
         (event) => {
-          // Handle vertical Agent events
           const thread = useHiveStore.getState().projects
             .find(p => p.id === selectedProjectId)
             ?.threads?.find((t: any) => t.id === currentThreadId);
@@ -500,12 +443,42 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
               useHiveStore.getState().setQueenStatus(event.data.status);
             }
           }
+        },
+        (fullMessage: any) => {
+          const thread = useHiveStore.getState().projects
+            .find(p => p.id === selectedProjectId)
+            ?.threads?.find((t: any) => t.id === currentThreadId);
+          
+          const threadMessages = thread?.messages || [];
+          const lastMsg = threadMessages[threadMessages.length - 1];
+          
+          const updates: any = {
+            role: fullMessage.role,
+            content: fullMessage.content || '',
+            name: fullMessage.name,
+            tool_call_id: fullMessage.tool_call_id,
+            toolCalls: fullMessage.tool_calls?.map((tc: any) => ({
+              id: tc.id,
+              name: tc.function.name,
+              arguments: tc.function.arguments,
+              status: 'success'
+            }))
+          };
+
+          const isPlaceholder = lastMsg && lastMsg.role === 'assistant' && !lastMsg.content && (!lastMsg.toolCalls || lastMsg.toolCalls.length === 0);
+          
+          if (isPlaceholder) {
+            replaceLastMessage(selectedProjectId, currentThreadId!, updates);
+          } else {
+            addMessage(selectedProjectId, currentThreadId!, updates);
+          }
         }
       );
     } catch (error) {
+      console.error('[CodexLayout] sendChatMessageStream crashed:', error);
       setIsLoading(false);
     }
-  }, [inputValue, messages, isLoading, selectedProjectId, activeThreadId, activeProvider, selectedModel, availableModels, activeProject?.path, executionMode, addThread, addMessage, updateLastMessage, updateThread, updateToolCall]);
+  }, [inputValue, messages, isLoading, selectedProjectId, activeThreadId, activeProviderId, providers, selectedModel, availableModels, activeProject, executionMode, addThread, addMessage, updateLastMessage, replaceLastMessage, updateThread, updateToolCall]);
 
   const handleOpen = async () => {
     const result = await NativeService.dialog.showOpen({
@@ -524,11 +497,31 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     }
   };
 
+  const handleOpenIn = async (app: 'vscode' | 'finder' | 'terminal' | 'xcode') => {
+    if (!activeProject?.path) return;
+    
+    let command = '';
+    switch (app) {
+      case 'vscode': command = `code "${activeProject.path}"`; break;
+      case 'finder': command = `open "${activeProject.path}"`; break;
+      case 'terminal': command = `open -a Terminal "${activeProject.path}"`; break;
+      case 'xcode': command = `open -a Xcode "${activeProject.path}"`; break;
+    }
+
+    if (command) {
+      try {
+        await executeCommand(command);
+        NativeService.notify('Project Opened', `Opened in ${app}`);
+      } catch (e: any) {
+        console.error('Failed to open project:', e);
+      }
+    }
+  };
+
   const handleRun = () => alert('Run logic');
   const handleCommit = async () => {
     console.log('Commit action triggered');
-    // TODO: Fetch diff here or let DiffViewer handle it
-    setIsDiffOpen(true);
+    setIsCommitModalOpen(true);
   };
 
   const handleClearThread = () => setActiveThread(null);
@@ -539,6 +532,11 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const handleRunProject = () => {
     console.log('Run project');
     setIsTerminalOpen(true);
+  };
+
+  const handleStop = () => {
+    setIsLoading(false);
+    // In a real app, this would also signal the AbortController of the stream
   };
 
   return (
@@ -604,12 +602,15 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                   setActiveThread={setActiveThread}
                   onToggleInspector={() => setIsInspectorOpen(prev => !prev)}
                   onToggleTerminal={() => setIsTerminalOpen(prev => !prev)}
+                  onToggleDiff={() => setIsDiffOpen(prev => !prev)}
                   onRun={handleRunProject}
                   onCommit={handleCommit}
                   onBuild={() => handleRunCommand('npm run build')}
                   onAddThread={() => setActiveThread(null)}
+                  onOpenIn={handleOpenIn}
                   mode={executionMode}
                   onModeChange={setExecutionMode}
+                  diffStats={diffStats}
                 />
               ) : (
                 <EmptyState
@@ -625,6 +626,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                 value={inputValue}
                 onChange={setInputValue}
                 onSubmit={handleSendMessage}
+                onStop={handleStop}
                 isLoading={isLoading}
                 mode={executionMode}
                 onModeChange={setExecutionMode}
@@ -661,6 +663,16 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         onClose={() => setIsCustomizationOpen(false)}
       />
 
+      <CommitModal
+        isOpen={isCommitModalOpen}
+        onClose={() => setIsCommitModalOpen(false)}
+        projectPath={activeProject?.path || ''}
+        onCommitSuccess={() => {
+          fetchData();
+          setIsDiffOpen(false);
+        }}
+      />
+
       {isDiffOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-8">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[80vh] overflow-hidden flex flex-col relative">
@@ -686,5 +698,40 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     </div>
   );
 };
+
+const EmptyState = ({ onOpenSettings, onRun, onCommit, onOpen, onToggleTerminal, onToggleInspector }: any) => (
+  <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-zinc-50/30">
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="max-w-md"
+    >
+      <div className="w-20 h-20 bg-zinc-900 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-black/20">
+        <Bot size={40} className="text-white" />
+      </div>
+      <h1 className="text-3xl font-black text-zinc-900 mb-4 tracking-tight uppercase">Ready to Build?</h1>
+      <p className="text-zinc-500 mb-10 text-lg leading-relaxed">
+        Select a project from the sidebar or open a local folder to begin your autonomous development journey.
+      </p>
+      
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          onClick={onOpen}
+          className="flex items-center justify-center gap-2 px-6 py-4 bg-white border border-zinc-200 rounded-2xl font-bold text-zinc-900 hover:bg-zinc-50 transition-all shadow-sm"
+        >
+          <Plus size={18} className="text-blue-500" />
+          Open Project
+        </button>
+        <button
+          onClick={onOpenSettings}
+          className="flex items-center justify-center gap-2 px-6 py-4 bg-white border border-zinc-200 rounded-2xl font-bold text-zinc-900 hover:bg-zinc-50 transition-all shadow-sm"
+        >
+          <Settings size={18} className="text-zinc-400" />
+          Settings
+        </button>
+      </div>
+    </motion.div>
+  </div>
+);
 
 export default CodexLayout;

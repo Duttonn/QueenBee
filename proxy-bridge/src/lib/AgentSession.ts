@@ -71,6 +71,8 @@ export class AgentSession extends EventEmitter {
           tools: AGENT_TOOLS
         });
         
+        console.log(`[AgentSession] LLM Response: content length=${response.content?.length || 0}, tool_calls=${response.tool_calls?.length || 0}`);
+
         const assistantMessage: LLMMessage = { 
           role: 'assistant', 
           content: response.content, 

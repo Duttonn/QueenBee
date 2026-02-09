@@ -18,7 +18,7 @@ function App() {
   // Load secure API keys once on mount
   useEffect(() => {
     loadApiKeys();
-  }, [loadApiKeys]);
+  }, []);
 
   // Initialize Socket.io connection if authenticated and onboarded
   useEffect(() => {
@@ -27,7 +27,7 @@ function App() {
         fetchProjects();
       });
     }
-  }, [isAuthenticated, isOnboarded, initSocket, fetchProjects]);
+  }, [isAuthenticated, isOnboarded]);
 
   // Global Log Relay to Backend
   const { socket } = useHiveStore();

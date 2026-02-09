@@ -87,7 +87,8 @@ export async function sendChatMessageStream(
     onChunk: (text: string) => void,
     onComplete: (fullText: string) => void,
     onError: (error: Error) => void,
-    onEvent?: (event: { type: string; data: any }) => void
+    onEvent?: (event: { type: string; data: any }) => void,
+    onMessage?: (message: Message) => void
 ): Promise<void> {
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -132,11 +133,6 @@ export async function sendChatMessageStream(
 
             const chunk = decoder.decode(value, { stream: true });
 
-            // SSE parsing - supports multiple formats:
-            // 1. OpenAI format: data: {"choices": [{"delta": {"content": "..."}}]}
-            // 2. Queen Bee/Gemini format: data: {"content": "..."}
-            // 3. Tool call format: data: {"tool_calls": [...]}
-            // 4. Vertical Agent events: data: {"type": "tool_start", "data": {...}}
             const lines = chunk.split('\n');
             for (const line of lines) {
                 if (line.startsWith('data: ')) {
@@ -146,37 +142,39 @@ export async function sendChatMessageStream(
                     try {
                         const data = JSON.parse(payload);
 
-                        // Check for errors first
                         if (data.error) {
                             onError(new Error(data.error.message || 'Stream error'));
                             return;
                         }
 
-                        // Handle Agent Events (tool_start, tool_end, step_start, etc)
+                        // Handle Agent Events
                         if (data.type && data.type !== 'message' && onEvent) {
                             onEvent(data);
+                        }
+
+                        // Handle Full Message Updates
+                        if (data.type === 'message' && data.data && onMessage) {
+                            onMessage(data.data);
+                            // Also update fullText for completion callback
+                            if (data.data.content) {
+                                fullText = data.data.content;
+                            }
+                            continue; // Skip the chunk logic for message events
                         }
 
                         // Try OpenAI format first
                         let content = data.choices?.[0]?.delta?.content;
 
-                        // Fallback to direct content (Queen Bee/Gemini format)
+                        // Fallback to direct content
                         if (!content && data.content) {
                             content = data.content;
-                        }
-
-                        // Fallback to AgentSession format
-                        if (!content && data.type === 'message' && data.data?.content) {
-                            content = data.data.content;
                         }
 
                         if (content) {
                             fullText += content;
                             onChunk(content);
                         }
-                    } catch (e) {
-                        // Not JSON, might be raw text or partial chunk
-                    }
+                    } catch (e) { }
                 }
             }
         }
@@ -199,6 +197,21 @@ export async function getGitDiff(projectPath: string, filePath?: string): Promis
     if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Failed to get diff');
+    }
+
+    return response.json();
+}
+
+/**
+ * Get git branches for a project
+ */
+export async function getGitBranches(projectPath: string): Promise<{ current: string, all: string[], branches: any }> {
+    const params = new URLSearchParams({ projectPath });
+    const response = await fetch(`${API_BASE}/api/git/branches?${params}`);
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to get branches');
     }
 
     return response.json();

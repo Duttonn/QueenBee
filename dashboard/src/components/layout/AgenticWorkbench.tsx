@@ -28,22 +28,28 @@ import {
   ExternalLink,
   Code,
   FolderOpen,
-  Command
+  Command,
+  LayoutTemplate,
+  Columns,
+  Rows,
+  GitBranch
 } from 'lucide-react';
-import { type Message, type ToolCall } from '../../services/api';
+import { type Message, type ToolCall, getGitBranches, executeCommand } from '../../services/api';
 import { useHiveStore } from '../../store/useHiveStore';
 import ToolCallViewer from '../agents/ToolCallViewer';
+import { ProjectOverview } from '../projects/ProjectOverview';
 
 interface AgenticWorkbenchProps {
   messages: Message[];
   isLoading: boolean;
-  diffStats?: { added: number; removed: number };
+  diffStats?: { added: number; removed: number; filesCount: number };
   changedFiles?: string[];
   mode: 'local' | 'worktree' | 'cloud';
   onModeChange: (mode: 'local' | 'worktree' | 'cloud') => void;
   activeProject: any;
   onToggleInspector: () => void;
   onToggleTerminal?: () => void;
+  onToggleDiff?: () => void;
   onSendMessage: (content: string) => void;
   onClearThread: () => void;
   onRunCommand: (cmd: string) => void;
@@ -56,18 +62,65 @@ interface AgenticWorkbenchProps {
   onOpenIn?: (app: 'vscode' | 'finder' | 'terminal' | 'xcode') => void;
 }
 
-// ... (MemoizedMarkdown component remains unchanged)
+const MemoizedMarkdown = React.memo(({ content }: { content: string }) => (
+  <ReactMarkdown
+    remarkPlugins={[remarkGfm]}
+    rehypePlugins={[rehypeHighlight]}
+    components={{
+      code({ node, inline, className, children, ...props }: any) {
+        const match = /language-(\w+)/.exec(className || '');
+        return !inline && match ? (
+          <div className="relative group my-4">
+            <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+              <button
+                onClick={() => navigator.clipboard.writeText(String(children).replace(/\n$/, ''))}
+                className="p-1.5 bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-md transition-all backdrop-blur-sm border border-white/5"
+                title="Copy code"
+              >
+                <Copy size={14} />
+              </button>
+            </div>
+            <pre className={`${className} !bg-zinc-900 !m-0 !rounded-xl !p-5 border border-white/5 shadow-2xl`}>
+              <code {...props} className={className}>
+                {children}
+              </code>
+            </pre>
+          </div>
+        ) : (
+          <code {...props} className={`${className} px-1.5 py-0.5 bg-zinc-100 text-zinc-800 rounded-md font-mono text-[0.9em]`}>
+            {children}
+          </code>
+        );
+      },
+      p: ({ children }) => <p className="mb-4 last:mb-0 leading-relaxed">{children}</p>,
+      ul: ({ children }) => <ul className="mb-4 space-y-2 list-disc pl-5">{children}</ul>,
+      ol: ({ children }) => <ol className="mb-4 space-y-2 list-decimal pl-5">{children}</ol>,
+      li: ({ children }) => <li className="text-zinc-700">{children}</li>,
+      h1: ({ children }) => <h1 className="text-xl font-bold mb-4 text-zinc-900">{children}</h1>,
+      h2: ({ children }) => <h2 className="text-lg font-bold mb-3 text-zinc-900">{children}</h2>,
+      h3: ({ children }) => <h3 className="text-md font-bold mb-2 text-zinc-900">{children}</h3>,
+      blockquote: ({ children }) => (
+        <blockquote className="border-l-4 border-zinc-200 pl-4 italic text-zinc-600 my-4">
+          {children}
+        </blockquote>
+      ),
+    }}
+  >
+    {content}
+  </ReactMarkdown>
+));
 
 const AgenticWorkbench = ({
   messages,
   isLoading,
-  diffStats = { added: 0, removed: 0 },
+  diffStats = { added: 0, removed: 0, filesCount: 0 },
   changedFiles = [],
   mode,
   onModeChange,
   activeProject,
   onToggleInspector,
   onToggleTerminal,
+  onToggleDiff,
   onSendMessage,
   onClearThread,
   onRunCommand,
@@ -79,157 +132,58 @@ const AgenticWorkbench = ({
   onAddThread,
   onOpenIn
 }: AgenticWorkbenchProps) => {
+  console.log(`[AgenticWorkbench] Rendering: activeThreadId=${activeThreadId}, messages=${messages.length}, isLoading=${isLoading}`);
   const [expandedThinking, setExpandedThinking] = useState<Record<number, boolean>>({});
   const [isAgentMenuOpen, setIsAgentMenuOpen] = useState(false);
   const [isOpenMenuOpen, setIsOpenMenuOpen] = useState(false);
   const [showLiveEye, setShowLiveEye] = useState(false);
+  
+  // Branch State
+  const [branches, setBranches] = useState<{ current: string, all: string[] }>({ current: 'main', all: [] });
+  const [isBranchMenuOpen, setIsBranchMenuOpen] = useState(false);
+
+  // Tab State
+  const [workbenchView, setWorkbenchView] = useState<'chat' | 'plan'>('chat');
+  const [splitDirection, setSplitDirection] = useState<'vertical' | 'horizontal'>('vertical');
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { spawnAgent, socket, queenStatus } = useHiveStore();
 
-  const handleAddAgent = (role: string) => {
-    // ... (unchanged)
+  useEffect(() => {
+    if (activeProject?.path) {
+        getGitBranches(activeProject.path).then(data => {
+            setBranches({ current: data.current, all: data.all });
+        }).catch(console.error);
+    }
+  }, [activeProject?.path]);
+
+  const handleBranchSwitch = async (branch: string) => {
+      if (!activeProject?.path) return;
+      try {
+          await executeCommand(`git checkout ${branch}`, activeProject.path);
+          const data = await getGitBranches(activeProject.path);
+          setBranches({ current: data.current, all: data.all });
+          setIsBranchMenuOpen(false);
+          // Ideally refresh diffs here too, but that's handled by parent usually
+      } catch (e) {
+          console.error("Failed to switch branch", e);
+      }
   };
 
-  // ... (useEffect for auto-scroll unchanged)
+  const handleAddAgent = (role: string) => {
+    // ...
+  };
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, expandedThinking]);
 
   const toggleThinking = (index: number) => {
     setExpandedThinking(prev => ({ ...prev, [index]: !prev[index] }));
   };
 
-  if (!activeProject && messages.length === 0) {
-    // ... (unchanged)
-  }
-
-  return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <div className="h-14 border-b border-gray-100 flex items-center justify-between px-4 flex-shrink-0 bg-white">
-        <div className="flex items-center gap-3">
-          {/* Project Title */}
-          {activeProject && (
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-zinc-50 border border-zinc-100">
-                <div className="w-4 h-4 rounded bg-blue-500 flex items-center justify-center text-[10px] text-white font-bold">
-                  {activeProject.name[0]}
-                </div>
-                <span className="text-xs font-semibold text-zinc-700">{activeProject.name}</span>
-              </div>
-              <button
-                onClick={onAddThread}
-                className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-blue-500 transition-colors"
-                title="New Thread"
-              >
-                <Plus size={14} />
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center gap-2">
-          {/* Agent Assignment Button */}
-          {/* ... (unchanged) */}
-
-          <div className="w-px h-6 bg-gray-100 mx-1"></div>
-
-          <button
-            onClick={() => setShowLiveEye(!showLiveEye)}
-            className={`p-2 rounded-lg transition-colors ${showLiveEye ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-zinc-500 hover:text-blue-600'}`}
-            title="Live Eye View"
-          >
-            <Eye size={16} />
-          </button>
-
-          <button
-            onClick={onToggleInspector}
-            className="p-2 hover:bg-gray-100 rounded-lg text-zinc-500 hover:text-blue-600 transition-colors"
-            title="Deep Inspector"
-          >
-            <Layers size={16} />
-          </button>
-
-          <button
-            onClick={onToggleTerminal}
-            className="p-2 hover:bg-gray-100 rounded-lg text-zinc-500 hover:text-zinc-700 transition-colors"
-            title="Toggle Terminal"
-          >
-            <TerminalSquare size={16} />
-          </button>
-
-          {/* Open In Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setIsOpenMenuOpen(!isOpenMenuOpen)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-medium rounded-lg transition-colors"
-            >
-              <ExternalLink size={12} />
-              Open
-              <ChevronDown size={12} className="opacity-50" />
-            </button>
-
-            <AnimatePresence>
-              {isOpenMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setIsOpenMenuOpen(false)} />
-                  <motion.div
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="absolute top-full right-0 mt-2 w-48 bg-white border border-gray-200 shadow-xl rounded-xl overflow-hidden z-20 p-1"
-                  >
-                    <div className="px-2 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
-                      Open in
-                    </div>
-                    <button
-                      onClick={() => { onOpenIn?.('vscode'); setIsOpenMenuOpen(false); }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:bg-zinc-50 transition-colors text-left"
-                    >
-                      <Code size={14} className="text-blue-500" />
-                      <span>VS Code</span>
-                    </button>
-                    <button
-                      onClick={() => { onOpenIn?.('finder'); setIsOpenMenuOpen(false); }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:bg-zinc-50 transition-colors text-left"
-                    >
-                      <FolderOpen size={14} className="text-blue-400" />
-                      <span>Finder</span>
-                    </button>
-                    <button
-                      onClick={() => { onOpenIn?.('terminal'); setIsOpenMenuOpen(false); }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:bg-zinc-50 transition-colors text-left"
-                    >
-                      <Terminal size={14} className="text-zinc-500" />
-                      <span>Terminal</span>
-                    </button>
-                    <button
-                      onClick={() => { onOpenIn?.('xcode'); setIsOpenMenuOpen(false); }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:bg-zinc-50 transition-colors text-left"
-                    >
-                      <Command size={14} className="text-blue-600" />
-                      <span>Xcode</span>
-                    </button>
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
-          </div>
-
-          <button
-            onClick={onCommit}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-medium rounded-lg transition-colors shadow-sm"
-          >
-            <GitCommit size={12} />
-            Commit
-            {diffStats.added > 0 && <span className="text-[#22C55E] ml-1">+{diffStats.added}</span>}
-            {diffStats.removed > 0 && <span className="text-red-400">-{diffStats.removed}</span>}
-          </button>
-        </div>
-      </div>
-
-      {/* Chat Stream ... */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 relative">
-        {/* ... (rest of the file remains largely the same, I need to make sure I don't cut off anything) ... */}
-        {/* I'll use the original content for the rest of the file to be safe */}
+  const ChatView = () => (
+    <div className="flex-1 overflow-y-auto p-4 space-y-4 relative h-full">
         <AnimatePresence>
           {showLiveEye && (
             <motion.div
@@ -267,45 +221,55 @@ const AgenticWorkbench = ({
             </motion.div>
           )}
         </AnimatePresence>
-        {messages.map((msg, index) => (
-          <div key={index}>
+        {messages.map((msg, index) => {
+          const prevMsg = index > 0 ? messages[index - 1] : null;
+          const isGrouped = (msg.role === 'assistant' || msg.role === 'tool') && 
+                            (prevMsg?.role === 'assistant' || prevMsg?.role === 'tool');
+
+          return (
+          <div key={index} className={isGrouped ? '-mt-2' : ''}>
             {msg.role === 'user' && (
               <div className="flex gap-3">
-                <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                  <User size={14} className="text-gray-600" />
+                <div className="w-7 h-7 rounded-full bg-zinc-100 flex items-center justify-center flex-shrink-0 border border-zinc-200 shadow-sm">
+                  <User size={14} className="text-zinc-600" />
                 </div>
-                <div className="flex-1 bg-gray-50 rounded-2xl rounded-tl-sm px-4 py-3">
-                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{msg.content || ''}</p>
+                <div className="flex-1 bg-zinc-50 border border-zinc-100 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
+                  <p className="text-sm text-zinc-800 whitespace-pre-wrap">{msg.content || ''}</p>
                 </div>
               </div>
             )}
 
             {msg.role === 'assistant' && (
               <div className="flex gap-3">
-                <div className="w-7 h-7 rounded-full bg-gray-900 flex items-center justify-center flex-shrink-0 group relative">
-                  <Bot size={14} className="text-white" />
-                  {isLoading && index === messages.length - 1 && (
-                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-white animate-pulse" />
+                <div className="w-7 h-7 flex-shrink-0">
+                  {!isGrouped && (
+                    <div className="w-7 h-7 rounded-full bg-zinc-900 flex items-center justify-center group relative shadow-lg shadow-black/20">
+                      <Bot size={14} className="text-white" />
+                      {isLoading && index === messages.length - 1 && (
+                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-white animate-pulse" />
+                      )}
+                    </div>
                   )}
                 </div>
-                <div className="flex-1 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Assistant</span>
-                    {((msg.content?.includes('```thinking')) || (isLoading && index === messages.length - 1 && queenStatus === 'thinking')) && (
-                      <button
-                        onClick={() => toggleThinking(index)}
-                        className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-[10px] font-bold text-blue-600 hover:bg-blue-100 transition-colors border border-blue-100"
-                      >
-                        <Sparkles size={10} className={isLoading && index === messages.length - 1 ? "animate-spin" : ""} />
-                        <span>{isLoading && index === messages.length - 1 && !msg.content?.includes('```thinking') ? 'Pondering...' : 'View Thoughts'}</span>
-                        {expandedThinking[index] ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                      </button>
-                    )}
-                  </div>
+                <div className="flex-1 min-w-0 space-y-2">
+                  {!isGrouped && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Assistant</span>
+                      {((msg.content?.includes('```thinking')) || (isLoading && index === messages.length - 1 && queenStatus === 'thinking')) && (
+                        <button
+                          onClick={() => toggleThinking(index)}
+                          className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-[10px] font-bold text-blue-600 hover:bg-blue-100 transition-colors border border-blue-100"
+                        >
+                          <Sparkles size={10} className={isLoading && index === messages.length - 1 ? "animate-spin" : ""} />
+                          <span>{isLoading && index === messages.length - 1 && !msg.content?.includes('```thinking') ? 'Pondering...' : 'View Thoughts'}</span>
+                          {expandedThinking[index] ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                        </button>
+                      )}
+                    </div>
+                  )}
 
-                  {/* Thought Process Dropdown */}
                   <AnimatePresence>
-                    {(expandedThinking[index] || (isLoading && index === messages.length - 1 && queenStatus === 'thinking' && !msg.content)) && (
+                    {(expandedThinking[index] || (isLoading && index === messages.length - 1 && queenStatus === 'thinking' && !msg.content && !isGrouped)) && (
                       <motion.div
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
@@ -332,7 +296,6 @@ const AgenticWorkbench = ({
                     )}
                   </AnimatePresence>
 
-                  {/* Render tool calls if present */}
                   {msg.toolCalls && msg.toolCalls.map((tool, tIdx) => (
                     <ToolCallViewer
                       key={tool.id || tIdx}
@@ -366,23 +329,7 @@ const AgenticWorkbench = ({
                     />
                   ))}
 
-                  {/* Render legacy tool calls (placeholders) */}
-                  {msg.content?.includes('Called ') && !msg.toolCalls && (
-                    <div className="flex items-center gap-2 text-xs text-gray-500 my-2">
-                      <Terminal size={12} className="text-gray-400" />
-                      <span className="font-mono">
-                        {msg.content.match(/Called (\w+)/)?.[0]}
-                      </span>
-                      <span className="text-gray-300">→</span>
-                      <span className="text-green-600 flex items-center gap-1">
-                        <Check size={10} />
-                        Success
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Main content (filter out thinking blocks) */}
-                  {msg.content && (
+                  {msg.content ? (
                     <div className="text-sm text-zinc-800 prose prose-sm max-w-none prose-zinc prose-pre:p-0 prose-pre:bg-transparent">
                       <MemoizedMarkdown
                         content={msg.content
@@ -399,9 +346,15 @@ const AgenticWorkbench = ({
                         />
                       )}
                     </div>
+                  ) : (
+                    isLoading && index === messages.length - 1 && !msg.toolCalls?.length ? (
+                        <div className="flex items-center gap-2 text-xs text-zinc-400 italic py-1">
+                            <Loader2 size={12} className="animate-spin" />
+                            <span>{queenStatus === 'thinking' ? 'Pondering...' : 'Synthesizing response...'}</span>
+                        </div>
+                    ) : null
                   )}
 
-                  {/* Error styling for error messages */}
                   {msg.content?.startsWith('Error:') && (
                     <div className="flex items-center gap-2 text-red-500 text-xs mt-2">
                       <AlertCircle size={12} />
@@ -412,32 +365,255 @@ const AgenticWorkbench = ({
               </div>
             )}
 
+            {msg.role === 'tool' && (
+              <div className="flex justify-center my-2">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-50 border border-zinc-100 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
+                  <Check size={12} className="text-emerald-500" />
+                  <span>Observation Processed</span>
+                </div>
+              </div>
+            )}
+
             {msg.role === 'system' && (
               <div className="flex justify-center">
-                <p className="text-xs text-gray-400 bg-gray-50 px-3 py-1 rounded-full">
+                <p className="text-[10px] font-black text-zinc-400 bg-zinc-50 px-3 py-1 rounded-full uppercase tracking-widest border border-zinc-100">
                   {msg.content}
                 </p>
               </div>
             )}
           </div>
-        ))}
-
-        {/* Loading indicator */}
-        {isLoading && (
-          <div className="flex gap-3">
-            <div className="w-7 h-7 rounded-full bg-gray-900 flex items-center justify-center flex-shrink-0">
-              <Loader2 size={14} className="text-white animate-spin" />
-            </div>
-            <div className="flex-1 space-y-2">
-              <div className="flex items-center gap-2 text-xs text-gray-400">
-                <span>Thinking...</span>
-              </div>
-            </div>
-          </div>
-        )}
+        );
+        })}
 
         <div className="h-32 flex-shrink-0" /> {/* Spacer for floating composer bar */}
         <div ref={messagesEndRef} />
+    </div>
+  );
+
+  return (
+    <div className="flex-1 flex flex-col h-full overflow-hidden">
+      {/* Header */}
+      <div className="h-14 border-b border-zinc-100 flex items-center justify-between px-4 flex-shrink-0 bg-white">
+        <div className="flex items-center gap-6">
+          {/* Project Info & Tabs */}
+          {activeProject && (
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-zinc-50 border border-zinc-100 shadow-sm">
+                <div className="w-4 h-4 rounded bg-blue-500 flex items-center justify-center text-[9px] text-white font-black uppercase">
+                  {activeProject.name[0]}
+                </div>
+                <span className="text-[11px] font-bold text-zinc-900 uppercase tracking-tight">{activeProject.name}</span>
+              </div>
+
+              {/* Branch Picker */}
+              <div className="relative">
+                  <button 
+                    onClick={() => setIsBranchMenuOpen(!isBranchMenuOpen)}
+                    className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-zinc-50 text-[10px] font-medium text-zinc-500 transition-colors border border-transparent hover:border-zinc-100"
+                  >
+                    <GitBranch size={12} />
+                    <span className="max-w-[100px] truncate">{branches.current}</span>
+                    <ChevronDown size={10} className="opacity-50" />
+                  </button>
+                  
+                  <AnimatePresence>
+                    {isBranchMenuOpen && (
+                        <>
+                        <div className="fixed inset-0 z-10" onClick={() => setIsBranchMenuOpen(false)} />
+                        <motion.div
+                            initial={{ opacity: 0, y: 5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 5 }}
+                            className="absolute top-full left-0 mt-1 w-48 bg-white border border-zinc-200 shadow-xl rounded-xl overflow-hidden z-20 max-h-64 overflow-y-auto"
+                        >
+                            <div className="px-3 py-2 text-[9px] font-black text-zinc-400 uppercase tracking-widest border-b border-zinc-50 bg-zinc-50/50 sticky top-0">
+                                Switch Branch
+                            </div>
+                            {branches.all.map(branch => (
+                                <button
+                                    key={branch}
+                                    onClick={() => handleBranchSwitch(branch)}
+                                    className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-left transition-colors ${
+                                        branch === branches.current 
+                                        ? 'bg-blue-50 text-blue-600 font-bold' 
+                                        : 'text-zinc-600 hover:bg-zinc-50'
+                                    }`}
+                                >
+                                    <GitBranch size={12} className={branch === branches.current ? 'text-blue-500' : 'text-zinc-400'} />
+                                    <span className="truncate">{branch}</span>
+                                    {branch === branches.current && <Check size={12} className="ml-auto" />}
+                                </button>
+                            ))}
+                        </motion.div>
+                        </>
+                    )}
+                  </AnimatePresence>
+              </div>
+
+              {/* Workbench Tabs */}
+              <div className="flex bg-zinc-100 p-1 rounded-xl border border-zinc-200 shadow-inner">
+                <button
+                  onClick={() => setWorkbenchView('chat')}
+                  className={`flex items-center gap-2 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${workbenchView === 'chat' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}
+                >
+                  <Bot size={12} />
+                  Chat
+                </button>
+                <button
+                  onClick={() => setWorkbenchView('plan')}
+                  className={`flex items-center gap-2 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${workbenchView === 'plan' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}
+                >
+                  <LayoutTemplate size={12} />
+                  Plan
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2">
+          
+          <button
+            onClick={onAddThread}
+            className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-400 hover:text-blue-500 transition-all"
+            title="New Thread"
+          >
+            <Plus size={18} />
+          </button>
+
+          <div className="w-px h-6 bg-zinc-100 mx-1"></div>
+
+          {/* View Controls (Split Toggle) */}
+          {workbenchView === 'plan' && (
+             <button
+                onClick={() => setSplitDirection(prev => prev === 'vertical' ? 'horizontal' : 'vertical')}
+                className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-500 hover:text-zinc-900 transition-all"
+                title="Toggle Split Direction"
+             >
+                {splitDirection === 'vertical' ? <Columns size={16} /> : <Rows size={16} />}
+             </button>
+          )}
+
+          <button
+            onClick={() => setShowLiveEye(!showLiveEye)}
+            className={`p-2 rounded-xl transition-all ${showLiveEye ? 'bg-blue-50 text-blue-600' : 'hover:bg-zinc-100 text-zinc-500 hover:text-blue-600'}`}
+            title="Live Eye View"
+          >
+            <Eye size={18} />
+          </button>
+
+          <button
+            onClick={onToggleInspector}
+            className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-500 hover:text-blue-600 transition-all"
+            title="Deep Inspector"
+          >
+            <Layers size={18} />
+          </button>
+
+          <button
+            onClick={onToggleDiff}
+            className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-500 hover:text-blue-600 transition-all"
+            title="Changes Viewer"
+          >
+            <Plus className="rotate-45" size={18} />
+          </button>
+
+          <button
+            onClick={onToggleTerminal}
+            className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-500 hover:text-zinc-700 transition-all"
+            title="Toggle Terminal"
+          >
+            <TerminalSquare size={18} />
+          </button>
+
+          {/* Open In Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setIsOpenMenuOpen(!isOpenMenuOpen)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-900 text-[11px] font-black uppercase rounded-xl transition-all shadow-sm"
+            >
+              <Code size={14} className="text-blue-500" />
+              <span>Open</span>
+              <ChevronDown size={12} className="opacity-50" />
+            </button>
+
+            <AnimatePresence>
+              {isOpenMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setIsOpenMenuOpen(false)} />
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute top-full right-0 mt-2 w-48 bg-white border border-zinc-200 shadow-2xl rounded-2xl overflow-hidden z-20 p-1"
+                  >
+                    <div className="px-3 py-2 text-[9px] font-black text-zinc-400 uppercase tracking-widest border-b border-zinc-50 mb-1">
+                      Open in
+                    </div>
+                    <button
+                      onClick={() => { onOpenIn?.('vscode'); setIsOpenMenuOpen(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-zinc-600 hover:bg-zinc-50 transition-all text-left"
+                    >
+                      <Code size={14} className="text-blue-500" />
+                      <span>VS Code</span>
+                    </button>
+                    <button
+                      onClick={() => { onOpenIn?.('finder'); setIsOpenMenuOpen(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-zinc-600 hover:bg-zinc-50 transition-all text-left"
+                    >
+                      <FolderOpen size={14} className="text-blue-400" />
+                      <span>Finder</span>
+                    </button>
+                    <button
+                      onClick={() => { onOpenIn?.('terminal'); setIsOpenMenuOpen(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-zinc-600 hover:bg-zinc-50 transition-all text-left"
+                    >
+                      <Terminal size={14} className="text-zinc-500" />
+                      <span>Terminal</span>
+                    </button>
+                    <button
+                      onClick={() => { onOpenIn?.('xcode'); setIsOpenMenuOpen(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-zinc-600 hover:bg-zinc-50 transition-all text-left"
+                    >
+                      <Command size={14} className="text-blue-600" />
+                      <span>Xcode</span>
+                    </button>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <button
+            onClick={onCommit}
+            className="flex items-center gap-1.5 px-4 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white text-[11px] font-black uppercase rounded-xl transition-all shadow-xl shadow-black/10 active:scale-95"
+          >
+            <GitCommit size={14} />
+            Commit
+            {diffStats.filesCount > 0 && <span className="text-zinc-400 ml-1">{diffStats.filesCount} changed</span>}
+            {diffStats.added > 0 && <span className="text-emerald-400 ml-1">+{diffStats.added}</span>}
+            {diffStats.removed > 0 && <span className="text-rose-400">-{diffStats.removed}</span>}
+          </button>
+        </div>
+      </div>
+
+      {/* Content Area */}
+      <div className="flex-1 flex flex-col min-h-0 relative">
+        {activeProject && messages.length === 0 && !isLoading && workbenchView === 'chat' ? (
+            <ProjectOverview onNewThread={onAddThread || (() => {})} />
+        ) : workbenchView === 'plan' ? (
+            <div className={`flex-1 flex overflow-hidden ${splitDirection === 'vertical' ? 'flex-row' : 'flex-col'}`}>
+                <div className={`flex-1 overflow-hidden border-${splitDirection === 'vertical' ? 'r' : 'b'} border-zinc-200`}>
+                    <ProjectOverview onNewThread={() => setWorkbenchView('chat')} />
+                </div>
+                <div className="flex-1 overflow-hidden relative bg-white border-l border-zinc-100">
+                    <ChatView />
+                </div>
+            </div>
+        ) : (
+            <ChatView />
+        )}
       </div>
 
       {/* Changed Files Panel */}
