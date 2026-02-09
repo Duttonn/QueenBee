@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getGitDiff, type DiffStats, API_BASE } from '../../services/api';
 import { parseDiff } from '../../services/diffParser';
-import { File, Check, Minus, Plus, ChevronDown, ChevronRight, LayoutTemplate, Search, GitBranch, MessageSquare, Send } from 'lucide-react';
+import { File, Check, Minus, Plus, ChevronDown, ChevronRight, LayoutTemplate, Search, GitBranch, MessageSquare, Send, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 const DiffLine = ({ 
@@ -52,9 +52,10 @@ interface DiffViewerProps {
   projectPath: string;
   filePath?: string;
   onStartThread?: (prompt: string) => void;
+  onClose?: () => void;
 }
 
-const DiffViewer = ({ projectPath, filePath: initialFilePath, onStartThread }: DiffViewerProps) => {
+const DiffViewer = ({ projectPath, filePath: initialFilePath, onStartThread, onClose }: DiffViewerProps) => {
   const [diff, setDiff] = useState<DiffStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(initialFilePath || null);
@@ -93,10 +94,95 @@ const DiffViewer = ({ projectPath, filePath: initialFilePath, onStartThread }: D
     setSelectedLines(newSelected);
   };
 
-  const handleStageLines = () => {
-    // Placeholder for partial staging
-    alert('Partial line staging will be implemented via "git apply" patch construction.');
-    setSelectedLines(new Set());
+  const handleStageLines = async () => {
+    if (selectedLines.size === 0 || !activeDiff) return;
+
+    try {
+        // Construct a Unified Diff Patch for the selected lines
+        // Header
+        let patch = `--- a/${activeDiff.path}\n+++ b/${activeDiff.path}\n`;
+        
+        activeDiff.hunks.forEach((hunk: any) => {
+            const hunkHeader = hunk.header; // e.g. "@@ -1,3 +1,4 @@"
+            
+            // Filter lines in this hunk that are selected or are context
+            // A simplified patch construction: include context, but only include changes if they are selected
+            const patchLines: string[] = [];
+            
+            let oldStart = 0;
+            let oldCount = 0;
+            let newStart = 0;
+            let newCount = 0;
+
+            // Parse hunk header to get start positions
+            const headerMatch = hunkHeader.match(/@@ -(\d+),?(\d*) \+(\d+),?(\d*) @@/);
+            if (headerMatch) {
+                oldStart = parseInt(headerMatch[1]);
+                newStart = parseInt(headerMatch[3]);
+            }
+
+            let currentOldLine = oldStart;
+            let currentNewLine = newStart;
+
+            hunk.lines.forEach((line: string) => {
+                if (line.startsWith(' ')) {
+                    patchLines.push(line);
+                    currentOldLine++;
+                    currentNewLine++;
+                    oldCount++;
+                    newCount++;
+                } else if (line.startsWith('-')) {
+                    const isSelected = selectedLines.has(`${activeDiff.path}:${currentOldLine}`);
+                    if (isSelected) {
+                        patchLines.push(line);
+                        oldCount++;
+                    } else {
+                        // Include unselected deletions as context (neutral) so they stay unchanged in index
+                        patchLines.push(' ' + line.substring(1));
+                        oldCount++;
+                        newCount++;
+                    }
+                    currentOldLine++;
+                } else if (line.startsWith('+')) {
+                    const isSelected = selectedLines.has(`${activeDiff.path}:${currentNewLine}`);
+                    if (isSelected) {
+                        patchLines.push(line);
+                        newCount++;
+                    } else {
+                        // Omit unselected additions
+                    }
+                    currentNewLine++;
+                }
+            });
+
+            if (patchLines.length > 0) {
+                patch += `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@\n`;
+                patch += patchLines.join('\n') + '\n';
+            }
+        });
+
+        const res = await fetch(`${API_BASE}/api/git/stage-lines`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                path: projectPath, 
+                patch 
+            })
+        });
+
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.details || 'Failed to stage lines');
+        }
+
+        setSelectedLines(new Set());
+        fetchDiff(); // Refresh to show updated diff
+        alert('Successfully staged selected lines!');
+
+    } catch (err: any) {
+        console.error('Partial staging failed:', err);
+        alert(`Failed to stage lines: ${err.message}`);
+    }
   };
 
   const handleComment = () => {
@@ -175,8 +261,8 @@ const DiffViewer = ({ projectPath, filePath: initialFilePath, onStartThread }: D
     <div className="flex h-full bg-zinc-50 overflow-hidden rounded-2xl border border-zinc-200 shadow-2xl relative">
       {/* Sidebar */}
       <div className="w-72 bg-white border-r border-zinc-200 flex flex-col">
-        <div className="p-3 border-b border-zinc-100">
-          <div className="relative">
+        <div className="p-3 border-b border-zinc-100 flex items-center justify-between">
+          <div className="relative flex-1 mr-2">
             <Search className="absolute left-3 top-2.5 text-zinc-400" size={14} />
             <input 
               type="text"
@@ -186,6 +272,11 @@ const DiffViewer = ({ projectPath, filePath: initialFilePath, onStartThread }: D
               onChange={(e) => setFilter(e.target.value)}
             />
           </div>
+          {onClose && (
+            <button onClick={onClose} className="p-2 hover:bg-zinc-100 rounded-lg text-zinc-400 hover:text-zinc-600 transition-colors">
+                <X size={16} />
+            </button>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-2 space-y-1">

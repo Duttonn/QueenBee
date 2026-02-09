@@ -73,13 +73,13 @@ export class AutonomousRunner {
           });
 
           this.session.messages = [
-              ...this.session.messages,
+              ...this.session.messages, // System prompt is already here
               ...history.filter(m => m.role !== 'system').map(m => ({
                   role: m.role,
                   content: m.content || '',
-                  tool_calls: m.tool_calls || undefined,
-                  tool_call_id: m.tool_call_id || undefined,
-                  name: m.name || undefined
+                  tool_calls: m.tool_calls,
+                  tool_call_id: m.tool_call_id,
+                  name: m.name
               }))
           ];
 

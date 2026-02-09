@@ -516,19 +516,35 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   };
 
   const handleOpen = async () => {
-    const result = await NativeService.dialog.showOpen({
-      properties: ['openDirectory'],
-      title: 'Select Project Folder'
-    });
-    if (!result.canceled && result.filePaths.length > 0) {
-      const path = result.filePaths[0];
-      const name = path.split('/').pop() || 'Untitled';
-      try {
-        await addAppProject(name, path);
-        NativeService.notify('Project Added', `Successfully added ${name}`);
-      } catch (e: any) {
-        NativeService.dialog.showMessage({ type: 'error', message: 'Failed to add project', detail: e.message });
-      }
+    const isElectron = typeof window !== 'undefined' && (window as any).electron !== undefined;
+    
+    if (isElectron) {
+        const result = await NativeService.dialog.showOpen({
+          properties: ['openDirectory'],
+          title: 'Select Project Folder'
+        });
+        if (!result.canceled && result.filePaths.length > 0) {
+          const path = result.filePaths[0];
+          const name = path.split('/').pop() || 'Untitled';
+          try {
+            await addAppProject(name, path);
+            NativeService.notify('Project Added', `Successfully added ${name}`);
+          } catch (e: any) {
+            NativeService.dialog.showMessage({ type: 'error', message: 'Failed to add project', detail: e.message });
+          }
+        }
+    } else {
+        // Web Mode Fallback: Use a prompt to get the absolute path
+        const path = window.prompt("Please enter the absolute path to your project folder:");
+        if (path) {
+            const name = path.split('/').pop() || 'Untitled';
+            try {
+                await addAppProject(name, path);
+                alert(`Project ${name} added successfully!`);
+            } catch (e: any) {
+                alert(`Failed to add project: ${e.message}`);
+            }
+        }
     }
   };
 
@@ -709,8 +725,14 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
       />
 
       {isDiffOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-8">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[80vh] overflow-hidden flex flex-col relative">
+        <div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-8"
+            onClick={() => setIsDiffOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[80vh] overflow-hidden flex flex-col relative"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
               onClick={() => setIsDiffOpen(false)}
               className="absolute top-4 right-4 p-2 bg-white/50 hover:bg-zinc-100 rounded-full z-10"
@@ -723,6 +745,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                   projectPath={activeProject.path}
                   filePath=""
                   onStartThread={handleStartThreadFromDiff}
+                  onClose={() => setIsDiffOpen(false)}
                 />
               ) : (
                 <div className="text-center p-8 text-zinc-500">No active project selected.</div>
