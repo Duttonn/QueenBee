@@ -25,6 +25,13 @@ function handleDeepLink(url: string) {
       const authDataParam = parsedUrl.searchParams.get('auth_data');
       if (authDataParam) {
         const data = JSON.parse(decodeURIComponent(authDataParam));
+        
+        // Basic validation: Ensure it looks like auth data
+        if (!data.accessToken && !data.token && !data.code) {
+          console.error('[Main] Malformed auth data in deep link');
+          return;
+        }
+
         authCache = data; // Cache it
         
         console.log('[Main] Sending auth success to renderer (with delay)');
@@ -155,7 +162,7 @@ function createWindow() {
   });
 
   // Open DevTools automatically in development
-  if (process.env.NODE_ENV === 'development' || true) { // Force for now
+  if (process.env.NODE_ENV === 'development') {
     mainWindow.webContents.openDevTools();
   }
 
