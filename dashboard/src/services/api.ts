@@ -41,6 +41,7 @@ export interface ChatRequest {
     threadId?: string;
     mode?: 'local' | 'worktree' | 'cloud';
     agentId?: string;
+    composerMode?: 'code' | 'chat' | 'plan';
 }
 
 /**
@@ -67,7 +68,8 @@ export async function sendChatMessage(request: ChatRequest): Promise<any> {
             projectPath: request.projectPath,
             threadId: request.threadId,
             mode: request.mode,
-            agentId: request.agentId
+            agentId: request.agentId,
+            composerMode: request.composerMode
         }),
     });
 
@@ -114,7 +116,8 @@ export async function sendChatMessageStream(
                 projectPath: request.projectPath,
                 threadId: request.threadId,
                 mode: request.mode,
-                agentId: request.agentId
+                agentId: request.agentId,
+                composerMode: request.composerMode
             }),
         });
 
