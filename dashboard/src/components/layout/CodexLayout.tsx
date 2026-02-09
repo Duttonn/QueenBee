@@ -100,9 +100,12 @@ interface ComposerBarProps {
   composerMode?: 'code' | 'chat' | 'plan';
   onComposerModeChange?: (mode: 'code' | 'chat' | 'plan') => void;
   projectFiles: string[];
+  onAttach?: (context: string, mentions: string, fileInfo?: { name: string; type: string; data?: string }) => void;
+  pendingFiles?: { name: string; type: string; data?: string }[];
+  onRemoveFile?: (name: string) => void;
 }
 
-const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onModeChange, availableModels, selectedModel, onModelSelect, composerMode, onComposerModeChange, projectFiles }: ComposerBarProps) => {
+const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onModeChange, availableModels, selectedModel, onModelSelect, composerMode, onComposerModeChange, projectFiles, onAttach, pendingFiles = [], onRemoveFile }: ComposerBarProps) => {
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [mentionSearch, setMentionSearch] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -179,6 +182,7 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
 
     if (e.key === 'Enter' && !e.shiftKey && value.trim() && !isLoading) {
       e.preventDefault();
+      e.stopPropagation();
       onSubmit();
     }
   };
@@ -213,6 +217,22 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
 
         {/* Top: Input Area */}
         <div className="px-4 pt-4 pb-2">
+          {pendingFiles.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {pendingFiles.map(file => (
+                <div key={file.name} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-100 border border-zinc-200 text-[10px] font-bold text-zinc-600 uppercase tracking-wider group">
+                  <FileIcon size={10} className="text-zinc-400" />
+                  <span className="max-w-[150px] truncate">{file.name}</span>
+                  <button 
+                    onClick={() => onRemoveFile?.(file.name)}
+                    className="p-0.5 hover:bg-zinc-200 rounded-md transition-colors"
+                  >
+                    <X size={10} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <textarea
             ref={textareaRef}
             value={value}
@@ -236,24 +256,26 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
                 input.multiple = true;
                 input.onchange = async (e: any) => {
                   const files = Array.from(e.target.files) as File[];
-                  if (files.length > 0) {
-                    const fileContexts = await Promise.all(files.map(async (file) => {
-                      return new Promise<string>((resolve) => {
-                        const reader = new FileReader();
-                        reader.onload = (ev) => {
-                          const content = ev.target?.result as string;
-                          resolve(`\n\nContext for attached file "${file.name}":\n\n\`\`\`\n${content}\n\`\`\``);
-                        };
-                        reader.readAsText(file);
-                      });
-                    }));
-                    
-                    const mentions = files.map(f => `@${f.name}`).join(' ');
-                    const newPrompt = value ? `${value} ${mentions}` : mentions;
-                    
-                    // We append the content to a hidden field or just use it in the next sendMessage
-                    // For now, let's just trigger a send with the augmented content
-                    onSubmit(newPrompt, fileContexts.join(''));
+                  for (const file of files) {
+                    const isImage = file.type.startsWith('image/');
+                    const fileInfo = { name: file.name, type: file.type };
+
+                    if (isImage) {
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        const base64 = ev.target?.result as string;
+                        onAttach?.('', `@${file.name}`, { ...fileInfo, data: base64 });
+                      };
+                      reader.readAsDataURL(file);
+                    } else {
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        const content = ev.target?.result as string;
+                        const context = `\n\nContext for attached file "${file.name}":\n\n\`\`\`\n${content}\n\`\`\``;
+                        onAttach?.(context, `@${file.name}`, fileInfo);
+                      };
+                      reader.readAsText(file);
+                    }
                   }
                 };
                 input.click();
@@ -343,7 +365,7 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
             </button>
             {isLoading ? (
               <button
-                onClick={onStop}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onStop?.(); }}
                 className="p-2.5 rounded-xl transition-all shadow-xl bg-rose-500 text-white hover:bg-rose-600 active:scale-95 animate-pulse"
                 title="Stop Generation"
               >
@@ -351,7 +373,7 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
               </button>
             ) : (
               <button
-                onClick={() => onSubmit()}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSubmit(); }}
                 disabled={!value.trim()}
                 className={`p-2.5 rounded-xl transition-all shadow-lg ${!value.trim()
                   ? 'bg-zinc-100 text-zinc-300'
@@ -385,6 +407,8 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const [effort, setEffort] = useState<'low' | 'medium' | 'high'>('high');
   const [diffStats, setDiffStats] = useState({ added: 0, removed: 0, filesCount: 0 });
   const [projectFiles, setProjectFiles] = useState<string[]>([]);
+  const [pendingContext, setPendingContext] = useState('');
+  const [pendingFiles, setPendingFiles] = useState<{ name: string; type: string; data?: string }[]>([]);
 
   const { 
     projects, 
@@ -475,6 +499,8 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     const content = contentOverride || inputValue;
     if (!content.trim() || isLoading || !selectedProjectId) return;
 
+    if (!contentOverride) setInputValue('');
+    
     // Ensure the current thread ID actually belongs to the selected project
     const threadExists = activeProject?.threads?.some((t: any) => t.id === activeThreadId);
     let currentThreadId = threadExists ? activeThreadId : null;
@@ -489,13 +515,27 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
       });
     }
 
-    const userMessage: Message = { role: 'user', content: content };
-    addMessage(selectedProjectId, currentThreadId, userMessage);
-    if (!contentOverride) setInputValue('');
-    setIsLoading(true);
-    setStreamError(null);
-    addMessage(selectedProjectId, currentThreadId, { role: 'assistant', content: '' });
-
+          const messageId = Date.now().toString();
+          const userMessage: Message = { 
+            id: messageId,
+            role: 'user', 
+            content: pendingFiles.some(f => f.type.startsWith('image/')) 
+              ? [
+                  { type: 'text', text: content },
+                  ...pendingFiles
+                    .filter(f => f.type.startsWith('image/'))
+                    .map(f => ({
+                      type: 'image_url',
+                      image_url: { url: f.data }
+                    }))
+                ] as any
+              : content 
+          };
+          addMessage(selectedProjectId, currentThreadId, userMessage);
+          setIsLoading(true);
+          setStreamError(null);
+          setPendingFiles([]); // Clear on send
+          addMessage(selectedProjectId, currentThreadId, { id: messageId + '-ans', role: 'assistant', content: '' });
     const activeProvider = providers.find(p => p.id === activeProviderId);
     const providerToUse = activeProvider?.id || 'mock';
     const modelToUse = selectedModel || availableModels[0]?.name || 'mock-model';
@@ -507,18 +547,37 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     // 1. Context Enhancement: Scan for @mentions and inject content
     let augmentedMessages = [...messages];
     
-    if (contextInjection) {
+    // Inject any context from manual file uploads (Plus button)
+    const currentPendingContext = contextInjection || pendingContext;
+    if (currentPendingContext) {
       augmentedMessages.push({
         role: 'system',
-        content: `User attached additional context:\n${contextInjection}`
+        content: `User attached additional context:\n${currentPendingContext}`
       });
+      if (!contextInjection) setPendingContext(''); // Clear if we consumed the state one
     }
     
-    // Find all @filename mentions
-    const fileMentions = content.match(/@([a-zA-Z0-9_\-./]+)/g);
+    // Find all @filename mentions - improved regex to handle filenames with spaces and common extensions
+    // Matches @ followed by: non-space chars OR characters inside quotes
+    const fileMentions = content.match(/@(?:[a-zA-Z0-9_\-./]+|"[^"]+")/g);
     if (fileMentions) {
         for (const mention of fileMentions) {
-            const fileName = mention.substring(1);
+            let fileName = mention.substring(1);
+            if (fileName.startsWith('"') && fileName.endsWith('"')) {
+                fileName = fileName.substring(1, fileName.length - 1);
+            }
+
+            // Skip fetching if this file is already in pendingFiles (which handled it as an image/base64)
+            if (pendingFiles.some(pf => pf.name === fileName)) continue;
+
+            // Basic validation: must look like a file (have an extension) to avoid fetching general @mentions
+            const hasExtension = /\.[a-zA-Z0-9]+$/.test(fileName);
+            if (!hasExtension) continue;
+
+            // Optional: Only fetch if it actually exists in projectFiles to reduce network noise
+            // const existsLocally = projectFiles.some(f => f.includes(fileName));
+            // if (!existsLocally) continue;
+
             let found = false;
             
             // Search in active project first, then others
@@ -657,6 +716,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           const lastMsg = threadMessages[threadMessages.length - 1];
           
           const updates: any = {
+            id: fullMessage.id,
             role: fullMessage.role,
             content: fullMessage.content || '',
             name: fullMessage.name,
@@ -682,7 +742,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
       console.error('[CodexLayout] sendChatMessageStream crashed:', error);
       setIsLoading(false);
     }
-  }, [inputValue, messages, isLoading, selectedProjectId, activeThreadId, activeProviderId, providers, selectedModel, availableModels, activeProject, executionMode, addThread, addMessage, updateLastMessage, replaceLastMessage, updateThread, updateToolCall]);
+  }, [inputValue, messages, isLoading, selectedProjectId, activeThreadId, activeProviderId, providers, selectedModel, availableModels, activeProject, executionMode, composerMode, effort, pendingContext, pendingFiles, addThread, addMessage, updateLastMessage, replaceLastMessage, updateThread, updateToolCall]);
 
   const handleStartThreadFromDiff = (prompt: string) => {
       setIsDiffOpen(false);
@@ -886,6 +946,20 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                 composerMode={composerMode}
                 onComposerModeChange={setComposerMode}
                 projectFiles={projectFiles}
+                pendingFiles={pendingFiles}
+                onRemoveFile={(name) => setPendingFiles(prev => prev.filter(f => f.name !== name))}
+                onAttach={(context, mentions, fileInfo) => {
+                  if (context) setPendingContext(prev => prev + context);
+                  if (mentions) {
+                    setInputValue(prev => {
+                      const existingMentions: string[] = prev.match(/@(?:[a-zA-Z0-9_\-./]+|"[^"]+")/g) || [];
+                      const newMentions = mentions.split(' ').filter(m => !existingMentions.includes(m));
+                      if (newMentions.length === 0) return prev;
+                      return prev ? `${prev} ${newMentions.join(' ')}` : newMentions.join(' ');
+                    });
+                  }
+                  if (fileInfo) setPendingFiles(prev => [...prev, fileInfo]);
+                }}
               />
             </>
           ) : (

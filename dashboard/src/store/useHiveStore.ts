@@ -13,6 +13,7 @@ interface HiveState {
   lastEvent: string | null;
   socket: Socket | null;
   tasks: any[]; // GSDPhase[]
+  _debouncedSaves?: Record<string, any>;
 
   // Actions
   initSocket: () => Promise<void>;
@@ -218,17 +219,26 @@ export const useHiveStore = create<HiveState>()(
           )
         }));
 
-        // Persist updates (excluding full messages for now to keep DB small)
-        const thread = get().projects.find(p => p.id === projectId)?.threads.find((t: any) => t.id === threadId);
-        if (thread) {
-            try {
-                await fetch(`${API_BASE}/api/projects/threads`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ projectId, thread: { ...thread, messages: undefined } })
-                });
-            } catch (e) { }
-        }
+        // Debounced persistence to keep DB small and reduce network noise
+        const debouncedSave = (get() as any)._debouncedSaves?.[threadId];
+        if (debouncedSave) clearTimeout(debouncedSave);
+
+        const timeout = setTimeout(async () => {
+            const thread = get().projects.find(p => p.id === projectId)?.threads.find((t: any) => t.id === threadId);
+            if (thread) {
+                try {
+                    await fetch(`${API_BASE}/api/projects/threads`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ projectId, thread: { ...thread, messages: undefined } })
+                    });
+                } catch (e) { }
+            }
+        }, 2000);
+
+        set((state: any) => ({
+            _debouncedSaves: { ...(state._debouncedSaves || {}), [threadId]: timeout }
+        }));
       },
 
       deleteThread: async (projectId, threadId) => {
@@ -257,39 +267,57 @@ export const useHiveStore = create<HiveState>()(
         }
       },
 
-      addMessage: (projectId, threadId, message) => {
-        console.log(`[HiveStore] addMessage: thread=${threadId}, role=${message.role}`);
-        set((state) => ({
-          projects: state.projects.map(p =>
-            p.id === projectId ? {
-              ...p,
-              threads: p.threads.map((t: any) => {
-                if (t.id === threadId) {
-                  const isDuplicate = t.messages?.some((m: any) => 
-                    m.role === message.role && 
-                    m.content === message.content && 
-                    message.content !== ''
-                  );
-                  if (isDuplicate) return t;
-                  return { ...t, messages: [...(t.messages || []), message] };
-                }
-                return t;
-              })
-            } : p
-          )
-        }));
+              addMessage: (projectId, threadId, message) => {
+                console.log(`[HiveStore] addMessage: thread=${threadId}, role=${message.role}, id=${message.id}`);
+                set((state) => ({
+                  projects: state.projects.map(p =>
+                    p.id === projectId ? {
+                      ...p,
+                      threads: p.threads.map((t: any) => {
+                        if (t.id === threadId) {
+                          // Precise deduplication by ID
+                          if (message.id && t.messages?.some((m: any) => m.id === message.id)) {
+                              // If it's a tool message or has content, and we already have it, skip
+                              // Exception: if the existing one is empty and this one is not, we might want to update it, 
+                              // but usually replaceLastMessage handles that.
+                              return t;
+                          }
+      
+                          // Fallback for messages without IDs (if any)
+                          if (!message.id) {
+                              const isDuplicate = t.messages?.some((m: any) => 
+                                m.role === message.role && 
+                                JSON.stringify(m.content) === JSON.stringify(message.content) && 
+                                message.content !== '' && message.content !== null
+                              );
+                              if (isDuplicate) return t;
+                          }
+      
+                          return { ...t, messages: [...(t.messages || []), message] };
+                        }
+                        return t;
+                      })
+                    } : p
+                  )
+                }));
+        // Debounced persistence for messages
+        const debouncedSave = (get() as any)._debouncedSaves?.[`msg-${threadId}`];
+        if (debouncedSave) clearTimeout(debouncedSave);
 
-        // Persist to backend
-        const thread = get().projects.find(p => p.id === projectId)?.threads.find((t: any) => t.id === threadId);
-        if (thread) {
-            fetch(`${API_BASE}/api/projects/threads`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ projectId, thread })
-            }).then(res => {
-                if (!res.ok) console.error(`[HiveStore] Persistence failed: ${res.status}`);
-            }).catch(e => console.error('[HiveStore] Persistence network error', e));
-        }
+        const timeout = setTimeout(() => {
+            const thread = get().projects.find(p => p.id === projectId)?.threads.find((t: any) => t.id === threadId);
+            if (thread) {
+                fetch(`${API_BASE}/api/projects/threads`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ projectId, thread })
+                }).catch(e => console.error('[HiveStore] Persistence failed', e));
+            }
+        }, 1000);
+
+        set((state: any) => ({
+            _debouncedSaves: { ...(state._debouncedSaves || {}), [`msg-${threadId}`]: timeout }
+        }));
       },
 
       clearThreadMessages: (projectId, threadId) => set((state) => ({
@@ -320,7 +348,24 @@ export const useHiveStore = create<HiveState>()(
           )
         }));
         
-        // Debounced persistence would be better, but for now we'll rely on replace/add for durable saves
+        // Use the same debounced save as addMessage
+        const debouncedSave = (get() as any)._debouncedSaves?.[`msg-${threadId}`];
+        if (debouncedSave) clearTimeout(debouncedSave);
+
+        const timeout = setTimeout(() => {
+            const thread = get().projects.find(p => p.id === projectId)?.threads.find((t: any) => t.id === threadId);
+            if (thread) {
+                fetch(`${API_BASE}/api/projects/threads`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ projectId, thread })
+                }).catch(e => console.error('[HiveStore] Persistence failed', e));
+            }
+        }, 1500);
+
+        set((state: any) => ({
+            _debouncedSaves: { ...(state._debouncedSaves || {}), [`msg-${threadId}`]: timeout }
+        }));
       },
 
       replaceLastMessage: (projectId, threadId, updates) => {
@@ -341,7 +386,7 @@ export const useHiveStore = create<HiveState>()(
           )
         }));
 
-        // Persist full message block
+        // Immediate save for full replacements
         const thread = get().projects.find(p => p.id === projectId)?.threads.find((t: any) => t.id === threadId);
         if (thread) {
             fetch(`${API_BASE}/api/projects/threads`, {
@@ -352,29 +397,50 @@ export const useHiveStore = create<HiveState>()(
         }
       },
 
-      updateToolCall: (projectId, threadId, messageIndex, toolCallId, updates) => set((state) => ({
-        projects: state.projects.map(p =>
-          p.id === projectId ? {
-            ...p,
-            threads: p.threads.map((t: any) =>
-              t.id === threadId ? {
-                ...t,
-                messages: t.messages.map((msg: any, idx: number) => {
-                  if (idx !== messageIndex) return msg;
-                  const toolCalls = msg.toolCalls || [];
-                  const exists = toolCalls.some((tc: any) => tc.id === toolCallId);
-                  return {
-                    ...msg,
-                    toolCalls: exists
-                      ? toolCalls.map((tc: any) => tc.id === toolCallId ? { ...tc, ...updates } : tc)
-                      : [...toolCalls, { id: toolCallId, ...updates }]
-                  };
-                })
-              } : t
+      updateToolCall: (projectId, threadId, messageIndex, toolCallId, updates) => {
+        set((state) => ({
+            projects: state.projects.map(p =>
+              p.id === projectId ? {
+                ...p,
+                threads: p.threads.map((t: any) =>
+                  t.id === threadId ? {
+                    ...t,
+                    messages: t.messages.map((msg: any, idx: number) => {
+                      if (idx !== messageIndex) return msg;
+                      const toolCalls = msg.toolCalls || [];
+                      const exists = toolCalls.some((tc: any) => tc.id === toolCallId);
+                      return {
+                        ...msg,
+                        toolCalls: exists
+                          ? toolCalls.map((tc: any) => tc.id === toolCallId ? { ...tc, ...updates } : tc)
+                          : [...toolCalls, { id: toolCallId, ...updates }]
+                      };
+                    })
+                  } : t
+                )
+              } : p
             )
-          } : p
-        )
-      }))
+        }));
+
+        // Debounced persistence for tool calls
+        const debouncedSave = (get() as any)._debouncedSaves?.[`msg-${threadId}`];
+        if (debouncedSave) clearTimeout(debouncedSave);
+
+        const timeout = setTimeout(() => {
+            const thread = get().projects.find(p => p.id === projectId)?.threads.find((t: any) => t.id === threadId);
+            if (thread) {
+                fetch(`${API_BASE}/api/projects/threads`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ projectId, thread })
+                }).catch(e => console.error('[HiveStore] Persistence failed', e));
+            }
+        }, 1000);
+
+        set((state: any) => ({
+            _debouncedSaves: { ...(state._debouncedSaves || {}), [`msg-${threadId}`]: timeout }
+        }));
+      }
     }),
     {
       name: 'hive-storage',

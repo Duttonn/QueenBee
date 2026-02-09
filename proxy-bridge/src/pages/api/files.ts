@@ -109,15 +109,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(405).json({ error: 'Method not allowed' });
 
     } catch (error: any) {
-        console.error('[Files] Error:', error);
-
         if (error.code === 'ENOENT') {
+            console.warn(`[Files] Not found: ${absolutePath}`);
             return res.status(404).json({
                 error: 'File not found',
                 path: absolutePath
             });
         }
 
+        console.error('[Files] Error:', error);
         return res.status(500).json({
             error: 'File operation failed',
             message: error.message

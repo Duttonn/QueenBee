@@ -11,7 +11,7 @@ export interface LLMToolCall {
 
 export interface LLMMessage {
   role: LLMRole;
-  content: string | null;
+  content: string | any[] | null;
   name?: string;
   tool_call_id?: string;
   tool_calls?: LLMToolCall[];

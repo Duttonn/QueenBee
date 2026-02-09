@@ -52,61 +52,109 @@ interface ToolCallSequenceProps {
 const ToolCallSequence = ({ toolCalls, socket, activeProject, activeThreadId }: ToolCallSequenceProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   
-  if (toolCalls.length === 0) return null;
+  // 1. Filter out internal "backend" tools that don't need to be shown to the dev
+  const visibleTools = toolCalls.filter(tc => 
+    !['read_memory', 'write_memory', 'plan_tasks', 'add_task', 'claim_task', 'check_status', 'report_completion'].includes(tc.name)
+  );
 
-  // Summarize tools
-  const summary = (() => {
-    const counts: Record<string, number> = {};
-    toolCalls.forEach(tc => {
-      let category = 'Calls';
-      if (['write_file', 'replace', 'apply_patch'].includes(tc.name)) category = 'Edits';
-      else if (['read_file', 'list_directory', 'glob', 'search_file_content'].includes(tc.name)) category = 'Explorations';
-      else if (tc.name === 'run_shell_command') category = 'Commands';
-      
-      counts[category] = (counts[category] || 0) + 1;
-    });
+  if (visibleTools.length === 0) return null;
 
-    return Object.entries(counts)
-      .map(([cat, count]) => `${count} ${cat}`)
-      .join(', ');
-  })();
+  // 2. Consolidate Explorations
+  const explorations = visibleTools.filter(tc => ['read_file', 'list_directory', 'glob', 'search_file_content'].includes(tc.name));
+  const explorationStats = {
+    files: explorations.filter(e => e.name === 'read_file').length,
+    searches: explorations.filter(e => e.name === 'search_file_content').length,
+    lists: explorations.filter(e => ['list_directory', 'glob'].includes(e.name)).length
+  };
 
-  const allSuccess = toolCalls.every(tc => tc.status === 'success');
-  const anyRunning = toolCalls.some(tc => tc.status === 'running');
-  const anyError = toolCalls.some(tc => tc.status === 'error');
-  const anyPending = toolCalls.some(tc => tc.status === 'pending');
+  // 3. Consolidate Edits by File
+  const editTools = visibleTools.filter(tc => ['write_file', 'replace', 'apply_patch'].includes(tc.name));
+  const editsByFile: Record<string, { added: number, removed: number, name: string, type: 'Created' | 'Edited' }> = {};
+  
+  editTools.forEach(tc => {
+    const path = tc.arguments?.path || tc.arguments?.file_path || 'unknown';
+    const fileName = path.split('/').pop() || 'file';
+    const isNew = tc.name === 'write_file' && (!tc.result?.stats || tc.result.stats.removed === 0);
+    
+    if (!editsByFile[path]) {
+      editsByFile[path] = { added: 0, removed: 0, name: fileName, type: isNew ? 'Created' : 'Edited' };
+    }
+    
+    if (tc.result?.stats) {
+      editsByFile[path].added += tc.result.stats.added || 0;
+      editsByFile[path].removed += tc.result.stats.removed || 0;
+    } else if (tc.name === 'write_file') {
+      const lineCount = (tc.arguments?.content || '').split('\n').length;
+      editsByFile[path].added += lineCount;
+    }
+  });
+
+  const anyRunning = visibleTools.some(tc => tc.status === 'running');
+  const anyError = visibleTools.some(tc => tc.status === 'error');
+  const anyPending = visibleTools.some(tc => tc.status === 'pending');
 
   return (
-    <div className="my-2 border border-zinc-100 rounded-2xl overflow-hidden bg-white/50 shadow-sm transition-all hover:border-zinc-200">
-      <button 
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-2 flex items-center justify-between hover:bg-zinc-50 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <div className={`w-6 h-6 rounded-lg flex items-center justify-center border ${
-            anyError ? 'bg-rose-50 border-rose-100 text-rose-500' :
-            anyPending ? 'bg-amber-50 border-amber-100 text-amber-500' :
-            anyRunning ? 'bg-blue-50 border-blue-100 text-blue-500' :
-            'bg-emerald-50 border-emerald-100 text-emerald-500'
-          }`}>
-                          {anyRunning ? <Loader2 size={12} className="animate-spin" /> : 
-                           anyError ? <X size={12} /> :
-                           anyPending ? <Clock size={12} /> :
-                           <Check size={12} />}          </div>
-          <div className="flex flex-col items-start">
-            <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none mb-1">
-              Agent Tools ({toolCalls.length})
+    <div className="my-2 space-y-1">
+      <div className="flex flex-col gap-1">
+        {/* Explorations Summary */}
+        {(explorationStats.files > 0 || explorationStats.searches > 0 || explorationStats.lists > 0) && (
+          <button 
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="flex items-center gap-2 text-[11px] font-medium text-zinc-400 hover:text-zinc-600 transition-colors group/row"
+          >
+            <span>Explored</span>
+            <div className="flex items-center gap-1.5">
+              {explorationStats.files > 0 && <span className="text-zinc-600 font-bold">{explorationStats.files} files</span>}
+              {explorationStats.searches > 0 && (
+                <>
+                  <span className="text-zinc-200">,</span>
+                  <span className="text-zinc-600 font-bold">{explorationStats.searches} searches</span>
+                </>
+              )}
+              {explorationStats.lists > 0 && (
+                <>
+                  <span className="text-zinc-200">,</span>
+                  <span className="text-zinc-600 font-bold">{explorationStats.lists} lists</span>
+                </>
+              )}
+            </div>
+            <ChevronRight size={12} className={`text-zinc-300 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+          </button>
+        )}
+
+        {/* Edits Summary */}
+        {Object.entries(editsByFile).map(([path, stats]) => (
+          <button 
+            key={path}
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="flex items-center gap-2 text-[11px] font-medium text-zinc-400 hover:text-zinc-600 transition-colors group/row"
+          >
+            <span>{stats.type}</span>
+            <span className="text-blue-500 font-bold hover:underline">{stats.name}</span>
+            <div className="flex items-center gap-1.5 ml-1">
+              {stats.added > 0 && <span className="text-emerald-500 font-bold">+{stats.added}</span>}
+              {stats.removed > 0 && <span className="text-rose-500 font-bold">-{stats.removed}</span>}
+            </div>
+            {anyPending && <div className="w-1.5 h-1.5 rounded-full bg-amber-400 ml-1 animate-pulse" />}
+            <ChevronRight size={12} className={`text-zinc-300 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+          </button>
+        ))}
+
+        {/* Other Tools (e.g. Shell) */}
+        {visibleTools.filter(tc => !explorations.includes(tc) && !editTools.includes(tc)).map(tc => (
+          <button 
+            key={tc.id}
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="flex items-center gap-2 text-[11px] font-medium text-zinc-400 hover:text-zinc-600 transition-colors group/row"
+          >
+            <span>Executed</span>
+            <span className="text-zinc-600 font-mono font-bold truncate max-w-[200px]">
+              {tc.arguments?.command || tc.name}
             </span>
-            <span className="text-[11px] font-bold text-zinc-600 truncate max-w-md">
-              {anyRunning ? 'Processing task...' : summary}
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {anyPending && <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[8px] font-black uppercase tracking-widest animate-pulse">Needs Approval</span>}
-          <ChevronRight size={14} className={`text-zinc-300 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-        </div>
-      </button>
+            <ChevronRight size={12} className={`text-zinc-300 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+          </button>
+        ))}
+      </div>
 
       <AnimatePresence>
         {isExpanded && (
@@ -114,10 +162,10 @@ const ToolCallSequence = ({ toolCalls, socket, activeProject, activeThreadId }: 
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="border-t border-zinc-100 bg-white"
+            className="overflow-hidden"
           >
-            <div className="p-2 space-y-1">
-              {toolCalls.map((tool, tIdx) => (
+            <div className="mt-2 p-2 border border-zinc-100 rounded-2xl bg-zinc-50/30 space-y-1">
+              {visibleTools.map((tool, tIdx) => (
                 <ToolCallViewer
                   key={tool.id || tIdx}
                   toolName={tool.name}
@@ -185,56 +233,97 @@ interface AgenticWorkbenchProps {
   onViewChange: (view: 'code' | 'chat' | 'plan') => void;
 }
 
-const MemoizedMarkdown = React.memo(({ content }: { content: string }) => (
-  <ReactMarkdown
-    remarkPlugins={[remarkGfm]}
-    rehypePlugins={[rehypeHighlight]}
-    components={{
-      code({ node, inline, className, children, ...props }: any) {
-        const match = /language-(\w+)/.exec(className || '');
-        return !inline && match ? (
-          <div className="relative group my-4">
-            <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-              <button
-                onClick={() => navigator.clipboard.writeText(String(children).replace(/\n$/, ''))}
-                className="p-1.5 bg-white hover:bg-zinc-50 text-zinc-400 hover:text-zinc-900 rounded-md transition-all border border-zinc-200 shadow-sm"
-                title="Copy code"
-              >
-                <Copy size={14} />
-              </button>
+  const MemoizedMarkdown = React.memo(({ content }: { content: string }) => (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeHighlight]}
+      components={{
+        code({ node, inline, className, children, ...props }: any) {
+          const match = /language-(\w+)/.exec(className || '');
+          return !inline && match ? (
+            <div className="relative group my-4">
+              <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                <button
+                  onClick={() => navigator.clipboard.writeText(String(children).replace(/\n$/, ''))}
+                  className="p-1.5 bg-white hover:bg-zinc-50 text-zinc-400 hover:text-zinc-900 rounded-md transition-all border border-zinc-200 shadow-sm"
+                  title="Copy code"
+                >
+                  <Copy size={14} />
+                </button>
+              </div>
+              <pre className={`${className} !bg-zinc-50/50 !m-0 !rounded-2xl !p-5 border border-zinc-200 shadow-sm overflow-x-auto`}>
+                <code {...props} className={`${className} !text-zinc-800`}>
+                  {children}
+                </code>
+              </pre>
             </div>
-            <pre className={`${className} !bg-zinc-50/50 !m-0 !rounded-2xl !p-5 border border-zinc-200 shadow-sm overflow-x-auto`}>
-              <code {...props} className={`${className} !text-zinc-800`}>
-                {children}
-              </code>
-            </pre>
-          </div>
-        ) : (
-          <code {...props} className={`${className} px-1.5 py-0.5 bg-zinc-100 text-zinc-800 rounded-md font-mono text-[0.9em]`}>
+          ) : (
+            <code {...props} className={`${className} px-1.5 py-0.5 bg-zinc-100 text-zinc-800 rounded-md font-mono text-[0.9em]`}>
+              {children}
+            </code>
+          );
+        },
+        p: ({ children }) => <p className="mb-4 last:mb-0 leading-relaxed">{children}</p>,
+        ul: ({ children }) => <ul className="mb-4 space-y-2 list-disc pl-5">{children}</ul>,
+        ol: ({ children }) => <ol className="mb-4 space-y-2 list-decimal pl-5">{children}</ol>,
+        li: ({ children }) => <li className="text-zinc-700">{children}</li>,
+        h1: ({ children }) => <h1 className="text-xl font-bold mb-4 text-zinc-900">{children}</h1>,
+        h2: ({ children }) => <h2 className="text-lg font-bold mb-3 text-zinc-900">{children}</h2>,
+        h3: ({ children }) => <h3 className="text-md font-bold mb-2 text-zinc-900">{children}</h3>,
+        blockquote: ({ children }) => (
+          <blockquote className="border-l-4 border-zinc-200 pl-4 italic text-zinc-600 my-4">
             {children}
-          </code>
-        );
-      },
-      p: ({ children }) => <p className="mb-4 last:mb-0 leading-relaxed">{children}</p>,
-      ul: ({ children }) => <ul className="mb-4 space-y-2 list-disc pl-5">{children}</ul>,
-      ol: ({ children }) => <ol className="mb-4 space-y-2 list-decimal pl-5">{children}</ol>,
-      li: ({ children }) => <li className="text-zinc-700">{children}</li>,
-      h1: ({ children }) => <h1 className="text-xl font-bold mb-4 text-zinc-900">{children}</h1>,
-      h2: ({ children }) => <h2 className="text-lg font-bold mb-3 text-zinc-900">{children}</h2>,
-      h3: ({ children }) => <h3 className="text-md font-bold mb-2 text-zinc-900">{children}</h3>,
-      blockquote: ({ children }) => (
-        <blockquote className="border-l-4 border-zinc-200 pl-4 italic text-zinc-600 my-4">
-          {children}
-        </blockquote>
-      ),
-    }}
-  >
-    {content}
-  </ReactMarkdown>
-));
+          </blockquote>
+        ),
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  ));
 
-const AgenticWorkbench = ({
-  messages,
+  const MessageContent = ({ content, isAssistant }: { content: string | any[], isAssistant?: boolean }) => {
+    if (typeof content === 'string') {
+      if (!isAssistant) return <p className="text-sm text-zinc-800 whitespace-pre-wrap leading-relaxed">{content}</p>;
+      return (
+        <div className="text-sm text-zinc-800 prose prose-sm max-w-none prose-zinc prose-pre:p-0 prose-pre:bg-transparent">
+          <MemoizedMarkdown
+            content={content
+              .replace(/```thinking[\s\S]*?```/g, '')
+              .replace(/Called \w+ → Success\n?/g, '')
+              .trim()}
+          />
+        </div>
+      );
+    }
+
+    if (Array.isArray(content)) {
+      return (
+        <div className="space-y-3">
+          {content.map((part, idx) => {
+            if (part.type === 'text') {
+              return <MessageContent key={idx} content={part.text} isAssistant={isAssistant} />;
+            }
+            if (part.type === 'image_url') {
+              return (
+                <div key={idx} className="relative max-w-sm rounded-xl overflow-hidden border border-zinc-200 shadow-sm bg-white mt-2">
+                  <img 
+                    src={part.image_url.url} 
+                    alt="User upload" 
+                    className="w-full h-auto object-contain max-h-[300px]"
+                  />
+                </div>
+              );
+            }
+            return null;
+          })}
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  const AgenticWorkbench = ({  messages,
   isLoading,
   streamError,
   onClearError,
@@ -386,81 +475,87 @@ const AgenticWorkbench = ({
                             (prevMsg?.role === 'assistant' || prevMsg?.role === 'tool');
 
           return (
-          <div key={index} className={isGrouped ? '-mt-2' : ''}>
-            {msg.role === 'user' && (
-              <div className="flex gap-3">
-                <div className="w-7 h-7 rounded-full bg-zinc-100 flex items-center justify-center flex-shrink-0 border border-zinc-200 shadow-sm">
-                  <User size={14} className="text-zinc-600" />
-                </div>
-                <div className="flex-1 bg-zinc-50 border border-zinc-100 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
-                  <p className="text-sm text-zinc-800 whitespace-pre-wrap">{msg.content || ''}</p>
-                </div>
-              </div>
-            )}
-
+          <div key={index} className={isGrouped ? '-mt-4' : 'mt-4 first:mt-0'}>
+                          {msg.role === 'user' && (
+                            <div className="flex gap-3">
+                              <div className="w-7 h-7 rounded-full bg-zinc-100 flex items-center justify-center flex-shrink-0 border border-zinc-200 shadow-sm mt-1">
+                                <User size={14} className="text-zinc-600" />
+                              </div>
+                              <div className="flex-1 bg-zinc-50 border border-zinc-100 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm overflow-hidden">
+                                <MessageContent content={msg.content || ''} />
+                              </div>
+                            </div>
+                          )}
             {msg.role === 'assistant' && (
               <div className="flex gap-3">
-                <div className="w-7 h-7 flex-shrink-0">
+                <div className="w-7 h-7 flex-shrink-0 flex flex-col items-center">
                   {!isGrouped && (
-                    <div className="w-7 h-7 rounded-full bg-zinc-900 flex items-center justify-center group relative shadow-lg shadow-black/20">
-                      <Bot size={14} className="text-white" />
-                      {isLoading && index === messages.length - 1 && (
-                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-white animate-pulse" />
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0 space-y-2 group/msg">
-                  {!isGrouped && (
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Assistant</span>
-                        {((msg.content?.includes('```thinking')) || (isLoading && index === messages.length - 1 && queenStatus === 'thinking')) && (
-                          <button
-                            onClick={() => toggleThinking(index)}
-                            className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-[10px] font-bold text-blue-600 hover:bg-blue-100 transition-colors border border-blue-100"
-                          >
-                            <Sparkles size={10} className={isLoading && index === messages.length - 1 ? "animate-spin" : ""} />
-                            <span>{isLoading && index === messages.length - 1 && !msg.content?.includes('```thinking') ? 'Pondering...' : 'View Thoughts'}</span>
-                            {expandedThinking[index] ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                          </button>
+                    <>
+                      <div className="w-7 h-7 rounded-full bg-zinc-900 flex items-center justify-center group relative shadow-lg shadow-black/20 mt-1">
+                        <Bot size={14} className="text-white" />
+                        {isLoading && index === messages.length - 1 && (
+                          <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-white animate-pulse" />
                         )}
                       </div>
-
-                      {msg.content && (
-                          <button 
-                            onClick={() => handleCopyMessage(msg.content, index)}
-                            className="opacity-0 group-hover/msg:opacity-100 flex items-center gap-1.5 px-2 py-0.5 rounded-lg hover:bg-zinc-100 text-zinc-400 hover:text-zinc-900 transition-all"
-                          >
-                            {copiedIndex === index ? (
-                                <>
-                                    <Check size={10} className="text-emerald-500" />
-                                    <span className="text-[9px] font-black uppercase text-emerald-600 tracking-widest">Copied</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Copy size={10} />
-                                    <span className="text-[9px] font-black uppercase tracking-widest">Copy Response</span>
-                                </>
-                            )}
-                          </button>
+                      {/* Vertical line connector for groups */}
+                      {(messages[index+1]?.role === 'assistant' || messages[index+1]?.role === 'tool') && (
+                         <div className="w-px h-full bg-zinc-200 my-1 opacity-50" />
                       )}
-                    </div>
+                    </>
                   )}
-
+                  {isGrouped && (
+                      <div className="w-px h-full bg-zinc-200 opacity-50" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0 space-y-2 group/msg pt-1">
+                                      {!isGrouped && (
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Assistant</span>
+                                            {((typeof msg.content === 'string' && msg.content?.includes('```thinking')) || (isLoading && index === messages.length - 1 && queenStatus === 'thinking')) && (
+                                              <button
+                                                onClick={() => toggleThinking(index)}
+                                                className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-[10px] font-bold text-blue-600 hover:bg-blue-100 transition-colors border border-blue-100"
+                                              >
+                                                <Sparkles size={10} className={isLoading && index === messages.length - 1 ? "animate-spin" : ""} />
+                                                <span>{isLoading && index === messages.length - 1 && (typeof msg.content !== 'string' || !msg.content?.includes('```thinking')) ? 'Pondering...' : 'View Thoughts'}</span>
+                                                {expandedThinking[index] ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                                              </button>
+                                            )}
+                                          </div>
+                  
+                                          {msg.content && typeof msg.content === 'string' && (
+                                              <button 
+                                                onClick={() => handleCopyMessage(msg.content as string, index)}
+                                                className="opacity-0 group-hover/msg:opacity-100 flex items-center gap-1.5 px-2 py-0.5 rounded-lg hover:bg-zinc-100 text-zinc-400 hover:text-zinc-900 transition-all"
+                                              >
+                                                {copiedIndex === index ? (
+                                                    <>
+                                                        <Check size={10} className="text-emerald-500" />
+                                                        <span className="text-[9px] font-black uppercase text-emerald-600 tracking-widest">Copied</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Copy size={10} />
+                                                        <span className="text-[9px] font-black uppercase tracking-widest">Copy Response</span>
+                                                    </>
+                                                )}
+                                              </button>
+                                          )}
+                                        </div>
+                                      )}
                   <AnimatePresence>
                     {(expandedThinking[index] || (isLoading && index === messages.length - 1 && queenStatus === 'thinking' && !msg.content && !isGrouped)) && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden"
-                      >
-                        <div className="pl-4 border-l-2 border-blue-200 bg-blue-50/30 py-2 my-1 rounded-r-lg space-y-1">
-                          {msg.content?.includes('```thinking') ? (
-                            msg.content
-                              .match(/```thinking\n([\s\S]*?)```/)?.[1]
-                              ?.split('\n')
+                                              <motion.div
+                                                initial={{ height: 0, opacity: 0 }}
+                                                animate={{ height: 'auto', opacity: 1 }}
+                                                exit={{ height: 0, opacity: 0 }}
+                                                className="overflow-hidden"
+                                              >
+                                                <div className="pl-4 border-l-2 border-blue-200 bg-blue-50/30 py-2 my-1 rounded-r-lg space-y-1">
+                                                  {typeof msg.content === 'string' && msg.content?.includes('```thinking') ? (
+                                                    msg.content
+                                                      .match(/```thinking\n([\s\S]*?)```/)?.[1]                              ?.split('\n')
                               .filter(Boolean)
                               .map((line, i) => (
                                 <p key={i} className="text-[11px] text-blue-700/70 font-mono leading-relaxed">{line}</p>
@@ -485,25 +580,20 @@ const AgenticWorkbench = ({
                     />
                   )}
 
-                  {msg.content ? (
-                    <div className="text-sm text-zinc-800 prose prose-sm max-w-none prose-zinc prose-pre:p-0 prose-pre:bg-transparent">
-                      <MemoizedMarkdown
-                        content={msg.content
-                          .replace(/```thinking[\s\S]*?```/g, '')
-                          .replace(/Called \w+ → Success\n?/g, '')
-                          .trim()}
-                      />
-                      {isLoading && index === messages.length - 1 && (
-                        <motion.span
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: [0, 1, 0] }}
-                          transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
-                          className="inline-block w-1.5 h-4 bg-blue-500 ml-1 align-middle"
-                        />
-                      )}
-
-                      {/* P6-09: Inline Review changes link */}
-                      {!isLoading && msg.role === 'assistant' && msg.toolCalls?.some(tc => 
+                                      {msg.content ? (
+                                        <div className="relative group/content">
+                                          <MessageContent content={msg.content} isAssistant />
+                                          
+                                          {isLoading && index === messages.length - 1 && (
+                                            <motion.span
+                                              initial={{ opacity: 0 }}
+                                              animate={{ opacity: [0, 1, 0] }}
+                                              transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
+                                              className="absolute bottom-1 inline-block w-1.5 h-4 bg-blue-500 ml-1 align-middle"
+                                            />
+                                          )}
+                  
+                                          {/* P6-09: Inline Review changes link */}                      {!isLoading && msg.role === 'assistant' && msg.toolCalls?.some(tc => 
                         ['write_file', 'replace', 'apply_patch', 'delete_file'].includes(tc.name) && tc.status === 'success'
                       ) && (
                         <motion.div 
@@ -541,23 +631,17 @@ const AgenticWorkbench = ({
                     ) : null
                   )}
 
-                  {msg.content?.startsWith('Error:') && (
-                    <div className="flex items-center gap-2 text-red-500 text-xs mt-2">
-                      <AlertCircle size={12} />
-                      <span>Request failed</span>
-                    </div>
-                  )}
-                </div>
+                                      {typeof msg.content === 'string' && msg.content?.startsWith('Error:') && (
+                                        <div className="flex items-center gap-2 text-red-500 text-xs mt-2">
+                                          <AlertCircle size={12} />
+                                          <span>Request failed</span>
+                                        </div>
+                                      )}                </div>
               </div>
             )}
 
             {msg.role === 'tool' && (
-              <div className="flex justify-center my-2">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-50 border border-zinc-100 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-                  <Check size={12} className="text-emerald-500" />
-                  <span>Observation Processed</span>
-                </div>
-              </div>
+              <div className="hidden" />
             )}
 
             {msg.role === 'system' && (
@@ -602,19 +686,21 @@ const AgenticWorkbench = ({
                   >
                     <X size={16} />
                   </button>
-                  <button
-                    onClick={() => {
-                      const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
-                      if (lastUserMsg) {
-                        onClearError?.();
-                        onSendMessage(lastUserMsg.content);
-                      }
-                    }}
-                    className="px-4 py-2 bg-zinc-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-zinc-800 transition-all shadow-lg active:scale-95"
-                  >
-                    Retry
-                  </button>
-                </div>
+                                      <button
+                                        onClick={() => {
+                                          const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+                                          if (lastUserMsg) {
+                                            onClearError?.();
+                                            const content = typeof lastUserMsg.content === 'string' 
+                                              ? lastUserMsg.content 
+                                              : lastUserMsg.content.filter((p: any) => p.type === 'text').map((p: any) => p.text).join(' ');
+                                            onSendMessage(content);
+                                          }
+                                        }}
+                                        className="px-4 py-2 bg-zinc-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-zinc-800 transition-all shadow-lg active:scale-95"
+                                      >
+                                        Retry
+                                      </button>                </div>
               </div>
             </motion.div>
           )}
