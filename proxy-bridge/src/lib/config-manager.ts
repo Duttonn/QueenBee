@@ -64,9 +64,24 @@ export class ConfigManager {
             if (!await fs.pathExists(CONFIG_FILE)) {
                 // Initialize with user provided default
                 const initial: QueenBeeConfig = {
-                    name: "visionOS Expert",
+                    name: "Queen Bee Gemini",
                     version: "1.0.0",
                     models: [
+                        {
+                            name: "Gemini 2.5 Flash Lite",
+                            provider: "gemini",
+                            model: "gemini-2.5-flash-lite",
+                            roles: ["chat", "edit", "apply"],
+                            capabilities: ["tool_use"],
+                            systemMessage: `You are an autonomous development agent part of the Queen Bee swarm.
+You follow the "Think -> Act -> Observe" loop to solve tasks.
+Always prioritize consistency and follow project conventions.`,
+                            defaultCompletionOptions: {
+                                contextLength: 1000000,
+                                temperature: 0.7,
+                                maxTokens: 8192
+                            }
+                        },
                         {
                             name: "visionOS Expert",
                             provider: "openai",
