@@ -4,14 +4,16 @@ import sys
 import os
 import re
 
-def get_git_diff(project_path, file_path=None):
+def get_git_diff(project_path, file_path=None, cached=False):
     try:
         # Check if HEAD exists
         has_head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=project_path, capture_output=True).returncode == 0
         
-        diff_base = ["HEAD"] if has_head else []
+        diff_base = ["HEAD"] if has_head and not cached else []
+        if cached:
+            diff_base = ["--cached"]
 
-        # Get overall stats first: git diff HEAD --numstat
+        # Get overall stats first: git diff --numstat [HEAD|--cached]
         stat_cmd = ["git", "diff", "--numstat"] + diff_base
         if file_path:
             stat_cmd.append(file_path)
@@ -37,7 +39,7 @@ def get_git_diff(project_path, file_path=None):
             total_added += added
             total_removed += removed
 
-        # Get actual hunks: git diff HEAD --unified=3
+        # Get actual hunks: git diff --unified=3 [HEAD|--cached]
         diff_cmd = ["git", "diff", "--unified=3"] + diff_base
         if file_path:
             diff_cmd.append(file_path)
@@ -45,8 +47,8 @@ def get_git_diff(project_path, file_path=None):
         result = subprocess.run(diff_cmd, cwd=project_path, capture_output=True, text=True, check=True)
         diff_output = result.stdout
 
-        # --- Handle Untracked Files ---
-        if not file_path:
+        # --- Handle Untracked Files (Only if not cached) ---
+        if not file_path and not cached:
             untracked_cmd = ["git", "ls-files", "--others", "--exclude-standard"]
             untracked_result = subprocess.run(untracked_cmd, cwd=project_path, capture_output=True, text=True, check=True)
             for untracked_file in untracked_result.stdout.splitlines():
@@ -150,12 +152,37 @@ def get_git_diff(project_path, file_path=None):
         }
 
 if __name__ == "__main__":
+
     if len(sys.argv) < 2:
-        print(json.dumps({"status": "error", "message": "Usage: python git_diff_extractor.py <project_path> [file_path]"}))
+
+        print(json.dumps({"status": "error", "message": "Usage: python git_diff_extractor.py <project_path> [file_path] [--cached]"}))
+
         sys.exit(1)
+
     
+
     project_path = sys.argv[1]
-    file_path = sys.argv[2] if len(sys.argv) > 2 else None
+
+    file_path = None
+
+    cached = False
+
+
+
+    if len(sys.argv) > 2:
+
+        for arg in sys.argv[2:]:
+
+            if arg == "--cached":
+
+                cached = True
+
+            elif not file_path:
+
+                file_path = arg
+
     
-    diff_data = get_git_diff(project_path, file_path)
+
+    diff_data = get_git_diff(project_path, file_path, cached)
+
     print(json.dumps(diff_data))

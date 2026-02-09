@@ -213,22 +213,25 @@ const DiffViewer = ({ projectPath, filePath: initialFilePath, onStartThread, onC
 
   const toggleStage = async (path: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    const newStaged = new Set(stagedFiles);
-    if (newStaged.has(path)) {
-      newStaged.delete(path);
-    } else {
-      newStaged.add(path);
-    }
-    setStagedFiles(newStaged);
+    const isStaging = !stagedFiles.has(path);
     
     try {
-        await fetch(`${API_BASE}/api/git/stage`, {
+        const endpoint = isStaging ? '/api/git/stage' : '/api/git/unstage';
+        const res = await fetch(`${API_BASE}${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path: projectPath, file: path })
         });
+
+        if (res.ok) {
+            const newStaged = new Set(stagedFiles);
+            if (isStaging) newStaged.add(path);
+            else newStaged.delete(path);
+            setStagedFiles(newStaged);
+            fetchDiff(); // Refresh diff to show updated state
+        }
     } catch (err) {
-        console.error("Failed to stage", err);
+        console.error("Failed to toggle stage", err);
     }
   };
 

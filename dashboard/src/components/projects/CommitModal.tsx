@@ -16,8 +16,10 @@ const CommitModal = ({ isOpen, onClose, projectPath, onCommitSuccess }: CommitMo
   const [stage, setStage] = useState<'draft' | 'committing' | 'pushing' | 'pr' | 'success'>('draft');
   const [stats, setStats] = useState({ files: 0, added: 0, removed: 0 });
   const [files, setFiles] = useState<any[]>([]);
+  const [stagedFilesInfo, setStagedFilesInfo] = useState<any[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [currentBranch, setCurrentBranch] = useState('main');
+  const [commitStagedOnly, setCommitStagedOnly] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -27,39 +29,46 @@ const CommitModal = ({ isOpen, onClose, projectPath, onCommitSuccess }: CommitMo
         .then(data => setCurrentBranch(data.current || 'main'))
         .catch(console.error);
 
-      // Fetch diff stats and files
-      fetch(`${API_BASE}/api/git/diff?projectPath=${encodeURIComponent(projectPath)}`)
-        .then(res => res.json())
-        .then(async (data) => {
+      // Fetch all changes (staged + unstaged)
+      getGitDiff(projectPath)
+        .then(data => {
           if (data.status === 'success') {
+            setFiles(data.files);
+          }
+        })
+        .catch(console.error);
+
+      // Fetch ONLY staged changes
+      getGitDiff(projectPath, undefined, true)
+        .then(data => {
+          if (data.status === 'success') {
+            setStagedFilesInfo(data.files);
             setStats({
               files: data.files.length,
               added: data.added,
               removed: data.removed
             });
-            setFiles(data.files);
             
-            // Fetch actual staged files from git status
-            try {
-                const statusRes = await fetch(`${API_BASE}/api/git/status?path=${encodeURIComponent(projectPath)}`);
-                const statusData = await statusRes.json();
-                
-                if (statusData.staged && statusData.staged.length > 0) {
-                    // Pre-select files that are already staged in git index
-                    setSelectedFiles(new Set(statusData.staged));
-                } else {
-                    // Default to empty selection (User Preference)
-                    setSelectedFiles(new Set());
-                }
-            } catch (e) {
-                console.error("Failed to fetch staged status, defaulting to empty", e);
-                setSelectedFiles(new Set());
+            if (data.files.length > 0) {
+                setCommitStagedOnly(true);
             }
+
+            // Pre-select files that have staged changes
+            setSelectedFiles(new Set(data.files.map(f => f.path)));
           }
         })
         .catch(console.error);
     }
   }, [isOpen, projectPath]);
+
+  useEffect(() => {
+    const dataToUse = commitStagedOnly ? stagedFilesInfo : files.filter(f => selectedFiles.has(f.path));
+    setStats({
+        files: dataToUse.length,
+        added: dataToUse.reduce((acc, f) => acc + f.stats.added, 0),
+        removed: dataToUse.reduce((acc, f) => acc + f.stats.removed, 0)
+    });
+  }, [commitStagedOnly, selectedFiles, files, stagedFilesInfo]);
 
   const toggleFile = (path: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -128,6 +137,7 @@ const CommitModal = ({ isOpen, onClose, projectPath, onCommitSuccess }: CommitMo
           path: projectPath, 
           message: message || `chore: update ${selectedFiles.size} files`,
           files: Array.from(selectedFiles),
+          onlyStaged: commitStagedOnly,
           push: action === 'push' || action === 'pr'
         })
       });
@@ -211,12 +221,21 @@ const CommitModal = ({ isOpen, onClose, projectPath, onCommitSuccess }: CommitMo
           <div className="space-y-3">
             <div className="flex items-center justify-between">
                 <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Staged Files</label>
-                <button 
-                    onClick={toggleAll}
-                    className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:text-blue-700 transition-colors bg-blue-50 px-2 py-1 rounded-md border border-blue-100"
-                >
-                    {selectedFiles.size === files.length ? 'Unselect All' : 'Select All'}
-                </button>
+                <div className="flex items-center gap-2">
+                    <button 
+                        onClick={() => setCommitStagedOnly(!commitStagedOnly)}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all text-[9px] font-black uppercase tracking-widest ${commitStagedOnly ? 'bg-emerald-50 border-emerald-200 text-emerald-700 shadow-sm' : 'bg-white border-zinc-200 text-zinc-400 hover:border-zinc-300'}`}
+                    >
+                        <CheckSquare size={12} className={commitStagedOnly ? 'text-emerald-600' : 'text-zinc-300'} />
+                        Commit Staged Only
+                    </button>
+                    <button 
+                        onClick={toggleAll}
+                        className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:text-blue-700 transition-colors bg-blue-50 px-2 py-1 rounded-md border border-blue-100"
+                    >
+                        {selectedFiles.size === files.length ? 'Unselect All' : 'Select All'}
+                    </button>
+                </div>
             </div>
             
             <div className="bg-white border border-zinc-200 rounded-2xl overflow-hidden shadow-sm">
@@ -237,14 +256,27 @@ const CommitModal = ({ isOpen, onClose, projectPath, onCommitSuccess }: CommitMo
                                 </div>
                                 <File size={14} className={selectedFiles.has(file.path) ? 'text-blue-500' : 'text-zinc-400'} />
                                 <div className="flex-1 min-w-0">
-                                    <div className={`text-[11px] font-bold truncate ${selectedFiles.has(file.path) ? 'text-zinc-900' : 'text-zinc-600'}`}>
-                                        {file.path.split('/').pop()}
+                                    <div className="flex items-center gap-2">
+                                        <div className={`text-[11px] font-bold truncate ${selectedFiles.has(file.path) ? 'text-zinc-900' : 'text-zinc-600'}`}>
+                                            {file.path.split('/').pop()}
+                                        </div>
+                                        {stagedFilesInfo.some(sf => sf.path === file.path) && (
+                                            <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[8px] font-black rounded uppercase tracking-tighter">Staged</span>
+                                        )}
                                     </div>
                                     <div className="text-[9px] text-zinc-400 truncate font-medium">{file.path}</div>
                                 </div>
                                 <div className="text-[10px] font-mono font-black flex gap-2">
-                                    <span className="text-emerald-600">+{file.stats.added}</span>
-                                    <span className="text-rose-600">-{file.stats.removed}</span>
+                                    {(() => {
+                                        const stagedInfo = stagedFilesInfo.find(sf => sf.path === file.path);
+                                        const stats = (commitStagedOnly && stagedInfo) ? stagedInfo.stats : file.stats;
+                                        return (
+                                            <>
+                                                <span className="text-emerald-600">+{stats.added}</span>
+                                                <span className="text-rose-600">-{stats.removed}</span>
+                                            </>
+                                        );
+                                    })()}
                                 </div>
                             </div>
                         ))
