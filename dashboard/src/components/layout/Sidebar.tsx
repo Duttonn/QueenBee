@@ -119,7 +119,7 @@ const ProjectPicker = ({
 const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, selectedProjectId, onProjectSelect, onAddProject }: SidebarProps) => {
   const { projects, addProject, activeThreadId, setActiveThread } = useHiveStore();
   const { forges, user } = useAuthStore();
-  const gitForge = forges.find(f => f.id === 'github');
+  const connectedForges = forges.filter(f => f.connected);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [isAddRepoOpen, setIsAddRepoOpen] = useState(false);
   const [isCloning, setIsCloning] = useState<string | null>(null);
