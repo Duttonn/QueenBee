@@ -4,11 +4,11 @@ import { Inbox, Trash2, Wrench, Clock, AlertTriangle, CheckCircle } from 'lucide
 
 interface InboxItem {
   id: string;
-  type: 'gsd_scan' | 'security_audit' | 'perf_test' | 'automation';
+  agentId: string;
   title: string;
-  description: string;
-  severity: 'low' | 'medium' | 'high';
-  status: 'pending' | 'fixing' | 'archived';
+  content: string;
+  severity?: 'low' | 'medium' | 'high';
+  status: 'unread' | 'fixing' | 'archived';
   timestamp: string;
 }
 
@@ -49,84 +49,100 @@ const InboxPanel = () => {
     }
   };
 
-  const getIcon = (type: string) => {
-    switch (type) {
-      case 'security_audit': return <AlertTriangle size={14} className="text-red-400" />;
-      case 'perf_test': return <Clock size={14} className="text-amber-400" />;
-      default: return <Inbox size={14} className="text-blue-400" />;
-    }
+  const getIcon = (agentId: string) => {
+    if (agentId.includes('Security')) return <AlertTriangle size={14} className="text-red-400" />;
+    if (agentId.includes('Performance')) return <Clock size={14} className="text-amber-400" />;
+    return <Inbox size={14} className="text-blue-400" />;
   };
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      <div className="p-4 border-b border-zinc-100 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Inbox size={16} className="text-zinc-400" />
-          <h2 className="text-xs font-bold text-zinc-900 uppercase tracking-[0.2em]">Triage Inbox</h2>
+    <div className="flex-1 flex flex-col h-full w-full bg-white">
+      <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-white z-10">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-zinc-900 flex items-center justify-center shadow-lg shadow-black/20">
+            <Inbox size={20} className="text-white" />
+          </div>
+          <div>
+            <h2 className="text-lg font-black text-zinc-900 uppercase tracking-tight">Triage Inbox</h2>
+            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Autonomous Findings & Actions</p>
+          </div>
         </div>
-        <span className="px-2 py-0.5 rounded-full bg-zinc-100 text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
-          {items.length} findings
-        </span>
+        <div className="flex items-center gap-4">
+            <div className="flex flex-col items-end">
+                <span className="text-xs font-black text-zinc-900">{items.length}</span>
+                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Active Findings</span>
+            </div>
+            <button 
+                onClick={fetchInbox}
+                className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-400 hover:text-zinc-900 transition-all"
+            >
+                <Clock size={18} />
+            </button>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-2 bg-zinc-50/30">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="w-5 h-5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-          </div>
-        ) : items.length === 0 ? (
-          <div className="text-center py-12">
-            <CheckCircle size={32} className="mx-auto mb-3 text-zinc-200" />
-            <p className="text-xs text-zinc-500 font-medium">All clear! No findings to triage.</p>
-          </div>
-        ) : (
-          <AnimatePresence>
-            {items.map((item) => (
-              <motion.div
-                key={item.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="group p-4 rounded-2xl bg-white border border-zinc-200 hover:border-zinc-300 hover:shadow-sm transition-all"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="mt-0.5 p-2 rounded-xl bg-zinc-50 border border-zinc-100">
-                    {getIcon(item.type)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <h3 className="text-xs font-bold text-zinc-900 truncate">{item.title}</h3>
-                      <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-lg border ${item.severity === 'high' ? 'bg-red-50 text-red-600 border-red-100' :
-                        item.severity === 'medium' ? 'bg-amber-50 text-amber-600 border-amber-100' :
-                          'bg-blue-50 text-blue-600 border-blue-100'
-                        }`}>
-                        {item.severity}
-                      </span>
+      <div className="flex-1 overflow-y-auto p-8 bg-zinc-50/30">
+        <div className="max-w-5xl mx-auto">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-24">
+              <Loader2 size={32} className="animate-spin text-blue-500 mb-4" />
+              <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Scanning for findings...</p>
+            </div>
+          ) : items.length === 0 ? (
+            <div className="text-center py-24 bg-white rounded-3xl border border-zinc-200 border-dashed">
+              <CheckCircle size={48} className="mx-auto mb-4 text-emerald-500" />
+              <h3 className="text-xl font-black text-zinc-900 uppercase tracking-tight">All Clear</h3>
+              <p className="text-sm font-bold text-zinc-400 mt-1 uppercase tracking-widest">No findings to triage at this moment.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <AnimatePresence>
+                {items.map((item) => (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="group p-6 rounded-3xl bg-white border border-zinc-200 hover:border-blue-200 hover:shadow-xl hover:shadow-blue-500/5 transition-all"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 rounded-2xl bg-zinc-50 border border-zinc-100 group-hover:bg-blue-50 group-hover:border-blue-100 transition-colors">
+                        {getIcon(item.agentId)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{item.agentId}</span>
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                            {new Date(item.timestamp).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <h3 className="text-base font-black text-zinc-900 mb-2 tracking-tight">{item.title}</h3>
+                        <p className="text-sm text-zinc-500 leading-relaxed mb-6">
+                          {item.content}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleAction(item.id, 'fix')}
+                            className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white text-[11px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-black/10 active:scale-95"
+                          >
+                            <Wrench size={14} /> Fix with Agent
+                          </button>
+                          <button
+                            onClick={() => handleAction(item.id, 'archive')}
+                            className="px-4 py-2.5 bg-white border border-zinc-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-100 text-zinc-400 rounded-xl transition-all active:scale-95"
+                            title="Dismiss"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-[11px] text-zinc-500 leading-relaxed line-clamp-2 mb-4">
-                      {item.description}
-                    </p>
-                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => handleAction(item.id, 'fix')}
-                        className="flex-1 py-2 bg-zinc-900 hover:bg-zinc-800 text-white text-[10px] font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-black/10 active:scale-95"
-                      >
-                        <Wrench size={12} /> Fix this
-                      </button>
-                      <button
-                        onClick={() => handleAction(item.id, 'archive')}
-                        className="p-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-500 hover:text-zinc-700 rounded-xl transition-all"
-                        title="Archive"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        )}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
