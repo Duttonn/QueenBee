@@ -25,7 +25,7 @@ import {
   Wrench
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAppStore } from '../../store/useAppStore';
+import { useAppStore, type Automation } from '../../store/useAppStore';
 import { useHiveStore } from '../../store/useHiveStore';
 
 const DAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'] as const;
@@ -35,20 +35,94 @@ interface AutomationTemplate {
   icon: React.ReactNode;
   title: string;
   description: string;
+  type: Automation['type'];
   schedule: string;
   days: string[];
+  script: string;
 }
 
 const TEMPLATES: AutomationTemplate[] = [
-  { icon: <ScanSearch className="text-blue-500" size={22} />, title: 'GSD Scan', description: 'Run GSD progress check every morning', schedule: '09:00', days: ['Mo','Tu','We','Th','Fr'] },
-  { icon: <RefreshCw className="text-teal-500" size={22} />, title: 'Sync Repos', description: 'Sync all repos every hour', schedule: '00:00', days: ['Mo','Tu','We','Th','Fr','Sa','Su'] },
-  { icon: <GitPullRequest className="text-pink-500" size={22} />, title: 'PR Review', description: 'Review new PRs on push', schedule: '08:00', days: ['Mo','Tu','We','Th','Fr'] },
-  { icon: <FileText className="text-purple-500" size={22} />, title: 'Changelog', description: 'Generate changelog weekly', schedule: '10:00', days: ['Fr'] },
-  { icon: <Database className="text-amber-500" size={22} />, title: 'Data Gen', description: 'Generate test data nightly', schedule: '02:00', days: ['Mo','Tu','We','Th','Fr'] },
-  { icon: <MonitorCheck className="text-green-500" size={22} />, title: 'CI Monitor', description: 'Watch CI pipeline status', schedule: '00:00', days: ['Mo','Tu','We','Th','Fr','Sa','Su'] },
-  { icon: <Tag className="text-orange-500" size={22} />, title: 'Release Notes', description: 'Draft release notes on tag', schedule: '09:00', days: ['Mo','We','Fr'] },
-  { icon: <TestTube2 className="text-cyan-500" size={22} />, title: 'Test Nightly', description: 'Run full test suite nightly', schedule: '03:00', days: ['Mo','Tu','We','Th','Fr'] },
-  { icon: <Wrench className="text-zinc-500" size={22} />, title: 'Maintenance', description: 'Dependency update check weekly', schedule: '08:00', days: ['Mo'] },
+  { 
+    icon: <ScanSearch className="text-blue-500" size={22} />, 
+    title: 'GSD Scan', 
+    description: 'Run GSD progress check every morning', 
+    type: 'GSD_SCAN',
+    schedule: '09:00', 
+    days: ['Mo','Tu','We','Th','Fr'],
+    script: 'Perform a full scan of the workspace and update GSD_TASKS.md if necessary.'
+  },
+  { 
+    icon: <RefreshCw className="text-teal-500" size={22} />, 
+    title: 'Sync Repos', 
+    description: 'Sync all repos every hour', 
+    type: 'SYNC_REPOS',
+    schedule: '00:00', 
+    days: ['Mo','Tu','We','Th','Fr','Sa','Su'],
+    script: 'Sync all connected repositories and update tasks from issues.'
+  },
+  { 
+    icon: <GitPullRequest className="text-pink-500" size={22} />, 
+    title: 'PR Review', 
+    description: 'Review new PRs on push', 
+    type: 'PR_REVIEW',
+    schedule: '08:00', 
+    days: ['Mo','Tu','We','Th','Fr'],
+    script: 'Identify new pull requests and perform a code review based on project standards.'
+  },
+  { 
+    icon: <FileText className="text-purple-500" size={22} />, 
+    title: 'Changelog', 
+    description: 'Generate changelog weekly', 
+    type: 'CHANGELOG',
+    schedule: '10:00', 
+    days: ['Fr'],
+    script: 'Analyze recent commits and generate a weekly CHANGELOG.md update.'
+  },
+  { 
+    icon: <Database className="text-amber-500" size={22} />, 
+    title: 'Data Gen', 
+    description: 'Generate test data nightly', 
+    type: 'DATA_GEN',
+    schedule: '02:00', 
+    days: ['Mo','Tu','We','Th','Fr'],
+    script: 'Generate synthetic test data for the current project modules.'
+  },
+  { 
+    icon: <MonitorCheck className="text-green-500" size={22} />, 
+    title: 'CI Monitor', 
+    description: 'Watch CI pipeline status', 
+    type: 'CI_MONITOR',
+    schedule: '00:00', 
+    days: ['Mo','Tu','We','Th','Fr','Sa','Su'],
+    script: 'Monitor CI pipelines and report any failures to the inbox.'
+  },
+  { 
+    icon: <Tag className="text-orange-500" size={22} />, 
+    title: 'Release Notes', 
+    description: 'Draft release notes on tag', 
+    type: 'RELEASE_NOTES',
+    schedule: '09:00', 
+    days: ['Mo','We','Fr'],
+    script: 'Draft release notes for the latest version tag.'
+  },
+  { 
+    icon: <TestTube2 className="text-cyan-500" size={22} />, 
+    title: 'Test Nightly', 
+    description: 'Run full test suite nightly', 
+    type: 'TEST_NIGHTLY',
+    schedule: '03:00', 
+    days: ['Mo','Tu','We','Th','Fr'],
+    script: 'Execute the full test suite and log results.'
+  },
+  { 
+    icon: <Wrench className="text-zinc-500" size={22} />, 
+    title: 'Maintenance', 
+    description: 'Dependency update check weekly', 
+    type: 'MAINTENANCE',
+    schedule: '08:00', 
+    days: ['Mo'],
+    script: 'Check for dependency updates and cleanup temporary worktrees.'
+  },
 ];
 
 const TemplateGrid = ({ onSelect }: { onSelect: (t: AutomationTemplate) => void }) => (
@@ -143,6 +217,8 @@ const CreateAutomationModal = ({ isOpen, onClose, onCreate, initialTemplate }: {
   const [selectedDays, setSelectedDays] = useState<string[]>(['Mo','Tu','We','Th','Fr']);
   const [targetProject, setTargetProject] = useState<string | null>(null);
   const [isProjectPickerOpen, setIsProjectPickerOpen] = useState(false);
+  const [type, setType] = useState<Automation['type']>(undefined);
+  const [script, setScript] = useState('');
 
   const { projects } = useHiveStore();
 
@@ -152,6 +228,8 @@ const CreateAutomationModal = ({ isOpen, onClose, onCreate, initialTemplate }: {
       setDescription(initialTemplate.description);
       setScheduleTime(initialTemplate.schedule);
       setSelectedDays(initialTemplate.days);
+      setType(initialTemplate.type);
+      setScript(initialTemplate.script);
     }
   }, [initialTemplate]);
 
@@ -168,6 +246,8 @@ const CreateAutomationModal = ({ isOpen, onClose, onCreate, initialTemplate }: {
     onCreate({
       title,
       description,
+      type,
+      script,
       schedule: scheduleTime,
       days: selectedDays,
       targetPath: projects.find(p => p.name === targetProject)?.path || '',
@@ -178,6 +258,8 @@ const CreateAutomationModal = ({ isOpen, onClose, onCreate, initialTemplate }: {
     setDescription('');
     setSelectedDays(['Mo','Tu','We','Th','Fr']);
     setTargetProject(null);
+    setType(undefined);
+    setScript('');
   };
 
   return (
@@ -348,14 +430,19 @@ const AutomationDashboard = () => {
   const [selectedTemplate, setSelectedTemplate] = useState<AutomationTemplate | null>(null);
   const { automations, addAutomation, toggleAutomation, deleteAutomation, runAutomation } = useAppStore();
 
-  const getIcon = (title: string) => {
+  const getIcon = (title: string, type?: Automation['type']) => {
     const lower = title.toLowerCase();
-    if (lower.includes('cloud')) return <Cloud className="text-blue-500" size={24} />;
-    if (lower.includes('review')) return <Pencil className="text-orange-500" size={24} />;
-    if (lower.includes('doc')) return <BookOpen className="text-purple-500" size={24} />;
-    if (lower.includes('summary') || lower.includes('summarize')) return <MessageSquare className="text-green-500" size={24} />;
-    if (lower.includes('pr ')) return <GitPullRequest className="text-pink-500" size={24} />;
-    return <Clock className="text-cyan-500" size={24} />;
+    if (type === 'GSD_SCAN' || lower.includes('scan')) return <ScanSearch className="text-blue-500" size={24} />;
+    if (type === 'SYNC_REPOS' || lower.includes('sync')) return <RefreshCw className="text-teal-500" size={24} />;
+    if (type === 'PR_REVIEW' || lower.includes('review')) return <GitPullRequest className="text-pink-500" size={24} />;
+    if (type === 'CHANGELOG' || lower.includes('changelog')) return <FileText className="text-purple-500" size={24} />;
+    if (type === 'DATA_GEN' || lower.includes('data')) return <Database className="text-amber-500" size={24} />;
+    if (type === 'CI_MONITOR' || lower.includes('ci')) return <MonitorCheck className="text-green-500" size={24} />;
+    if (type === 'RELEASE_NOTES' || lower.includes('release')) return <Tag className="text-orange-500" size={24} />;
+    if (type === 'TEST_NIGHTLY' || lower.includes('test')) return <TestTube2 className="text-cyan-500" size={24} />;
+    if (type === 'MAINTENANCE' || lower.includes('maintenance')) return <Wrench className="text-zinc-500" size={24} />;
+    
+    return <Clock className="text-zinc-400" size={24} />;
   };
 
   return (
@@ -389,7 +476,7 @@ const AutomationDashboard = () => {
             {automations.map((recipe) => (
               <AutomationCard
                 key={recipe.id}
-                icon={getIcon(recipe.title)}
+                icon={getIcon(recipe.title, recipe.type)}
                 title={recipe.title}
                 description={recipe.description}
                 active={recipe.active}

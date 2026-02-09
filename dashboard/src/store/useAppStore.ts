@@ -6,6 +6,7 @@ export interface Automation {
     id: string;
     title: string;
     description: string;
+    type?: 'GSD_SCAN' | 'SYNC_REPOS' | 'PR_REVIEW' | 'CHANGELOG' | 'DATA_GEN' | 'CI_MONITOR' | 'RELEASE_NOTES' | 'TEST_NIGHTLY' | 'MAINTENANCE';
     schedule: string;
     days?: string[];
     active: boolean;
