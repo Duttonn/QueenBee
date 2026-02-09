@@ -8,6 +8,7 @@ import { API_BASE } from '../../services/api';
 const XtermTerminal = () => {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
 
   useEffect(() => {
     if (!terminalRef.current) return;
@@ -44,44 +45,77 @@ const XtermTerminal = () => {
     // 2. Load FitAddon
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
+    fitAddonRef.current = fitAddon;
 
     // Open terminal in ref
     term.open(terminalRef.current);
-    
-    // Small delay to ensure container is ready for fit
-    setTimeout(() => {
-        fitAddon.fit();
-    }, 100);
-    
     xtermRef.current = term;
 
-    // 3. Connect to /api/terminal/shell via Socket.io
-    const socket = io(API_BASE, {
-      path: '/api/terminal/socket'
-    });
+    // Safely fit
+    const safeFit = () => {
+        try {
+            fitAddon.fit();
+        } catch (e) {
+            // Ignore dimension errors during animation
+        }
+    };
 
-    // 4. pty.onData -> term.write
-    socket.on('output', (data) => {
-      term.write(data);
-    });
+    // Small delay to ensure container is ready for fit
+    setTimeout(safeFit, 100);
+    // Poll for readiness
+    const fitInterval = setInterval(safeFit, 500);
 
-    // 5. term.onData -> pty.write
-    term.onData((data) => {
-      socket.emit('input', data);
+    // 3. Connect to /api/terminal/socket via Socket.io
+    // First, hit the endpoint to ensure the server is initialized
+    let socket: any = null;
+    
+    fetch(`${API_BASE}/api/terminal/socket`).finally(() => {
+        socket = io(API_BASE, {
+            path: '/api/terminal/socket',
+            reconnectionAttempts: 5
+        });
+
+        // 4. pty.onData -> term.write
+        socket.on('output', (data: any) => {
+            term.write(data);
+        });
+
+        // 5. term.onData -> pty.write
+        term.onData((data) => {
+            socket.emit('input', data);
+        });
+        
+        socket.on('connect', () => {
+            safeFit();
+            // Send initial resize
+            const dims = fitAddon.proposeDimensions();
+            if (dims) {
+                socket.emit('resize', { cols: dims.cols, rows: dims.rows });
+            }
+        });
     });
 
     // Handle resizing
     const handleResize = () => {
-        fitAddon.fit();
+        safeFit();
+        if (socket && fitAddon) {
+            const dims = fitAddon.proposeDimensions();
+            if (dims) {
+                socket.emit('resize', { cols: dims.cols, rows: dims.rows });
+            }
+        }
     };
     window.addEventListener('resize', handleResize);
     
     term.onResize(({ cols, rows }) => {
-      socket.emit('resize', { cols, rows });
+        if (socket) {
+            socket.emit('resize', { cols, rows });
+        }
     });
 
     return () => {
-      socket.disconnect();
+      clearInterval(fitInterval);
+      if (socket) socket.disconnect();
       term.dispose();
       window.removeEventListener('resize', handleResize);
     };

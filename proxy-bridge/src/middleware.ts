@@ -3,15 +3,19 @@ import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
     const requestId = request.headers.get('x-request-id') || crypto.randomUUID();
+    const origin = request.headers.get('origin');
+    const allowedOrigins = ['http://127.0.0.1:5173', 'http://localhost:5173'];
+    const allowOrigin = origin && allowedOrigins.includes(origin) ? origin : '*';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
         return new NextResponse(null, {
             status: 200,
             headers: {
-                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Origin': allowOrigin,
                 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Codex-Provider, X-Request-Id',
+                'Access-Control-Allow-Credentials': 'true',
                 'X-Request-Id': requestId,
             },
         });
@@ -28,9 +32,10 @@ export function middleware(request: NextRequest) {
         },
     });
     
-    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Origin', allowOrigin);
     response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Codex-Provider, X-Request-Id');
+    response.headers.set('Access-Control-Allow-Credentials', 'true');
     response.headers.set('X-Request-Id', requestId);
 
     return response;
