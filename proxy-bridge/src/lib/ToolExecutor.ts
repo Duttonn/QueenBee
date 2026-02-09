@@ -28,6 +28,31 @@ const workerRegistry = new Map<string, { status: string; prUrl?: string }>();
  * ToolExecutor: Parses and executes tool calls from the LLM.
  */
 export class ToolExecutor {
+  private static ALLOWED_COMMANDS = new Set([
+    'git', 'npm', 'npx', 'node', 'python3', 'python', 'ls', 'cat', 'head', 'tail',
+    'mkdir', 'cp', 'mv', 'rm', 'touch', 'echo', 'grep', 'find', 'wc', 'diff',
+    'tsc', 'eslint', 'prettier', 'jest', 'vitest', 'cargo', 'go', 'make', 'cd',
+    'pwd', 'which', 'env', 'sort', 'uniq', 'sed', 'awk', 'tr', 'chmod'
+  ]);
+
+  private validateCommand(command: string): void {
+    const subCommands = command.split(/[|;&]+/).map(s => s.trim()).filter(Boolean);
+    for (const sub of subCommands) {
+      const baseCmd = sub.split(/\s+/)[0].replace(/^.*\//, '');
+      if (!ToolExecutor.ALLOWED_COMMANDS.has(baseCmd)) {
+        throw new Error(`BLOCKED_COMMAND: '${baseCmd}' is not in the allowed command list. Only safe development commands are permitted.`);
+      }
+    }
+  }
+
+  private validateCwd(cwd: string, projectPath: string): void {
+    const resolvedCwd = path.resolve(cwd);
+    const resolvedProject = path.resolve(projectPath);
+    if (!resolvedCwd.startsWith(resolvedProject)) {
+      throw new Error(`Security Violation: Working directory '${cwd}' is outside project root '${projectPath}'.`);
+    }
+  }
+
   private validatePath(projectPath: string, relativePath: string): string {
     const absolutePath = path.resolve(projectPath, relativePath);
     if (!absolutePath.startsWith(path.resolve(projectPath))) {
@@ -303,9 +328,11 @@ export class ToolExecutor {
     return fileContent.substring(startIdx, endIdx).trim();
   }
 
-  private runShellCommand(command: string, cwd: string): Promise<any> {
+  private runShellCommand(command: string, cwd: string, projectPath?: string): Promise<any> {
+    this.validateCommand(command);
+    this.validateCwd(cwd, projectPath || cwd);
     return new Promise((resolve, reject) => {
-      exec(command, { cwd }, (error, stdout, stderr) => {
+      exec(command, { cwd, timeout: 30000 }, (error, stdout, stderr) => {
         if (error) {
           reject(new Error(`Command failed: ${error.message}\n${stderr}`));
         } else {

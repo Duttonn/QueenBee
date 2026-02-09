@@ -23,11 +23,31 @@ export const logger = {
   }
 };
 
+const REDACT_PATTERNS = [
+  /sk-[a-zA-Z0-9]{20,}/g,
+  /ghp_[a-zA-Z0-9]{36}/g,
+  /AKIA[0-9A-Z]{16}/g,
+  /Bearer\s+[a-zA-Z0-9._\-]+/gi,
+  /password\s*[=:]\s*\S+/gi,
+  /secret\s*[=:]\s*\S+/gi,
+  /token\s*[=:]\s*\S+/gi,
+  /sk_live_[a-zA-Z0-9]{24,}/g,
+  /GOCSPX-[a-zA-Z0-9_\-]+/g,
+];
+
+function redact(text: string): string {
+  let result = text;
+  for (const pattern of REDACT_PATTERNS) {
+    result = result.replace(pattern, '[REDACTED]');
+  }
+  return result;
+}
+
 function log(level: string, message: string, ...args: any[]) {
   const timestamp = new Date().toISOString();
   const formattedArgs = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
-  const entry = `[${timestamp}] [${level}] ${message} ${formattedArgs}
-`;
+  const entry = redact(`[${timestamp}] [${level}] ${message} ${formattedArgs}
+`);
   
   console.log(entry.trim()); // Still show in terminal
   fs.appendFileSync(LOG_FILE, entry);

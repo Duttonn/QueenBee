@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Inbox, Trash2, Wrench, Clock, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
+import { API_BASE } from '../../services/api';
 
 interface InboxItem {
   id: string;
@@ -18,7 +19,7 @@ const InboxPanel = () => {
 
   const fetchInbox = async () => {
     try {
-      const res = await fetch('http://127.0.0.1:3000/api/inbox/list');
+      const res = await fetch(`${API_BASE}/api/inbox/list`);
       if (res.ok) {
         const data = await res.json();
         setItems(data);
@@ -36,7 +37,7 @@ const InboxPanel = () => {
 
   const handleAction = async (id: string, action: 'archive' | 'fix') => {
     try {
-      const res = await fetch('http://127.0.0.1:3000/api/inbox/action', {
+      const res = await fetch(`${API_BASE}/api/inbox/action`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, action })

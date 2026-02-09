@@ -10,7 +10,13 @@ export class SecurityAuditAgent {
     /AIzaSy[a-zA-Z0-9_-]{33}/g,     // Google AI Keys
     /sk-[a-zA-Z0-9]{48}/g,          // Generic OpenAI keys
     /session_sda=[a-f0-9-]{36}/g,   // Dassault Session Cookies
-    /ghp_[a-zA-Z0-9]{36}/g          // GitHub PATs
+    /ghp_[a-zA-Z0-9]{36}/g,         // GitHub PATs
+    /AKIA[0-9A-Z]{16}/g,            // AWS Access Keys
+    /sk_live_[a-zA-Z0-9]{24,}/g,    // Stripe Live Keys
+    /(?:password|passwd|secret)\s*[:=]\s*['"][^'"]{8,}/gi, // Generic passwords
+    /(?:postgres|mysql|mongodb):\/\/[^\s'"]+/gi,           // Database URLs
+    /-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----/g,      // Private SSH keys
+    /(?:jwt_secret|JWT_SECRET)\s*[:=]\s*['"][^'"]+/gi      // JWT secrets
   ];
 
   async auditProject(projectPath: string) {
@@ -39,7 +45,7 @@ export class SecurityAuditAgent {
 
   private async listTrackedFiles(dir: string): Promise<string[]> {
     // Audit core source and config files
-    const exts = ['.ts', '.js', '.yaml', '.json', '.md'];
+    const exts = ['.ts', '.js', '.yaml', '.json', '.md', '.env'];
     const results: string[] = [];
     const walk = (d: string) => {
       if (d.includes('node_modules') || d.includes('.git')) return;
