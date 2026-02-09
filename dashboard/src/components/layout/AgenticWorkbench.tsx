@@ -398,6 +398,36 @@ const AgenticWorkbench = ({
                           className="inline-block w-1.5 h-4 bg-blue-500 ml-1 align-middle"
                         />
                       )}
+
+                      {/* P6-09: Inline Review changes link */}
+                      {!isLoading && msg.role === 'assistant' && msg.toolCalls?.some(tc => 
+                        ['write_file', 'replace', 'apply_patch', 'delete_file'].includes(tc.name) && tc.status === 'success'
+                      ) && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: 5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="mt-4 p-3 bg-zinc-50 border border-zinc-100 rounded-xl flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
+                              <GitCommit size={14} className="text-emerald-600" />
+                            </div>
+                            <div>
+                              <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none mb-1">Agent Modifications</div>
+                              <div className="text-xs font-bold text-zinc-700">
+                                Files modified in this step
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            onClick={onToggleDiff}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-zinc-200 hover:bg-zinc-50 text-blue-600 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all shadow-sm group"
+                          >
+                            <span>Review Changes</span>
+                            <ExternalLink size={12} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                          </button>
+                        </motion.div>
+                      )}
                     </div>
                   ) : (
                     isLoading && index === messages.length - 1 && !msg.toolCalls?.length ? (

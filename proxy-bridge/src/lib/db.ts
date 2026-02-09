@@ -48,6 +48,7 @@ export interface Thread {
     title: string;
     diff: string;
     time: string;
+    messages?: any[];
 }
 
 export interface Database {

@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { unifiedLLMService } from '../../../lib/UnifiedLLMService';
+import { unifiedLLMService } from '../../lib/UnifiedLLMService';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {

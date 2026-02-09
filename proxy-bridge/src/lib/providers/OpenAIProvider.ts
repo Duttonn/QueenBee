@@ -14,7 +14,100 @@ export class OpenAIProvider extends LLMProvider {
     this.apiKey = apiKey;
     this.baseUrl = baseUrl;
   }
-// ... existing chat and chatStream methods ...
+
+  async chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
+    const model = options?.model || 'gpt-4';
+    
+    try {
+      const response = await axios.post(`${this.baseUrl}/chat/completions`, {
+        model,
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
+        max_tokens: options?.maxTokens,
+        temperature: options?.temperature,
+        stream: false
+      }, {
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = response.data;
+      return {
+        id: data.id,
+        model: data.model,
+        content: data.choices[0].message.content,
+        usage: {
+          prompt_tokens: data.usage?.prompt_tokens,
+          completion_tokens: data.usage?.completion_tokens,
+          total_tokens: data.usage?.total_tokens
+        }
+      };
+    } catch (error: any) {
+      console.error('OpenAI Chat Error:', error.response?.data || error.message);
+      throw new Error(`OpenAI Chat failed: ${error.response?.data?.error?.message || error.message}`);
+    }
+  }
+
+  async *chatStream(messages: LLMMessage[], options?: LLMProviderOptions): AsyncGenerator<LLMResponse> {
+    const model = options?.model || 'gpt-4';
+    
+    const response = await fetch(`${this.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model,
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
+        max_tokens: options?.maxTokens,
+        temperature: options?.temperature,
+        stream: true
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenAI stream failed: ${response.status} ${errorText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Response body is null');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const cleanedLine = line.trim();
+        if (!cleanedLine.startsWith('data: ')) continue;
+        if (cleanedLine === 'data: [DONE]') break;
+        
+        try {
+          const json = JSON.parse(cleanedLine.substring(6));
+          const content = json.choices[0]?.delta?.content;
+          if (content) {
+            yield {
+              id: json.id,
+              model: json.model,
+              content
+            };
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+    }
+  }
+
   async transcribe(audioData: any): Promise<string> {
     try {
       const formData = new FormData();
