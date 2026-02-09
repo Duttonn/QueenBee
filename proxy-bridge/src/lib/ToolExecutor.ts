@@ -35,14 +35,28 @@ export class ToolExecutor {
     'pwd', 'which', 'env', 'sort', 'uniq', 'sed', 'awk', 'tr', 'chmod'
   ]);
 
-  private validateCommand(command: string): void {
+  private static pendingConfirmations = new Map<string, (approved: boolean) => void>();
+
+  public static confirm(toolCallId: string, approved: boolean) {
+    const resolver = this.pendingConfirmations.get(toolCallId);
+    if (resolver) {
+      console.log(`[ToolExecutor] Resolving confirmation for ${toolCallId}: ${approved}`);
+      resolver(approved);
+      this.pendingConfirmations.delete(toolCallId);
+    } else {
+      console.warn(`[ToolExecutor] No pending confirmation found for ${toolCallId}`);
+    }
+  }
+
+  private validateCommand(command: string): boolean {
     const subCommands = command.split(/[|;&]+/).map(s => s.trim()).filter(Boolean);
     for (const sub of subCommands) {
       const baseCmd = sub.split(/\s+/)[0].replace(/^.*\//, '');
       if (!ToolExecutor.ALLOWED_COMMANDS.has(baseCmd)) {
-        throw new Error(`BLOCKED_COMMAND: '${baseCmd}' is not in the allowed command list. Only safe development commands are permitted.`);
+        return false;
       }
     }
+    return true;
   }
 
   private validateCwd(cwd: string, projectPath: string): void {
@@ -106,14 +120,28 @@ export class ToolExecutor {
             result = { success: true, path: tool.arguments.path };
           } else {
             const filePath = this.validatePath(projectPath, tool.arguments.path);
+            let stats = { added: 0, removed: 0 };
+            
+            try {
+              if (await fs.pathExists(filePath)) {
+                const oldContent = await fs.readFile(filePath, 'utf-8');
+                const oldLines = oldContent.split('\n').length;
+                const newLines = tool.arguments.content.split('\n').length;
+                // This is a very rough heuristic for prototype display
+                stats = { added: newLines, removed: oldLines };
+              } else {
+                stats = { added: tool.arguments.content.split('\n').length, removed: 0 };
+              }
+            } catch (e) {}
+
             await fs.ensureDir(path.dirname(filePath));
             await fs.writeFile(filePath, tool.arguments.content);
-            result = { success: true, path: filePath };
+            result = { success: true, path: filePath, stats };
           }
           break;
           
         case 'run_shell':
-          result = await this.runShellCommand(tool.arguments.command, projectPath);
+          result = await this.runShellCommand(tool.arguments.command, projectPath, { projectId, threadId, toolCallId });
           break;
           
         case 'read_file':
@@ -328,9 +356,49 @@ export class ToolExecutor {
     return fileContent.substring(startIdx, endIdx).trim();
   }
 
-  private runShellCommand(command: string, cwd: string, projectPath?: string): Promise<any> {
-    this.validateCommand(command);
-    this.validateCwd(cwd, projectPath || cwd);
+  private async runShellCommand(
+    command: string, 
+    cwd: string, 
+    context: { projectId?: string, threadId?: string, toolCallId?: string }
+  ): Promise<any> {
+    const isAllowed = this.validateCommand(command);
+    
+    if (!isAllowed) {
+      if (!context.toolCallId) {
+        throw new Error(`BLOCKED_COMMAND: '${command}' is restricted and cannot be confirmed without a toolCallId.`);
+      }
+
+      console.log(`[ToolExecutor] Command '${command}' requires confirmation. ToolCallId: ${context.toolCallId}`);
+      
+      // Broadcast pending status to UI
+      broadcast('TOOL_EXECUTION', { 
+        tool: 'run_shell', 
+        status: 'pending', 
+        args: { command },
+        projectId: context.projectId,
+        threadId: context.threadId,
+        toolCallId: context.toolCallId
+      });
+
+      // Wait for approval
+      const approved = await new Promise<boolean>((resolve) => {
+        ToolExecutor.pendingConfirmations.set(context.toolCallId!, resolve);
+        
+        // Auto-reject after 5 minutes
+        setTimeout(() => {
+          if (ToolExecutor.pendingConfirmations.has(context.toolCallId!)) {
+            ToolExecutor.pendingConfirmations.delete(context.toolCallId!);
+            resolve(false);
+          }
+        }, 300000);
+      });
+
+      if (!approved) {
+        throw new Error("Command execution rejected by user.");
+      }
+    }
+
+    this.validateCwd(cwd, cwd);
     return new Promise((resolve, reject) => {
       exec(command, { cwd, timeout: 30000 }, (error, stdout, stderr) => {
         if (error) {

@@ -16,8 +16,9 @@ export interface ToolCall {
 }
 
 export interface Message {
+    id?: string;
     role: 'system' | 'user' | 'assistant' | 'tool';
-    content: string;
+    content: string | any[];
     toolCalls?: ToolCall[];
 }
 

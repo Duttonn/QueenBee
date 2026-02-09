@@ -180,7 +180,17 @@ export class AutonomousRunner {
     console.log('[RecursiveRunner] Starting automatic verification...');
     
     // 1. Check for obvious failure indicators in the message
-    const content = lastMessage.content?.toLowerCase() || '';
+    let content = '';
+    if (typeof lastMessage.content === 'string') {
+        content = lastMessage.content.toLowerCase();
+    } else if (Array.isArray(lastMessage.content)) {
+        content = lastMessage.content
+            .filter(p => p.type === 'text')
+            .map(p => p.text)
+            .join(' ')
+            .toLowerCase();
+    }
+    
     if (content.includes('error:') || content.includes('failed to') || content.includes('cannot find')) {
       return { passed: false, reason: 'Agent reported an error in its response.' };
     }

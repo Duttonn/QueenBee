@@ -26,17 +26,19 @@ import {
     ExternalLink,
     BarChart3,
     Activity,
-    CreditCard
+    CreditCard,
+    Shield
 } from 'lucide-react';
 import yaml from 'js-yaml';
 import { useAuthStore } from '../../store/useAuthStore';
+import RestrictedCommands from './RestrictedCommands';
 
 interface CustomizationPanelProps {
     isOpen: boolean;
     onClose: () => void;
 }
 
-type Tab = 'appearance' | 'skills' | 'code' | 'plugins' | 'integrations' | 'config' | 'usage';
+type Tab = 'appearance' | 'skills' | 'code' | 'plugins' | 'integrations' | 'config' | 'usage' | 'security';
 
 interface FileNode {
     name: string;
@@ -77,6 +79,7 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
         { id: '1', name: 'React Expert', prompt: 'You are a React expert...', enabled: true },
         { id: '2', name: 'Code Reviewer', prompt: 'Review code for best practices...', enabled: true },
     ]);
+    const [restrictedCommands, setRestrictedCommands] = useState<string[]>([]);
 
     // Load file tree on mount
     useEffect(() => {
@@ -322,6 +325,14 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
                                 icon={<BarChart3 size={16} />}
                                 label="Usage & Billing"
                             />
+                            <div className="pt-2 mt-2 border-t border-slate-100">
+                                <TabButton
+                                    active={activeTab === 'security'}
+                                    onClick={() => setActiveTab('security')}
+                                    icon={<Shield size={16} />}
+                                    label="Security"
+                                />
+                            </div>
 
                             {/* Warning */}
                             <div className="mt-auto p-4 bg-amber-50 border border-amber-100 rounded-xl">
@@ -373,6 +384,28 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
 
                                 {activeTab === 'usage' && (
                                     <UsageTab />
+                                )}
+
+                                {activeTab === 'security' && (
+                                    <motion.div
+                                        initial={{ opacity: 0, x: 20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, x: -20 }}
+                                        className="p-8 overflow-y-auto flex-1 bg-zinc-50/30"
+                                    >
+                                        <div className="max-w-3xl mx-auto">
+                                            <div className="mb-8">
+                                                <h2 className="text-2xl font-black text-zinc-900 uppercase tracking-tight mb-2">Security & Permissions</h2>
+                                                <p className="text-zinc-500 text-sm">Manage restricted commands and access controls for autonomous agents.</p>
+                                            </div>
+                                            <RestrictedCommands 
+                                                onSave={(cmds) => {
+                                                    setRestrictedCommands(cmds);
+                                                    console.log('Saved restricted commands:', cmds);
+                                                }} 
+                                            />
+                                        </div>
+                                    </motion.div>
                                 )}
                             </AnimatePresence>
                         </div>

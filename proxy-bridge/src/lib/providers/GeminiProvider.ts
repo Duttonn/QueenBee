@@ -24,7 +24,26 @@ export class GeminiProvider extends LLMProvider {
       const parts: any[] = [];
 
       if (m.content) {
-        parts.push({ text: m.content });
+        if (typeof m.content === 'string') {
+          parts.push({ text: m.content });
+        } else if (Array.isArray(m.content)) {
+          m.content.forEach((part: any) => {
+            if (part.type === 'text') {
+              parts.push({ text: part.text });
+                          } else if (part.type === 'image_url' && part.image_url?.url) {
+                            const dataUrl = part.image_url.url;
+                            const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+                            if (matches) {
+                              const mimeType = matches[1];
+                              parts.push({
+                                inlineData: {
+                                  mimeType: mimeType === 'image/svg+xml' ? 'image/png' : mimeType,
+                                  data: matches[2]
+                                }
+                              });
+                            }
+                          }          });
+        }
       }
 
       if (m.tool_calls) {
@@ -139,7 +158,28 @@ export class GeminiProvider extends LLMProvider {
 
     const geminiMessages = messages.map((m) => {
       const parts: any[] = [];
-      if (m.content) parts.push({ text: m.content });
+      if (m.content) {
+        if (typeof m.content === 'string') {
+          parts.push({ text: m.content });
+        } else if (Array.isArray(m.content)) {
+          m.content.forEach((part: any) => {
+            if (part.type === 'text') {
+              parts.push({ text: part.text });
+                          } else if (part.type === 'image_url' && part.image_url?.url) {
+                            const dataUrl = part.image_url.url;
+                            const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+                            if (matches) {
+                              const mimeType = matches[1];
+                              parts.push({
+                                inlineData: {
+                                  mimeType: mimeType === 'image/svg+xml' ? 'image/png' : mimeType,
+                                  data: matches[2]
+                                }
+                              });
+                            }
+                          }          });
+        }
+      }
       if (m.tool_calls) {
         m.tool_calls.forEach(tc => {
           parts.push({
