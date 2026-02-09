@@ -164,22 +164,6 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
               ))}
             </div>
 
-            {/* Composer Mode: Code / Chat / Plan */}
-            <div className="flex items-center gap-1 bg-zinc-100 rounded-xl p-1">
-              {(['code', 'chat', 'plan'] as const).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => onComposerModeChange?.(m)}
-                  className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest rounded-lg transition-all ${composerMode === m
-                    ? 'bg-white text-zinc-900 shadow-sm'
-                    : 'text-zinc-500 hover:text-zinc-700'
-                    }`}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-
             {/* Model Selector */}
             <div className="relative">
               <button
@@ -701,6 +685,8 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                   mode={executionMode}
                   onModeChange={setExecutionMode}
                   diffStats={diffStats}
+                  workbenchView={composerMode}
+                  onViewChange={setComposerMode}
                 />
               ) : (
                 <EmptyState
