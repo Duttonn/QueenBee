@@ -27,7 +27,36 @@ export class InboxManager {
   }
 
   async getFindings() {
-    if (!await fs.pathExists(this.inboxPath)) return [];
+    if (!await fs.pathExists(this.inboxPath)) {
+      // Seed with mock data if empty
+      const mockData = [
+        {
+          id: 'mock-1',
+          agentId: 'SecurityBee',
+          title: 'Potential Secrets Detected',
+          content: 'Found exposed .env patterns in /dashboard/src/hooks. Recommend rotating keys.',
+          status: 'unread',
+          timestamp: new Date().toISOString()
+        },
+        {
+          id: 'mock-2',
+          agentId: 'PerformanceAgent',
+          title: 'Redundant Re-renders',
+          content: 'CodexLayout is re-rendering 12 times on mount. memo() recommended for Sidebar components.',
+          status: 'unread',
+          timestamp: new Date().toISOString()
+        },
+        {
+          id: 'mock-3',
+          agentId: 'ArchitectBee',
+          title: 'Circular Dependency Found',
+          content: 'Circular import detected between useHiveStore.ts and api.ts. Refactor suggested.',
+          status: 'unread',
+          timestamp: new Date().toISOString()
+        }
+      ];
+      return mockData;
+    }
     return await fs.readJson(this.inboxPath);
   }
 

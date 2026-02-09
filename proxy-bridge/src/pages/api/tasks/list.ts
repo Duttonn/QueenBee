@@ -8,7 +8,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const tasks = await TaskManager.getParsedTasks();
+    const projectPath = req.query.projectPath as string;
+    const tasks = await TaskManager.getParsedTasks(projectPath);
     return res.status(200).json(tasks);
   } catch (error: any) {
     console.error('Failed to list tasks:', error);

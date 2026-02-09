@@ -261,4 +261,46 @@ export class GeminiProvider extends LLMProvider {
       }
     }
   }
+
+  async transcribe(audioData: any): Promise<string> {
+    const model = 'gemini-1.5-flash';
+    
+    // Convert audio data to base64
+    let base64Audio = '';
+    if (Buffer.isBuffer(audioData)) {
+      base64Audio = audioData.toString('base64');
+    } else if (typeof audioData === 'string') {
+       // Assume it's a path or base64 string
+       // For now, let's assume it's NOT a path as we are in a provider class that might receive buffers
+       base64Audio = audioData; 
+    } else {
+       throw new Error('Gemini Transcription requires Buffer input');
+    }
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: "Transcribe the following audio exactly as spoken." },
+            {
+              inlineData: {
+                mimeType: "audio/webm",
+                data: base64Audio
+              }
+            }
+          ]
+        }]
+      })
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      throw new Error(`Gemini Transcription error: ${response.status} ${errBody}`);
+    }
+
+    const data = await response.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  }
 }

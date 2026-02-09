@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Inbox, Trash2, Wrench, Clock, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Inbox, Trash2, Wrench, Clock, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
 
 interface InboxItem {
   id: string;

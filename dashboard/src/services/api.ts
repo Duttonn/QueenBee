@@ -210,8 +210,15 @@ export async function getGitBranches(projectPath: string): Promise<{ current: st
     const response = await fetch(`${API_BASE}/api/git/branches?${params}`);
 
     if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to get branches');
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to get branches');
+        } else {
+            const text = await response.text();
+            console.error('[API] Non-JSON error response:', text.substring(0, 200));
+            throw new Error(`Server Error (${response.status}): See console for details`);
+        }
     }
 
     return response.json();

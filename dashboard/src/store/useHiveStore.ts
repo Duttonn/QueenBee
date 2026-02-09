@@ -101,7 +101,15 @@ export const useHiveStore = create<HiveState>()(
 
       fetchTasks: async () => {
         try {
-          const res = await fetch('http://127.0.0.1:3000/api/tasks/list');
+          const state = get();
+          const activeProject = state.projects.find(p => p.id === state.selectedProjectId);
+          const path = activeProject?.path;
+          
+          const url = path 
+            ? `http://127.0.0.1:3000/api/tasks/list?projectPath=${encodeURIComponent(path)}`
+            : 'http://127.0.0.1:3000/api/tasks/list';
+
+          const res = await fetch(url);
           if (res.ok) {
             const tasks = await res.json();
             set({ tasks });

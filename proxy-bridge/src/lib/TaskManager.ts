@@ -2,7 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { Paths } from './Paths';
 
-const TASKS_FILE = Paths.getGSDTasksPath();
+const GLOBAL_TASKS_FILE = Paths.getGSDTasksPath();
 
 export interface GSDTask {
   id: string;
@@ -18,15 +18,25 @@ export interface GSDPhase {
 }
 
 export class TaskManager {
-  static async getTasks() {
-    if (!fs.existsSync(TASKS_FILE)) return [];
-    const content = await fs.readFile(TASKS_FILE, 'utf-8');
+  private static getTasksPath(projectPath?: string) {
+    if (projectPath) {
+        return path.join(projectPath, 'PLAN.md');
+    }
+    return GLOBAL_TASKS_FILE;
+  }
+
+  static async getTasks(projectPath?: string) {
+    const filePath = this.getTasksPath(projectPath);
+    if (!fs.existsSync(filePath)) return null;
+    const content = await fs.readFile(filePath, 'utf-8');
     return content;
   }
 
-  static async getParsedTasks(): Promise<GSDPhase[]> {
-    if (!fs.existsSync(TASKS_FILE)) return [];
-    const content = await fs.readFile(TASKS_FILE, 'utf-8');
+  static async getParsedTasks(projectPath?: string): Promise<GSDPhase[]> {
+    const filePath = this.getTasksPath(projectPath);
+    if (!fs.existsSync(filePath)) return [];
+    
+    const content = await fs.readFile(filePath, 'utf-8');
     const lines = content.split('\n');
     
     const phases: GSDPhase[] = [];
@@ -38,7 +48,6 @@ export class TaskManager {
 
       // Detect Phase
       if (line.startsWith('## ')) {
-        // Push previous task if exists (though usually tasks are added immediately)
         if (currentPhase) {
             phases.push(currentPhase);
         }
@@ -51,9 +60,6 @@ export class TaskManager {
       }
 
       // Detect Task
-      // Matches: - [ ] `ID`: Title
-      // Matches: - [DONE] `ID`: Title
-      // Matches: - [IN PROGRESS: Agent] `ID`: Title
       const taskMatch = trimLine.match(/^- \[(.*?)\] `(.*?)`: (.*)/);
       if (taskMatch && currentPhase) {
         const [_, statusRaw, id, title] = taskMatch;
@@ -64,7 +70,6 @@ export class TaskManager {
             status = 'done';
         } else if (statusRaw.includes('IN PROGRESS')) {
             status = 'in_progress';
-            // Extract agent: "IN PROGRESS: AgentName"
             const agentMatch = statusRaw.match(/IN PROGRESS: (.*)/);
             if (agentMatch) agentId = agentMatch[1];
         }
@@ -79,7 +84,6 @@ export class TaskManager {
         continue;
       }
 
-      // Detect Metadata (Worker) for the current task
       if (currentTask && trimLine.startsWith('- **Worker**:')) {
         const worker = trimLine.replace('- **Worker**:', '').trim();
         currentTask.worker = worker;
@@ -93,35 +97,24 @@ export class TaskManager {
     return phases;
   }
 
-  static async claimTask(taskId: string, agentId: string): Promise<boolean> {
+  static async claimTask(taskId: string, agentId: string, projectPath?: string): Promise<boolean> {
     try {
-      if (!fs.existsSync(TASKS_FILE)) {
-        console.error(`TaskManager: File not found at ${TASKS_FILE}`);
-        return false;
-      }
+      const filePath = this.getTasksPath(projectPath);
+      if (!fs.existsSync(filePath)) return false;
       
-      let content = await fs.readFile(TASKS_FILE, 'utf-8');
-
-      // Escape taskId for regex
+      let content = await fs.readFile(filePath, 'utf-8');
       const safeTaskId = taskId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      
-      // Regex: - [ ] `TASK-ID`
-      // We need to match literal - [ ] `
       const pattern = `- \\[ \\] \`${safeTaskId}\``;
       const regex = new RegExp(pattern);
       
-      if (!regex.test(content)) {
-        console.warn(`TaskManager: Task ${taskId} not found or already claimed.`);
-        return false;
-      }
+      if (!regex.test(content)) return false;
 
       const newContent = content.replace(
         regex,
         `- [IN PROGRESS: ${agentId}] \`${taskId}\``
       );
 
-      await fs.writeFile(TASKS_FILE, newContent);
-      console.log(`TaskManager: Task ${taskId} claimed by ${agentId}`);
+      await fs.writeFile(filePath, newContent);
       return true;
     } catch (error) {
       console.error('TaskManager Error:', error);
@@ -129,35 +122,58 @@ export class TaskManager {
     }
   }
 
-  static async completeTask(taskId: string, agentId: string): Promise<boolean> {
+  static async completeTask(taskId: string, agentId: string, projectPath?: string): Promise<boolean> {
     try {
-      if (!fs.existsSync(TASKS_FILE)) return false;
-      let content = await fs.readFile(TASKS_FILE, 'utf-8');
+      const filePath = this.getTasksPath(projectPath);
+      if (!fs.existsSync(filePath)) return false;
+      let content = await fs.readFile(filePath, 'utf-8');
 
       const safeTaskId = taskId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      
-      // Match [IN PROGRESS: agentId] `taskId`
       const pattern = `- \\[IN PROGRESS: ${agentId}\\] \`${safeTaskId}\``;
       const regex = new RegExp(pattern);
       
       if (!regex.test(content)) {
-        // Try matching just the task id if agentId doesn't match
         const fallbackPattern = `- \\[IN PROGRESS: .*\\] \`${safeTaskId}\``;
         const fallbackRegex = new RegExp(fallbackPattern);
         if (!fallbackRegex.test(content)) return false;
-
         const newContent = content.replace(fallbackRegex, `- [DONE] \`${taskId}\``);
-        await fs.writeFile(TASKS_FILE, newContent);
+        await fs.writeFile(filePath, newContent);
         return true;
       }
 
       const newContent = content.replace(regex, `- [DONE] \`${taskId}\``);
-      await fs.writeFile(TASKS_FILE, newContent);
-      console.log(`TaskManager: Task ${taskId} marked as DONE by ${agentId}`);
+      await fs.writeFile(filePath, newContent);
       return true;
     } catch (error) {
       console.error('TaskManager Error:', error);
       return false;
     }
+  }
+
+  static async addTask(phase: string, taskId: string, description: string, projectPath?: string) {
+    const targetFile = this.getTasksPath(projectPath);
+    const projectName = projectPath ? path.basename(projectPath) : 'Project';
+    
+    if (!fs.existsSync(targetFile)) {
+      const template = `# 🚀 PROJET: ${projectName}\n\n## Phase 1: CORE (BLOCKING)\n- [ ] \`FEAT-01\`: **Initial Scan** - Analyze codebase and define structure.\n\n## Phase 2: FEATURES\n\n## Phase 3: QA & POLISH\n`;
+      await fs.writeFile(targetFile, template);
+    }
+    
+    let content = await fs.readFile(targetFile, 'utf-8');
+    const newTaskLine = `- [ ] \`${taskId}\`: ${description}`;
+    
+    const phaseHeader = phase.startsWith('##') ? phase : `## ${phase}`;
+    if (content.includes(phaseHeader)) {
+      content = content.replace(phaseHeader, `${phaseHeader}\n${newTaskLine}`);
+    } else {
+      content += `\n\n${phaseHeader}\n${newTaskLine}`;
+    }
+    
+    await fs.writeFile(targetFile, content);
+  }
+
+  static async updateTasks(content: string, projectPath?: string) {
+    const targetFile = this.getTasksPath(projectPath);
+    await fs.writeFile(targetFile, content);
   }
 }

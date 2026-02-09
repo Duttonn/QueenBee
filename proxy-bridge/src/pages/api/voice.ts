@@ -36,12 +36,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     logger.info(`[Voice] Transcription request received. Provider: ${providerId}, Buffer Size: ${audioBuffer.length} bytes`);
 
     // Call UnifiedLLMService for transcription
-    const result = await unifiedLLMService.transcribe(providerId, audioBuffer, { apiKey });
-
-    return res.status(200).json(result);
+    try {
+        const result = await unifiedLLMService.transcribe(providerId, audioBuffer, { apiKey });
+        return res.status(200).json(result);
+    } catch (providerError: any) {
+        logger.error(`[Voice] Provider Error: ${providerError.message}`);
+        return res.status(500).json({ 
+            error: providerError.message, 
+            type: 'PROVIDER_ERROR' 
+        });
+    }
 
   } catch (error: any) {
-    logger.error(`[Voice] Transcription Error: ${error.message}`);
-    return res.status(500).json({ error: error.message || 'Transcription failed' });
+    logger.error(`[Voice] Internal API Error: ${error.message}`);
+    return res.status(500).json({ error: error.message || 'Internal transcription failure', type: 'INTERNAL_ERROR' });
   }
 }

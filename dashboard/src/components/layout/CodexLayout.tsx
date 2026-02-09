@@ -105,24 +105,6 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
         onClose={toggleRecording}
       />
 
-      <AnimatePresence>
-        {value.trim().length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.98 }}
-            className="mb-3 p-4 bg-white/80 backdrop-blur-md border border-gray-200 rounded-2xl shadow-lg max-h-48 overflow-y-auto prose prose-sm prose-zinc"
-          >
-            <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-              <Plus size={10} className="rotate-45" /> Live Preview
-            </div>
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-              {value}
-            </ReactMarkdown>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <div className="bg-white border border-zinc-200 rounded-3xl shadow-2xl flex flex-col">
         {/* Top: Input Area */}
         <div className="px-4 pt-4 pb-2">
@@ -159,7 +141,22 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
 
             <div className="w-px h-4 bg-zinc-200 mx-1"></div>
 
-            <button className="p-2 hover:bg-zinc-200 rounded-xl text-zinc-400 hover:text-zinc-600 transition-all">
+            <button 
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.multiple = true;
+                input.onchange = (e: any) => {
+                  const files = Array.from(e.target.files).map((f: any) => f.name);
+                  if (files.length > 0) {
+                    onChange(value ? `${value} @${files.join(' @')}` : `@${files.join(' @')}`);
+                  }
+                };
+                input.click();
+              }}
+              className="p-2 hover:bg-zinc-200 rounded-xl text-zinc-400 hover:text-zinc-600 transition-all"
+              title="Import Files"
+            >
               <Plus size={18} strokeWidth={1.5} />
             </button>
 
@@ -358,8 +355,9 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     }
   }, [availableModels, selectedModel, activeProviderId, setActiveProvider]);
 
-  const handleSendMessage = useCallback(async () => {
-    if (!inputValue.trim() || isLoading || !selectedProjectId) return;
+  const handleSendMessage = useCallback(async (contentOverride?: string) => {
+    const content = contentOverride || inputValue;
+    if (!content.trim() || isLoading || !selectedProjectId) return;
 
     // Ensure the current thread ID actually belongs to the selected project
     const threadExists = activeProject?.threads?.some((t: any) => t.id === activeThreadId);
@@ -369,15 +367,15 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
       currentThreadId = Date.now().toString();
       await addThread(selectedProjectId, {
         id: currentThreadId,
-        title: inputValue.length > 30 ? inputValue.substring(0, 30) + '...' : inputValue,
+        title: content.length > 30 ? content.substring(0, 30) + '...' : content,
         diff: '+0 -0',
         time: 'Just now'
       });
     }
 
-    const userMessage: Message = { role: 'user', content: inputValue };
+    const userMessage: Message = { role: 'user', content: content };
     addMessage(selectedProjectId, currentThreadId, userMessage);
-    setInputValue('');
+    if (!contentOverride) setInputValue('');
     setIsLoading(true);
     addMessage(selectedProjectId, currentThreadId, { role: 'assistant', content: '' });
 
@@ -388,17 +386,48 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     const thread = activeProject?.threads?.find((t: any) => t.id === currentThreadId);
     const agentId = thread?.agentId;
 
+    // Plan Mode Context
+    let augmentedMessages = [...messages, userMessage];
+    if (activeView === 'build' && activeThreadId === null && !threadExists) {
+        // ...
+    }
+
     try {
       await sendChatMessageStream(
         {
           model: modelToUse,
-          messages: [...messages, userMessage],
+          messages: augmentedMessages,
           provider: providerToUse as any,
           apiKey: apiKey,
           projectPath: activeProject?.path,
           threadId: currentThreadId,
           mode: executionMode,
-          agentId: agentId
+          agentId: agentId,
+          systemPrompt: activeView === 'build' && !activeThreadId ? `You are currently in PLANNING MODE for the project "${activeProject?.name}". 
+          
+          CRITICAL CONSTRAINTS:
+          1. READ-ONLY ACCESS: You have read-only access to the entire codebase. You may use tools like \`read_file\`, \`list_directory\`, \`glob\`, and \`search_file_content\` to explore and understand the project.
+          2. NO MODIFICATIONS: You are FORBIDDEN from using \`write_file\`, \`replace\`, or any shell commands that modify code, EXCEPT for the "PLAN.md" file in the project root.
+          3. PLAN.md SOVEREIGNTY: Your primary goal is to help the user define their vision and create/update a "PLAN.md" file in the project root. This is the ONLY file you are allowed to write to.
+          
+          The PLAN.md should follow this structure:
+          # 🗺 Project Plan: [Project Name]
+          
+          ## 🎯 Vision & Goals
+          [Summary of the project's purpose]
+          
+          ## 🚀 Phase 1: Short-Term (Now)
+          - [ ] \`TASK-01\`: [Description]
+          
+          ## 🛠 Phase 2: Mid-Term (Next)
+          - [ ] \`TASK-03\`: [Description]
+          
+          ## 🧠 Phase 3: Long-Term (Future)
+          - [ ] \`TASK-04\`: [Description]
+          
+          If the user mentions screenshots or images, include them in the markdown as ![]() references.
+          Always use the \`write_file\` tool to create or update the PLAN.md file. 
+          Use the conventional task format: - [ ] \`ID\`: Title` : undefined
         } as any,
         (chunk) => updateLastMessage(selectedProjectId, currentThreadId!, chunk),
         async () => {
@@ -479,6 +508,12 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
       setIsLoading(false);
     }
   }, [inputValue, messages, isLoading, selectedProjectId, activeThreadId, activeProviderId, providers, selectedModel, availableModels, activeProject, executionMode, addThread, addMessage, updateLastMessage, replaceLastMessage, updateThread, updateToolCall]);
+
+  const handleStartThreadFromDiff = (prompt: string) => {
+      setIsDiffOpen(false);
+      setActiveThread(null);
+      handleSendMessage(prompt);
+  };
 
   const handleOpen = async () => {
     const result = await NativeService.dialog.showOpen({
@@ -582,8 +617,8 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         )}
       </AnimatePresence>
 
-      <div className="flex-1 flex flex-col min-w-0 min-h-0 relative bg-zinc-50/30">
-        <div className="flex-1 flex min-h-0 overflow-hidden relative">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 relative bg-zinc-50/30 w-full">
+        <div className="flex-1 flex min-h-0 overflow-hidden relative w-full">
           {activeView === 'automations' ? (
             <AutomationDashboard />
           ) : activeView === 'triage' ? (
@@ -687,6 +722,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                 <DiffViewer
                   projectPath={activeProject.path}
                   filePath=""
+                  onStartThread={handleStartThreadFromDiff}
                 />
               ) : (
                 <div className="text-center p-8 text-zinc-500">No active project selected.</div>

@@ -23,7 +23,10 @@ import {
     Link as LinkIcon,
     Github,
     Cpu,
-    ExternalLink
+    ExternalLink,
+    BarChart3,
+    Activity,
+    CreditCard
 } from 'lucide-react';
 import yaml from 'js-yaml';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -33,7 +36,7 @@ interface CustomizationPanelProps {
     onClose: () => void;
 }
 
-type Tab = 'appearance' | 'skills' | 'code' | 'plugins' | 'integrations' | 'config';
+type Tab = 'appearance' | 'skills' | 'code' | 'plugins' | 'integrations' | 'config' | 'usage';
 
 interface FileNode {
     name: string;
@@ -314,6 +317,12 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
                                 icon={<FileCode size={16} />}
                                 label="Config (YAML)"
                             />
+                            <TabButton
+                                active={activeTab === 'usage'}
+                                onClick={() => setActiveTab('usage')}
+                                icon={<BarChart3 size={16} />}
+                                label="Usage & Billing"
+                            />
 
                             {/* Warning */}
                             <div className="mt-auto p-4 bg-amber-50 border border-amber-100 rounded-xl">
@@ -363,8 +372,8 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
                                     <PluginsTab />
                                 )}
 
-                                {activeTab === 'config' && (
-                                    <ConfigTab />
+                                {activeTab === 'usage' && (
+                                    <UsageTab />
                                 )}
                             </AnimatePresence>
                         </div>
@@ -372,6 +381,180 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
                 </motion.div>
             </motion.div>
         </AnimatePresence>
+    );
+};
+
+// Usage Tab Component
+const UsageTab = () => {
+    const [usage, setUsage] = useState<any>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchUsage = async () => {
+            try {
+                const res = await fetch(`${API_BASE}/api/usage`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setUsage(data);
+                }
+            } catch (err) {
+                console.error('Failed to fetch usage', err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchUsage();
+    }, []);
+
+    if (isLoading) {
+        return (
+            <div className="flex-1 flex items-center justify-center">
+                <Loader2 className="animate-spin text-blue-500" size={32} />
+            </div>
+        );
+    }
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="p-6 overflow-y-auto flex-1 bg-zinc-50/30"
+        >
+            <div className="max-w-4xl mx-auto space-y-8">
+                <div>
+                    <h3 className="text-xl font-black text-[#0F172A] uppercase tracking-tight">Model Usage & Credits</h3>
+                    <p className="text-sm text-slate-500 mt-1">Monitor your AI consumption across all providers.</p>
+                </div>
+
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                        <div className="flex items-center gap-2 text-blue-600 mb-3">
+                            <Activity size={16} />
+                            <span className="text-[10px] font-black uppercase tracking-widest">Total Tokens</span>
+                        </div>
+                        <div className="text-2xl font-black text-[#0F172A]">
+                            {usage?.summary?.totalTokens?.toLocaleString() || 0}
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1 font-bold uppercase tracking-wider">Across all sessions</p>
+                    </div>
+
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                        <div className="flex items-center gap-2 text-emerald-600 mb-3">
+                            <CreditCard size={16} />
+                            <span className="text-[10px] font-black uppercase tracking-widest">Estimated Cost</span>
+                        </div>
+                        <div className="text-2xl font-black text-[#0F172A]">
+                            ${usage?.summary?.totalCost?.toFixed(4) || '0.0000'}
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1 font-bold uppercase tracking-wider">Estimated in USD</p>
+                    </div>
+
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                        <div className="flex items-center gap-2 text-purple-600 mb-3">
+                            <Cpu size={16} />
+                            <span className="text-[10px] font-black uppercase tracking-widest">Active Models</span>
+                        </div>
+                        <div className="text-2xl font-black text-[#0F172A]">
+                            {Object.keys(usage?.byModel || {}).length}
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1 font-bold uppercase tracking-wider">Current unique models</p>
+                    </div>
+                </div>
+
+                {/* Breakdown */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                        <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">By Provider</h4>
+                        <div className="space-y-4">
+                            {Object.entries(usage?.byProvider || {}).map(([provider, tokens]: any) => (
+                                <div key={provider}>
+                                    <div className="flex justify-between text-xs font-bold mb-1.5 uppercase tracking-wider">
+                                        <span className="text-[#0F172A]">{provider}</span>
+                                        <span className="text-slate-400">{tokens.toLocaleString()} tkn</span>
+                                    </div>
+                                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                        <div 
+                                            className="h-full bg-blue-500 rounded-full" 
+                                            style={{ width: `${Math.min(100, (tokens / (usage?.summary?.totalTokens || 1)) * 100)}%` }} 
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                        <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">By Model</h4>
+                        <div className="space-y-4">
+                            {Object.entries(usage?.byModel || {}).map(([model, tokens]: any) => (
+                                <div key={model}>
+                                    <div className="flex justify-between text-xs font-bold mb-1.5 truncate tracking-wider">
+                                        <span className="text-[#0F172A] uppercase truncate mr-2">{model}</span>
+                                        <span className="text-slate-400 flex-shrink-0">{tokens.toLocaleString()} tkn</span>
+                                    </div>
+                                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                        <div 
+                                            className="h-full bg-indigo-500 rounded-full" 
+                                            style={{ width: `${Math.min(100, (tokens / (usage?.summary?.totalTokens || 1)) * 100)}%` }} 
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                {/* History Table */}
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                        <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Recent Calls</h4>
+                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full uppercase tracking-wider">Last 1000 events</span>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-50/50 border-b border-slate-100">
+                                <tr>
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Time</th>
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Model</th>
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Tokens</th>
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Est. Cost</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                                {usage?.history?.slice().reverse().map((item: any, i: number) => (
+                                    <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                                        <td className="px-6 py-4 text-[11px] text-slate-500 font-medium">
+                                            {new Date(item.timestamp).toLocaleTimeString()}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex flex-col">
+                                                <span className="text-xs font-bold text-[#0F172A] truncate uppercase tracking-tight">{item.model}</span>
+                                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{item.providerId}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-xs font-bold text-[#0F172A] text-right font-mono">
+                                            {item.totalTokens.toLocaleString()}
+                                        </td>
+                                        <td className="px-6 py-4 text-xs font-bold text-emerald-600 text-right font-mono">
+                                            ${item.cost.toFixed(5)}
+                                        </td>
+                                    </tr>
+                                ))}
+                                {(!usage?.history || usage.history.length === 0) && (
+                                    <tr>
+                                        <td colSpan={4} className="px-6 py-12 text-center text-sm text-slate-400 italic">
+                                            No usage recorded yet. Start a chat to see statistics.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </motion.div>
     );
 };
 

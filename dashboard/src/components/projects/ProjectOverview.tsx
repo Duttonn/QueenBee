@@ -9,14 +9,39 @@ const StatusIcon = ({ status }: { status: 'todo' | 'in_progress' | 'done' }) => 
   return <Circle size={16} className="text-zinc-300" />;
 };
 
-export const ProjectOverview = ({ onNewThread }: { onNewThread: () => void }) => {
+export const ProjectOverview = ({ onNewThread, onStartPlanning, hasPlan = false }: { onNewThread: () => void, onStartPlanning?: () => void, hasPlan?: boolean }) => {
   const { tasks, fetchTasks } = useHiveStore();
   
   useEffect(() => {
+    console.log('[ProjectOverview] Fetching tasks... Current count:', tasks.length);
     fetchTasks();
     const interval = setInterval(fetchTasks, 5000);
     return () => clearInterval(interval);
   }, [fetchTasks]);
+
+  // If no plan exists, show empty state
+  // We check both the prop and the actual tasks array
+  if (!hasPlan && (!tasks || tasks.length === 0)) {
+      console.log('[ProjectOverview] No plan found, showing empty state.');
+      return (
+        <div className="flex-1 h-full flex flex-col items-center justify-center bg-zinc-50/30 p-8 text-center">
+            <div className="w-24 h-24 bg-white rounded-3xl flex items-center justify-center shadow-xl shadow-black/5 mb-6">
+                <Activity size={48} className="text-zinc-300" />
+            </div>
+            <h1 className="text-2xl font-bold text-zinc-900 mb-2">No Project Plan Found</h1>
+            <p className="text-zinc-500 max-w-md mx-auto mb-8 leading-relaxed">
+                This project doesn't have a <code>PLAN.md</code> file yet. Start planning to define your short, medium, and long-term goals.
+            </p>
+            <button 
+                onClick={onStartPlanning}
+                className="flex items-center gap-2 px-6 py-3 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl font-bold shadow-lg shadow-zinc-900/20 transition-all hover:scale-105 active:scale-95"
+            >
+                <Plus size={18} />
+                <span>Start Planning</span>
+            </button>
+        </div>
+      );
+  }
 
   // Calculate global progress
   // Correctly sum all tasks across all phases
