@@ -26,8 +26,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
     }
 
+    const frontendUrl = process.env.FRONTEND_URL || 'http://127.0.0.1:5173';
+    const apiBaseUrl = process.env.API_BASE_URL || 'http://127.0.0.1:3000';
+
     if (!code || typeof code !== 'string') {
-        return res.redirect(`http://localhost:5173/auth/callback?error=${encodeURIComponent('Authorization code is missing')}`);
+        return res.redirect(`${frontendUrl}/auth/callback?error=${encodeURIComponent('Authorization code is missing')}`);
     }
 
     const clientId = process.env.GITHUB_CLIENT_ID;
@@ -46,7 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log('[Auth] Exchanging code for access token...');
 
         // Decode state to recover the redirect_uri used during authorization
-        let redirectUri = 'http://localhost:3000/api/auth/github/callback';
+        let redirectUri = `${apiBaseUrl}/api/auth/github/callback`;
 
         // Exchange code for access token
         const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
@@ -245,7 +248,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
         
         // Use custom protocol if it looks like an electron request
-        const redirectBase = isElectron ? 'queenbee://auth/callback' : 'http://localhost:5173/auth/callback';
+        const redirectBase = isElectron ? 'queenbee://auth/callback' : `${frontendUrl}/auth/callback`;
 
         return res.redirect(`${redirectBase}?auth_data=${encodeURIComponent(authData)}&state=${state}`);
 
@@ -253,7 +256,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.error('[Auth] GitHub OAuth error:', error);
         // Fallback error redirect
         const isElectron = state?.toString().includes('electron');
-        const redirectBase = isElectron ? 'queenbee://auth/callback' : 'http://localhost:5173/auth/callback';
+        const redirectBase = isElectron ? 'queenbee://auth/callback' : `${frontendUrl}/auth/callback`;
         return res.redirect(`${redirectBase}?error=${encodeURIComponent(error.message || 'Unknown error')}`);
     }
 }

@@ -16,7 +16,8 @@ export const config = {
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
   // Set CORS headers for preflight
-  res.setHeader('Access-Control-Allow-Origin', 'http://localhost:5173');
+  const FRONTEND_URL = process.env.FRONTEND_URL || 'http://127.0.0.1:5173';
+  res.setHeader('Access-Control-Allow-Origin', FRONTEND_URL);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -36,7 +37,10 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   console.log('[LogRelay] Initializing Socket.io with CORS...');
   const io = new Server((res.socket as any).server, {
     cors: {
-      origin: ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"],
+      origin: [
+        process.env.FRONTEND_URL || "http://127.0.0.1:5173",
+        process.env.API_BASE_URL || "http://127.0.0.1:3000",
+      ],
       methods: ["GET", "POST"],
       credentials: true
     },
