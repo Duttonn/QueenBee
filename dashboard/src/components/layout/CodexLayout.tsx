@@ -32,6 +32,7 @@ import {
   sendChatMessageStream, 
   getGitDiff, 
   executeCommand,
+  API_BASE,
   type Message,
   type ToolCall 
 } from '../../services/api';
@@ -75,7 +76,6 @@ interface ComposerBarProps {
 
 const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onModeChange, availableModels, selectedModel, onModelSelect, composerMode, onComposerModeChange, effort, onEffortChange }: ComposerBarProps) => {
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
 
   const { isRecording, isProcessing, toggleRecording } = useVoiceRecording(
     useCallback((transcript) => {
@@ -112,39 +112,21 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
       <div className="bg-white border border-zinc-200 rounded-3xl shadow-2xl flex flex-col">
         {/* Top: Input Area */}
         <div className="px-4 pt-4 pb-2">
-          {showPreview ? (
-            <div className="w-full bg-transparent text-sm text-zinc-900 min-h-[44px] max-h-40 overflow-y-auto prose prose-sm prose-zinc">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                {value || '*Preview mode empty*'}
-              </ReactMarkdown>
-            </div>
-          ) : (
-            <textarea
-              value={value}
-              onChange={(e) => onChange(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask Queen Bee anything, @ to add files, / for commands..."
-              disabled={isLoading}
-              rows={1}
-              className="w-full bg-transparent text-sm text-zinc-900 placeholder-zinc-400 outline-none resize-none min-h-[44px] max-h-40 leading-relaxed"
-              style={{ height: 'auto' }}
-            />
-          )}
+          <textarea
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask Queen Bee anything, @ to add files, / for commands..."
+            disabled={isLoading}
+            rows={1}
+            className="w-full bg-transparent text-sm text-zinc-900 placeholder-zinc-400 outline-none resize-none min-h-[44px] max-h-40 leading-relaxed"
+            style={{ height: 'auto' }}
+          />
         </div>
 
         {/* Bottom: Controls Row */}
         <div className="px-3 pb-3 pt-1 flex items-center justify-between bg-zinc-50 border-t border-zinc-100 rounded-b-3xl">
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowPreview(!showPreview)}
-              className={`p-2 rounded-xl transition-all ${showPreview ? 'bg-blue-50 text-blue-600' : 'text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600'}`}
-              title={showPreview ? "Back to Edit" : "Markdown Preview"}
-            >
-              <Eye size={18} strokeWidth={1.5} />
-            </button>
-
-            <div className="w-px h-4 bg-zinc-200 mx-1"></div>
-
             <button 
               onClick={() => {
                 const input = document.createElement('input');
@@ -247,22 +229,6 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
                   </>
                 )}
               </AnimatePresence>
-            </div>
-
-            {/* Effort Selector */}
-            <div className="flex items-center gap-1 bg-zinc-100 rounded-xl p-1">
-              {(['low', 'medium', 'high'] as const).map((e) => (
-                <button
-                  key={e}
-                  onClick={() => onEffortChange?.(e)}
-                  className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest rounded-lg transition-all ${effort === e
-                    ? 'bg-white text-zinc-900 shadow-sm'
-                    : 'text-zinc-500 hover:text-zinc-700'
-                    }`}
-                >
-                  {e}
-                </button>
-              ))}
             </div>
           </div>
 
@@ -425,6 +391,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     const apiKey = activeProvider?.apiKey;
     const thread = activeProject?.threads?.find((t: any) => t.id === currentThreadId);
     const agentId = thread?.agentId;
+    let didModify = false;
 
     // Plan Mode Context
     let augmentedMessages = [...messages, userMessage];
@@ -474,14 +441,16 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         (chunk) => updateLastMessage(selectedProjectId, currentThreadId!, chunk),
         async () => {
           setIsLoading(false);
-          try {
-            const diff = await getGitDiff(activeProject?.path || '../');
-            setDiffStats({ added: diff.added, removed: diff.removed, filesCount: diff.files.length });
-            updateThread(selectedProjectId, currentThreadId!, {
-              diff: `+${diff.added} -${diff.removed}`,
-              time: 'Just now'
-            });
-          } catch { }
+          if (didModify) {
+            try {
+              const diff = await getGitDiff(activeProject?.path || '../');
+              setDiffStats({ added: diff.added, removed: diff.removed, filesCount: diff.files.length });
+              updateThread(selectedProjectId, currentThreadId!, {
+                diff: `+${diff.added} -${diff.removed}`,
+                time: 'Just now'
+              });
+            } catch { }
+          }
         },
         (error) => {
           setStreamError(error.message);
@@ -500,6 +469,12 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
               arguments: event.data.args
             });
           } else if (event.type === 'tool_end') {
+            // Check if this tool modifies the filesystem
+            const modifyingTools = ['write_file', 'replace', 'apply_patch', 'delete_file', 'create_worktree', 'write_memory', 'plan_tasks', 'add_task', 'claim_task', 'run_shell'];
+            if (modifyingTools.includes(event.data.tool)) {
+              didModify = true;
+            }
+
             updateToolCall(selectedProjectId, currentThreadId!, msgIndex, event.data.toolCallId, {
               status: 'success',
               result: event.data.result
@@ -576,15 +551,34 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           }
         }
     } else {
-        // Web Mode Fallback: Use a prompt to get the absolute path
-        const path = window.prompt("Please enter the absolute path to your project folder:");
-        if (path) {
-            const name = path.split('/').pop() || 'Untitled';
-            try {
+        // Web Mode: Use the bridge to trigger a native folder picker
+        try {
+            const res = await fetch(`${API_BASE}/api/utils/choose-folder`);
+            const data = await res.json();
+            
+            if (data.canceled) return;
+            
+            if (data.path) {
+                const path = data.path;
+                const name = path.replace(/\/$/, '').split('/').pop() || 'Untitled';
                 await addAppProject({ id: `proj-${Date.now()}`, name, path, threads: [], agents: [] });
+                // We don't have NativeService.notify in web mode, maybe use a toast or alert
                 alert(`Project ${name} added successfully!`);
-            } catch (e: any) {
-                alert(`Failed to add project: ${e.message}`);
+            } else if (data.error) {
+                throw new Error(data.error);
+            }
+        } catch (e: any) {
+            console.error('Failed to open native picker:', e);
+            // Fallback to manual prompt if the bridge fails or is not on macOS
+            const path = window.prompt("Native picker failed. Please enter the absolute path to your project folder:");
+            if (path) {
+                const name = path.replace(/\/$/, '').split('/').pop() || 'Untitled';
+                try {
+                    await addAppProject({ id: `proj-${Date.now()}`, name, path, threads: [], agents: [] });
+                    alert(`Project ${name} added successfully!`);
+                } catch (err: any) {
+                    alert(`Failed to add project: ${err.message}`);
+                }
             }
         }
     }
@@ -703,6 +697,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                   onBuild={() => handleRunCommand('npm run build')}
                   onAddThread={() => setActiveThread(null)}
                   onOpenIn={handleOpenIn}
+                  onStop={handleStop}
                   mode={executionMode}
                   onModeChange={setExecutionMode}
                   diffStats={diffStats}
@@ -730,8 +725,6 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                 onModelSelect={setSelectedModel}
                 composerMode={composerMode}
                 onComposerModeChange={setComposerMode}
-                effort={effort}
-                onEffortChange={setEffort}
               />
             </>
           ) : (
