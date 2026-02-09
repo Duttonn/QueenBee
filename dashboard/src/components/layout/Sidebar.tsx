@@ -20,13 +20,53 @@ import {
   Gitlab,
   Cloud,
   ListTodo,
-  LayoutTemplate
+  LayoutTemplate,
+  Download
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useHiveStore } from '../../store/useHiveStore';
 import { SystemService } from '../../services/SystemService';
 import { API_BASE } from '../../services/api';
+
+/** Format a timestamp (ISO string, ms epoch, or thread ID like "thread-1738...") into a relative label */
+const formatRelativeTime = (value: string | number | undefined): string => {
+  if (!value) return '';
+  let ts: number;
+  if (typeof value === 'number') {
+    ts = value;
+  } else if (/^\d+$/.test(value)) {
+    ts = parseInt(value, 10);
+  } else if (value.startsWith('thread-')) {
+    ts = parseInt(value.replace('thread-', ''), 10);
+  } else {
+    ts = new Date(value).getTime();
+  }
+  if (isNaN(ts) || ts <= 0) return '';
+  const diff = Date.now() - ts;
+  if (diff < 0) return '';
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'now';
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d`;
+  return `${Math.floor(days / 30)}mo`;
+};
+
+/** Derive a display name for a thread: use title unless generic, then fall back to first user message */
+const getThreadDisplayName = (thread: any): string => {
+  const title = thread.title || '';
+  const isGeneric = !title || /^new\s*thread$/i.test(title.trim());
+  if (!isGeneric) return title;
+  const firstUserMsg = thread.messages?.find((m: any) => m.role === 'user');
+  if (firstUserMsg?.content) {
+    const text = typeof firstUserMsg.content === 'string' ? firstUserMsg.content : '';
+    if (text) return text.length > 40 ? text.slice(0, 40) + '...' : text;
+  }
+  return title || 'New Thread';
+};
 
 interface SidebarProps {
   activeView: 'build' | 'automations' | 'skills' | 'triage';
@@ -117,8 +157,161 @@ const ProjectPicker = ({
   );
 };
 
+interface RemoteRepo {
+  id: number;
+  name: string;
+  full_name: string;
+  html_url: string;
+  clone_url: string;
+  language: string | null;
+}
+
+type ForgeType = 'github' | 'gitlab';
+
+const forgeConfig: Record<ForgeType, { label: string; icon: typeof Github; endpoint: string }> = {
+  github: { label: 'GitHub', icon: Github, endpoint: `${API_BASE}/api/github/repos` },
+  gitlab: { label: 'GitLab', icon: Gitlab, endpoint: `${API_BASE}/api/gitlab/repos` },
+};
+
+const RemotesSection = ({
+  expandedFolders,
+  setExpandedFolders,
+  isCloning,
+  onClone,
+}: {
+  expandedFolders: Record<string, boolean>;
+  setExpandedFolders: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  isCloning: string | null;
+  onClone: (repo: any) => void;
+}) => {
+  const [repos, setRepos] = useState<Record<ForgeType, RemoteRepo[]>>({ github: [], gitlab: [] });
+  const [loading, setLoading] = useState<Record<ForgeType, boolean>>({ github: false, gitlab: false });
+  const [fetched, setFetched] = useState<Record<ForgeType, boolean>>({ github: false, gitlab: false });
+
+  const toggleForge = async (forge: ForgeType) => {
+    const isExpanding = !expandedFolders[forge];
+    setExpandedFolders(prev => ({ ...prev, [forge]: isExpanding }));
+
+    if (isExpanding && !fetched[forge]) {
+      setLoading(prev => ({ ...prev, [forge]: true }));
+      try {
+        const res = await fetch(forgeConfig[forge].endpoint);
+        if (res.ok) {
+          const data = await res.json();
+          const repoList = Array.isArray(data) ? data : data.repos ?? data.data ?? [];
+          setRepos(prev => ({ ...prev, [forge]: repoList }));
+        }
+      } catch {
+        // network error – leave list empty
+      } finally {
+        setFetched(prev => ({ ...prev, [forge]: true }));
+        setLoading(prev => ({ ...prev, [forge]: false }));
+      }
+    }
+  };
+
+  const handleClone = async (forge: ForgeType, repo: RemoteRepo) => {
+    try {
+      await fetch(`${API_BASE}/api/git/clone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clone_url: repo.clone_url || repo.html_url }),
+      });
+      onClone(repo);
+    } catch {
+      // silently handle
+    }
+  };
+
+  return (
+    <div className="px-5 mb-4">
+      <div className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-3">Remotes</div>
+      <div className="space-y-1">
+        {(Object.keys(forgeConfig) as ForgeType[]).map(forge => {
+          const cfg = forgeConfig[forge];
+          const Icon = cfg.icon;
+          const isExpanded = !!expandedFolders[forge];
+          const repoList = repos[forge];
+          const isLoading = loading[forge];
+
+          return (
+            <div key={forge}>
+              <div
+                onClick={() => toggleForge(forge)}
+                className="flex items-center justify-between text-[11px] font-bold text-zinc-500 hover:text-zinc-900 cursor-pointer p-1.5 rounded-lg hover:bg-zinc-100 transition-all"
+              >
+                <div className="flex items-center gap-2">
+                  {isExpanded
+                    ? <ChevronDown size={12} className="text-zinc-400" />
+                    : <ChevronRight size={12} className="text-zinc-400" />}
+                  <Icon size={14} className="text-zinc-400" />
+                  <span>{cfg.label}</span>
+                </div>
+                {!isExpanded && (
+                  <span className="text-[9px] bg-zinc-200 text-zinc-600 px-1.5 py-0.5 rounded-full">
+                    {fetched[forge] ? repoList.length : '...'}
+                  </span>
+                )}
+              </div>
+
+              <AnimatePresence>
+                {isExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="overflow-hidden"
+                  >
+                    {isLoading ? (
+                      <div className="flex items-center justify-center py-4">
+                        <Loader2 size={14} className="animate-spin text-zinc-400" />
+                        <span className="ml-2 text-[10px] text-zinc-400 font-bold">Loading repos...</span>
+                      </div>
+                    ) : repoList.length === 0 ? (
+                      <div className="py-3 px-2 text-center">
+                        <p className="text-[10px] font-bold text-zinc-400">No repositories found</p>
+                      </div>
+                    ) : (
+                      <div className="max-h-48 overflow-y-auto py-1 space-y-0.5">
+                        {repoList.map(repo => (
+                          <div
+                            key={repo.id}
+                            className="flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-zinc-100 transition-all group"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[10px] font-bold text-zinc-700 truncate">{repo.name}</div>
+                              {repo.language && (
+                                <div className="text-[8px] font-bold text-zinc-400 uppercase tracking-widest">{repo.language}</div>
+                              )}
+                            </div>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleClone(forge, repo); }}
+                              disabled={isCloning === repo.full_name}
+                              className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2 py-1 rounded-lg bg-zinc-200 hover:bg-zinc-300 text-zinc-600 text-[9px] font-bold transition-all disabled:opacity-50"
+                            >
+                              {isCloning === repo.full_name
+                                ? <Loader2 size={10} className="animate-spin" />
+                                : <Download size={10} />}
+                              <span>Clone</span>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, selectedProjectId, onProjectSelect, onAddProject }: SidebarProps) => {
-  const { projects, addProject, activeThreadId, setActiveThread } = useHiveStore();
+  const { projects, addProject, activeThreadId, setActiveThread, addThread, selectedProjectId: storeSelectedProjectId } = useHiveStore();
   const { forges, user } = useAuthStore();
   const connectedForges = forges.filter(f => f.connected);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
@@ -156,7 +349,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
         const res = await fetch(`${API_BASE}/api/projects/import-url`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ repoUrl: repo.html_url, projectName: repo.name, accessToken: gitForge?.accessToken })
+          body: JSON.stringify({ repoUrl: repo.html_url, projectName: repo.name, accessToken: connectedForges[0]?.accessToken })
         });
         if (res.ok) {
           const saved = await res.json();
@@ -187,7 +380,13 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
           selectedProjectId={selectedProjectId || null}
           onProjectSelect={(id) => onProjectSelect?.(id)}
           onAddProject={() => onAddProject?.()}
-          onNewThread={() => { setActiveThread(null); onViewChange('build'); }}
+          onNewThread={async () => {
+            const pid = selectedProjectId || storeSelectedProjectId;
+            if (!pid) return;
+            const threadId = `thread-${Date.now()}`;
+            await addThread(pid, { id: threadId, title: 'New Thread', messages: [] });
+            onViewChange('build');
+          }}
         />
         <NavItem
           icon={<Clock size={16} />}
@@ -233,19 +432,38 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                 </div>
 
                 {activeProject.threads?.length > 0 ? (
-                  activeProject.threads.map((thread: any) => (
-                    <div
-                      key={thread.id}
-                      onClick={() => { setActiveThread(thread.id); onViewChange('build'); }}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all ${activeThreadId === thread.id
-                        ? 'bg-white text-zinc-900 border border-zinc-200 shadow-sm'
-                        : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
-                        }`}
-                    >
-                      <MessageSquare size={14} className={activeThreadId === thread.id ? 'text-blue-400' : 'text-zinc-400'} />
-                      <span className="text-[11px] font-bold truncate tracking-tight">{thread.title}</span>
-                    </div>
-                  ))
+                  activeProject.threads.map((thread: any) => {
+                    const displayName = getThreadDisplayName(thread);
+                    const relTime = formatRelativeTime(thread.time || thread.id);
+                    const diffMatch = thread.diff ? thread.diff.match(/(\+\d+)\s+(-\d+)/) : null;
+                    return (
+                      <div
+                        key={thread.id}
+                        onClick={() => { setActiveThread(thread.id); onViewChange('build'); }}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all ${activeThreadId === thread.id
+                          ? 'bg-white text-zinc-900 border border-zinc-200 shadow-sm'
+                          : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
+                          }`}
+                      >
+                        <MessageSquare size={14} className={`flex-shrink-0 ${activeThreadId === thread.id ? 'text-blue-400' : 'text-zinc-400'}`} />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[11px] font-bold truncate tracking-tight block">{displayName}</span>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            {diffMatch && (
+                              <span className="text-xs">
+                                <span className="text-emerald-500 font-bold">{diffMatch[1]}</span>
+                                {' '}
+                                <span className="text-red-400 font-bold">{diffMatch[2]}</span>
+                              </span>
+                            )}
+                            {relTime && (
+                              <span className="text-xs text-zinc-400">{relTime}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
                 ) : null}
               </div>
             )}
@@ -261,25 +479,12 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
 
       <div className="mx-3 h-px bg-zinc-200 mb-4 mt-2"></div>
 
-      <div className="px-5 mb-4">
-        <div className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-3">Remotes</div>
-        <div className="space-y-1">
-          <div className="flex items-center justify-between text-[11px] font-bold text-zinc-500 hover:text-zinc-900 cursor-pointer p-1.5 rounded-lg hover:bg-zinc-100 transition-all">
-            <div className="flex items-center gap-2">
-              <Github size={14} className="text-zinc-400" />
-              <span>GitHub</span>
-            </div>
-            <span className="text-[9px] bg-zinc-200 text-zinc-600 px-1.5 py-0.5 rounded-full">12</span>
-          </div>
-          <div className="flex items-center justify-between text-[11px] font-bold text-zinc-500 hover:text-zinc-900 cursor-pointer p-1.5 rounded-lg hover:bg-zinc-100 transition-all">
-            <div className="flex items-center gap-2">
-              <Gitlab size={14} className="text-zinc-400" />
-              <span>GitLab</span>
-            </div>
-            <span className="text-[9px] bg-zinc-200 text-zinc-600 px-1.5 py-0.5 rounded-full">3</span>
-          </div>
-        </div>
-      </div>
+      <RemotesSection
+        expandedFolders={expandedFolders}
+        setExpandedFolders={setExpandedFolders}
+        isCloning={isCloning}
+        onClone={handleImportRepo}
+      />
 
       <div className="p-3 border-t border-zinc-200 bg-white">
         <div 

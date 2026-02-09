@@ -52,17 +52,35 @@ export const useHiveStore = create<HiveState>()(
       initSocket: async () => {
         if (get().socket) return;
         console.log('[HiveStore] Initializing Socket...');
-        
-        try {
-          await fetch(`${API_BASE}/api/logs/stream`);
-        } catch (e) {
-          console.error('[HiveStore] Failed to boot socket server:', e);
-        }
+
+        // Boot the socket server endpoint (best-effort, non-blocking)
+        const bootServer = async (retries = 3) => {
+          for (let i = 0; i < retries; i++) {
+            try {
+              await fetch(`${API_BASE}/api/logs/stream`);
+              return;
+            } catch (e) {
+              if (i < retries - 1) {
+                await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+              }
+            }
+          }
+          console.warn('[HiveStore] Socket server boot failed after retries — connecting anyway');
+        };
+        await bootServer();
 
         const socket = io(API_BASE, {
           path: '/api/logs/stream',
-          transports: ['websocket', 'polling']
+          transports: ['websocket', 'polling'],
+          reconnection: true,
+          reconnectionAttempts: 10,
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 10000,
         });
+
+        socket.on('connect', () => console.log('[HiveStore] Socket connected'));
+        socket.on('connect_error', (err) => console.warn('[HiveStore] Socket connect error:', err.message));
+
         set({ socket });
       },
 

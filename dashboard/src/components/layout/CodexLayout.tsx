@@ -67,9 +67,13 @@ interface ComposerBarProps {
   availableModels: { name: string, provider: string }[];
   selectedModel: string;
   onModelSelect: (model: string, provider: string) => void;
+  composerMode?: 'code' | 'chat' | 'plan';
+  onComposerModeChange?: (mode: 'code' | 'chat' | 'plan') => void;
+  effort?: 'low' | 'medium' | 'high';
+  onEffortChange?: (effort: 'low' | 'medium' | 'high') => void;
 }
 
-const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onModeChange, availableModels, selectedModel, onModelSelect }: ComposerBarProps) => {
+const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onModeChange, availableModels, selectedModel, onModelSelect, composerMode, onComposerModeChange, effort, onEffortChange }: ComposerBarProps) => {
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -178,6 +182,22 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
               ))}
             </div>
 
+            {/* Composer Mode: Code / Chat / Plan */}
+            <div className="flex items-center gap-1 bg-zinc-100 rounded-xl p-1">
+              {(['code', 'chat', 'plan'] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => onComposerModeChange?.(m)}
+                  className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest rounded-lg transition-all ${composerMode === m
+                    ? 'bg-white text-zinc-900 shadow-sm'
+                    : 'text-zinc-500 hover:text-zinc-700'
+                    }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+
             {/* Model Selector */}
             <div className="relative">
               <button
@@ -228,6 +248,22 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
                 )}
               </AnimatePresence>
             </div>
+
+            {/* Effort Selector */}
+            <div className="flex items-center gap-1 bg-zinc-100 rounded-xl p-1">
+              {(['low', 'medium', 'high'] as const).map((e) => (
+                <button
+                  key={e}
+                  onClick={() => onEffortChange?.(e)}
+                  className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest rounded-lg transition-all ${effort === e
+                    ? 'bg-white text-zinc-900 shadow-sm'
+                    : 'text-zinc-500 hover:text-zinc-700'
+                    }`}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -276,6 +312,8 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [executionMode, setExecutionMode] = useState<'local' | 'worktree' | 'cloud'>('local');
+  const [composerMode, setComposerMode] = useState<'code' | 'chat' | 'plan'>('code');
+  const [effort, setEffort] = useState<'low' | 'medium' | 'high'>('high');
   const [diffStats, setDiffStats] = useState({ added: 0, removed: 0, filesCount: 0 });
 
   const { 
@@ -330,7 +368,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
 
   const availableModels = React.useMemo(() => providers
     .filter(p => p.connected)
-    .flatMap(p => p.models.map(m => ({ name: m, provider: p.id })))
+    .flatMap(p => (p.models || []).map(m => ({ name: m, provider: p.id })))
     .sort((a, b) => a.provider.localeCompare(b.provider)), [providers]);
 
   const [selectedModel, setSelectedModel] = useState<string>('');
@@ -402,6 +440,8 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           projectPath: activeProject?.path,
           threadId: currentThreadId,
           mode: executionMode,
+          composerMode: composerMode,
+          effort: effort,
           agentId: agentId,
           systemPrompt: activeView === 'build' && !activeThreadId ? `You are currently in PLANNING MODE for the project "${activeProject?.name}". 
           
@@ -527,7 +567,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           const path = result.filePaths[0];
           const name = path.split('/').pop() || 'Untitled';
           try {
-            await addAppProject(name, path);
+            await addAppProject({ id: `proj-${Date.now()}`, name, path, threads: [], agents: [] });
             NativeService.notify('Project Added', `Successfully added ${name}`);
           } catch (e: any) {
             NativeService.dialog.showMessage({ type: 'error', message: 'Failed to add project', detail: e.message });
@@ -539,7 +579,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         if (path) {
             const name = path.split('/').pop() || 'Untitled';
             try {
-                await addAppProject(name, path);
+                await addAppProject({ id: `proj-${Date.now()}`, name, path, threads: [], agents: [] });
                 alert(`Project ${name} added successfully!`);
             } catch (e: any) {
                 alert(`Failed to add project: ${e.message}`);
@@ -684,6 +724,10 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                 availableModels={availableModels}
                 selectedModel={selectedModel}
                 onModelSelect={setSelectedModel}
+                composerMode={composerMode}
+                onComposerModeChange={setComposerMode}
+                effort={effort}
+                onEffortChange={setEffort}
               />
             </>
           ) : (
