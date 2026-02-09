@@ -1,9 +1,9 @@
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { EventLoopManager } from './src/lib/EventLoopManager.js';
-import { setIO } from './src/lib/socket-instance.js';
-import { TaskManager } from './src/lib/TaskManager.js';
-import { cronManager } from './src/lib/CronManager.js';
+import { EventLoopManager } from './src/lib/EventLoopManager';
+import { setIO } from './src/lib/socket-instance';
+import { TaskManager } from './src/lib/TaskManager';
+import { cronManager } from './src/lib/CronManager';
 
 const PORT = 3001;
 

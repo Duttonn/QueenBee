@@ -6,27 +6,32 @@ interface HiveState {
   projects: any[];
   activeAgents: any[];
   activeThreadId: string | null;
+  selectedProjectId: string | null;
   isOrchestratorActive: boolean;
   queenStatus: string;
   lastEvent: string | null;
   socket: Socket | null;
+  tasks: any[]; // GSDPhase[]
 
   // Actions
   initSocket: () => Promise<void>;
   fetchProjects: () => Promise<void>;
+  fetchTasks: () => Promise<void>;
   setQueenStatus: (status: string) => void;
   setProjects: (projects: any[]) => void;
   addProject: (project: any) => void;
+  setSelectedProjectId: (id: string | null) => void;
   spawnAgent: (projectId: string, agent: any) => void;
   updateAgentStatus: (projectId: string, agentName: string, status: string) => void;
 
   // Thread Actions
   setActiveThread: (id: string | null) => void;
-  addThread: (projectId: string, thread: any) => void;
+  addThread: (projectId: string, thread: any) => Promise<string>; // Returns threadId
   updateThread: (projectId: string, threadId: string, updates: any) => void;
   addMessage: (projectId: string, threadId: string, message: any) => void;
   clearThreadMessages: (projectId: string, threadId: string) => void;
   updateLastMessage: (projectId: string, threadId: string, content: string) => void;
+  replaceLastMessage: (projectId: string, threadId: string, updates: any) => void;
   updateToolCall: (projectId: string, threadId: string, messageIndex: number, toolCallId: string, updates: any) => void;
 }
 
@@ -36,15 +41,17 @@ export const useHiveStore = create<HiveState>()(
       projects: [],
       activeAgents: [],
       activeThreadId: null,
+      selectedProjectId: null,
       isOrchestratorActive: false,
       queenStatus: 'idle',
       lastEvent: null,
       socket: null,
+      tasks: [],
 
       initSocket: async () => {
         if (get().socket) return;
+        console.log('[HiveStore] Initializing Socket...');
         
-        // Boot the socket server via HTTP first (Next.js requirement)
         try {
           await fetch('http://127.0.0.1:3000/api/logs/stream');
         } catch (e) {
@@ -60,13 +67,47 @@ export const useHiveStore = create<HiveState>()(
 
       fetchProjects: async () => {
         try {
+          console.log('[HiveStore] Fetching Projects...');
           const res = await fetch('http://127.0.0.1:3000/api/projects');
           if (res.ok) {
-            const projects = await res.json();
-            set({ projects });
+            const fetchedProjects = await res.json();
+            console.log(`[HiveStore] Projects loaded from backend: ${fetchedProjects.length}`);
+            
+            set((state) => {
+              const mergedProjects = fetchedProjects.map((fp: any) => {
+                const existing = state.projects.find(p => p.id === fp.id);
+                // Preserve local threads if backend threads are empty but local ones exist
+                const threads = (fp.threads && fp.threads.length > 0) 
+                  ? fp.threads 
+                  : (existing?.threads || []);
+                
+                return { ...fp, threads };
+              });
+              
+              const newState: any = { projects: mergedProjects };
+              
+              if (!state.selectedProjectId && mergedProjects.length > 0) {
+                console.log(`[HiveStore] Auto-selecting project: ${mergedProjects[0].id}`);
+                newState.selectedProjectId = mergedProjects[0].id;
+              }
+              
+              return newState;
+            });
           }
         } catch (error) {
           console.error('[HiveStore] Failed to fetch projects:', error);
+        }
+      },
+
+      fetchTasks: async () => {
+        try {
+          const res = await fetch('http://127.0.0.1:3000/api/tasks/list');
+          if (res.ok) {
+            const tasks = await res.json();
+            set({ tasks });
+          }
+        } catch (error) {
+          console.error('[HiveStore] Failed to fetch tasks:', error);
         }
       },
 
@@ -76,11 +117,15 @@ export const useHiveStore = create<HiveState>()(
         const isDuplicate = state.projects.some(p => 
           p.name === project.name || p.path === project.path
         );
-        if (isDuplicate) {
-          return state; // Do not add duplicate
-        }
-        return { projects: [...state.projects, project] };
+        if (isDuplicate) return state;
+        return { projects: [...state.projects, project], selectedProjectId: project.id };
       }),
+
+      setSelectedProjectId: (id) => {
+        console.log(`[HiveStore] Setting selectedProjectId: ${id}`);
+        // Reset active thread when switching projects to avoid stale thread leakage
+        set({ selectedProjectId: id, activeThreadId: null });
+      },
 
       spawnAgent: (projectId, agent) => set((state) => ({
         projects: state.projects.map(p =>
@@ -97,51 +142,99 @@ export const useHiveStore = create<HiveState>()(
         )
       })),
 
-      setActiveThread: (activeThreadId) => set({ activeThreadId }),
+      setActiveThread: (id) => {
+        console.log(`[HiveStore] Setting activeThreadId: ${id}`);
+        set({ activeThreadId: id });
+      },
 
       addThread: async (projectId, thread) => {
-        // Simple state update - the agent will handle worktree creation autonomously
-        set((state) => ({
-          projects: state.projects.map(p =>
+        console.log(`[HiveStore] addThread: proj=${projectId}, threadId=${thread.id}`);
+        
+        // 1. Optimistic UI update
+        set((state) => {
+          const updatedProjects = state.projects.map(p =>
             p.id === projectId ? { 
               ...p, 
               threads: [{ ...thread, messages: [], agentId: thread.agentId }, ...(p.threads || [])] 
             } : p
+          );
+          return {
+            projects: updatedProjects,
+            activeThreadId: thread.id
+          };
+        });
+
+        // 2. Persist to backend
+        try {
+          await fetch('http://127.0.0.1:3000/api/projects/threads', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, thread: { ...thread, messages: [] } })
+          });
+        } catch (e) {
+          console.error('[HiveStore] Failed to persist new thread:', e);
+        }
+
+        return thread.id;
+      },
+
+      updateThread: async (projectId, threadId, updates) => {
+        console.log(`[HiveStore] updateThread: ${threadId}`);
+        
+        set((state) => ({
+          projects: state.projects.map(p =>
+            p.id === projectId ? {
+              ...p,
+              threads: p.threads.map((t: any) => t.id === threadId ? { ...t, ...updates } : t)
+            } : p
           )
         }));
 
-        queueMicrotask(() => set({ activeThreadId: thread.id }));
+        // Persist updates (excluding full messages for now to keep DB small)
+        const thread = get().projects.find(p => p.id === projectId)?.threads.find((t: any) => t.id === threadId);
+        if (thread) {
+            try {
+                await fetch('http://127.0.0.1:3000/api/projects/threads', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ projectId, thread: { ...thread, messages: undefined } })
+                });
+            } catch (e) { }
+        }
       },
 
-      updateThread: (projectId, threadId, updates) => set((state) => ({
-        projects: state.projects.map(p =>
-          p.id === projectId ? {
-            ...p,
-            threads: p.threads.map((t: any) => t.id === threadId ? { ...t, ...updates } : t)
-          } : p
-        )
-      })),
+      addMessage: (projectId, threadId, message) => {
+        console.log(`[HiveStore] addMessage: thread=${threadId}, role=${message.role}`);
+        set((state) => ({
+          projects: state.projects.map(p =>
+            p.id === projectId ? {
+              ...p,
+              threads: p.threads.map((t: any) => {
+                if (t.id === threadId) {
+                  const isDuplicate = t.messages?.some((m: any) => 
+                    m.role === message.role && 
+                    m.content === message.content && 
+                    message.content !== ''
+                  );
+                  if (isDuplicate) return t;
+                  return { ...t, messages: [...(t.messages || []), message] };
+                }
+                return t;
+              })
+            } : p
+          )
+        }));
 
-      addMessage: (projectId, threadId, message) => set((state) => ({
-        projects: state.projects.map(p =>
-          p.id === projectId ? {
-            ...p,
-            threads: p.threads.map((t: any) => {
-              if (t.id === threadId) {
-                // Prevent duplicate messages (especially from socket relay)
-                const isDuplicate = t.messages?.some((m: any) => 
-                  m.role === message.role && 
-                  m.content === message.content && 
-                  message.content !== '' // Allow empty messages for streaming
-                );
-                if (isDuplicate) return t;
-                return { ...t, messages: [...(t.messages || []), message] };
-              }
-              return t;
-            })
-          } : p
-        )
-      })),
+        // Persist to backend
+        const thread = get().projects.find(p => p.id === projectId)?.threads.find((t: any) => t.id === threadId);
+        if (thread) {
+            fetch('http://127.0.0.1:3000/api/projects/threads', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId, thread })
+            }).catch(e => console.error('[HiveStore] Persistence failed', e));
+        }
+      },
 
       clearThreadMessages: (projectId, threadId) => set((state) => ({
         projects: state.projects.map(p =>
@@ -154,21 +247,54 @@ export const useHiveStore = create<HiveState>()(
         )
       })),
 
-      updateLastMessage: (projectId, threadId, content) => set((state) => ({
-        projects: state.projects.map(p =>
-          p.id === projectId ? {
-            ...p,
-            threads: p.threads.map((t: any) =>
-              t.id === threadId ? {
-                ...t,
-                messages: t.messages.map((msg: any, idx: number) =>
-                  idx === t.messages.length - 1 ? { ...msg, content: msg.content + content } : msg
-                )
-              } : t
-            )
-          } : p
-        )
-      })),
+      updateLastMessage: (projectId, threadId, content) => {
+        set((state) => ({
+          projects: state.projects.map(p =>
+            p.id === projectId ? {
+              ...p,
+              threads: p.threads.map((t: any) =>
+                t.id === threadId ? {
+                  ...t,
+                  messages: t.messages.map((msg: any, idx: number) =>
+                    idx === t.messages.length - 1 ? { ...msg, content: msg.content + content } : msg
+                  )
+                } : t
+              )
+            } : p
+          )
+        }));
+        
+        // Debounced persistence would be better, but for now we'll rely on replace/add for durable saves
+      },
+
+      replaceLastMessage: (projectId, threadId, updates) => {
+        console.log(`[HiveStore] replaceLastMessage: thread=${threadId}, updates keys=${Object.keys(updates)}`);
+        set((state) => ({
+          projects: state.projects.map(p =>
+            p.id === projectId ? {
+              ...p,
+              threads: p.threads.map((t: any) =>
+                t.id === threadId ? {
+                  ...t,
+                  messages: t.messages.map((msg: any, idx: number) =>
+                    idx === t.messages.length - 1 ? { ...msg, ...updates } : msg
+                  )
+                } : t
+              )
+            } : p
+          )
+        }));
+
+        // Persist full message block
+        const thread = get().projects.find(p => p.id === projectId)?.threads.find((t: any) => t.id === threadId);
+        if (thread) {
+            fetch('http://127.0.0.1:3000/api/projects/threads', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId, thread })
+            }).catch(e => console.error('[HiveStore] Persistence failed', e));
+        }
+      },
 
       updateToolCall: (projectId, threadId, messageIndex, toolCallId, updates) => set((state) => ({
         projects: state.projects.map(p =>
@@ -201,7 +327,9 @@ export const useHiveStore = create<HiveState>()(
         projects: state.projects,
         activeAgents: state.activeAgents,
         activeThreadId: state.activeThreadId,
-        isOrchestratorActive: state.isOrchestratorActive
+        selectedProjectId: state.selectedProjectId,
+        isOrchestratorActive: state.isOrchestratorActive,
+        tasks: state.tasks
       }),
     }
   )

@@ -55,6 +55,7 @@ export class AutonomousRunner {
 
   private sendEvent(data: any) {
     if (this.writable) {
+      console.log(`[AutonomousRunner] Sending Event: ${data.type || data.event}`);
       this.writable.write(`data: ${JSON.stringify(data)}\n\n`);
     }
   }
@@ -73,7 +74,13 @@ export class AutonomousRunner {
 
           this.session.messages = [
               ...this.session.messages,
-              ...history.filter(m => m.role !== 'system')
+              ...history.filter(m => m.role !== 'system').map(m => ({
+                  role: m.role,
+                  content: m.content || '',
+                  tool_calls: m.tool_calls || undefined,
+                  tool_call_id: m.tool_call_id || undefined,
+                  name: m.name || undefined
+              }))
           ];
 
           this.session.on('event', (data) => this.sendEvent(data));
@@ -110,8 +117,14 @@ export class AutonomousRunner {
   private async executeRecursiveLoop(userPrompt: string, options?: LLMProviderOptions): Promise<LLMMessage> {
     let result = await this.session!.prompt(userPrompt, options);
     
-    // Only workers and orchestrators follow the recursive "Fix" logic automatically
-    if (this.role === 'solo') return result;
+    // Solo Agent: Ensure we have a text response if the loop ended with tools
+    if (this.role === 'solo') {
+      if (!result.content && result.tool_calls) {
+        console.log('[RecursiveRunner] Solo agent ended with tool calls but no text. Requesting summary...');
+        result = await this.session!.prompt("Great. Please provide a brief summary of what you did for the user.", options);
+      }
+      return result;
+    }
 
     let retryCount = 0;
     const maxRetries = 2;

@@ -51,7 +51,7 @@ export class GeminiProvider extends LLMProvider {
           role: 'function',
           parts: [{
             functionResponse: {
-              name: m.name,
+              name: m.name || 'unknown_tool',
               response: { result: contentObj }
             }
           }]
@@ -162,7 +162,7 @@ export class GeminiProvider extends LLMProvider {
           role: 'function',
           parts: [{
             functionResponse: {
-              name: m.name,
+              name: m.name || 'unknown_tool',
               response: { result: contentObj }
             }
           }]
@@ -214,25 +214,49 @@ export class GeminiProvider extends LLMProvider {
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+      
+      // Process complete lines
+      let newlineIndex;
+      while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.substring(0, newlineIndex).trim();
+        buffer = buffer.substring(newlineIndex + 1);
 
-      for (const line of lines) {
-        const cleanedLine = line.trim();
-        if (!cleanedLine.startsWith('data: ')) continue;
+        if (line.startsWith('data: ')) {
+          try {
+            const json = JSON.parse(line.substring(6));
+            const candidate = json.candidates?.[0];
+            const contentParts = candidate?.content?.parts || [];
+            
+            let text = '';
+            const toolCalls: LLMToolCall[] = [];
 
-        try {
-          const json = JSON.parse(cleanedLine.substring(6));
-          const text = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
-          if (text) {
-            yield {
-              id: `gemini-${Date.now()}`,
-              model: finalModel,
-              content: text
-            };
+            for (const part of contentParts) {
+              if (part.text) {
+                text += part.text;
+              }
+              if (part.functionCall) {
+                toolCalls.push({
+                  id: `call_${Math.random().toString(36).substring(7)}`,
+                  type: 'function',
+                  function: {
+                    name: part.functionCall.name,
+                    arguments: JSON.stringify(part.functionCall.args)
+                  }
+                });
+              }
+            }
+
+            if (text || toolCalls.length > 0) {
+              yield {
+                id: `gemini-${Date.now()}`,
+                model: finalModel,
+                content: text || null,
+                tool_calls: toolCalls.length > 0 ? toolCalls : undefined
+              };
+            }
+          } catch (e) {
+            console.error('Error parsing Gemini chunk:', e);
           }
-        } catch (e) {
-          // Ignore parse errors
         }
       }
     }

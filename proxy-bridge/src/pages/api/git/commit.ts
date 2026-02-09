@@ -7,7 +7,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(405).end(`Method ${req.method} Not Allowed`);
     }
 
-    const { message, path: repoPath } = req.body;
+    const { message, path: repoPath, addAll = true, push = false, files } = req.body;
 
     if (!repoPath) {
         return res.status(400).json({ error: 'Repository path required' });
@@ -16,8 +16,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const git = simpleGit(repoPath);
 
     try {
-        await git.add('.');
+        if (files && Array.isArray(files) && files.length > 0) {
+            await git.add(files);
+        } else if (addAll) {
+            await git.add('.');
+        }
+        
         const result = await git.commit(message || 'Update from Queen Bee');
+        
+        if (push) {
+            await git.push();
+        }
+
         return res.status(200).json(result);
     } catch (error: any) {
         return res.status(500).json({ error: error.message });

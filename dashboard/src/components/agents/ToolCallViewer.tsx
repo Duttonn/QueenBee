@@ -1,5 +1,5 @@
 import React from 'react';
-import { Terminal, Check, X, Shield, ChevronDown, ChevronRight, FileEdit } from 'lucide-react';
+import { Terminal, Check, X, Shield, ChevronDown, ChevronRight, FileEdit, Loader2, Search, Code, Cpu, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface ToolCallViewerProps {
@@ -23,121 +23,153 @@ const ToolCallViewer: React.FC<ToolCallViewerProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = React.useState(status === 'pending');
 
-  const getStatusIcon = () => {
-    switch (status) {
-      case 'pending': return <Shield size={14} className="text-amber-500" />;
-      case 'running': return <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />;
-      case 'success': return <Check size={14} className="text-green-500" />;
-      case 'error': return <X size={14} className="text-red-500" />;
-      case 'rejected': return <X size={14} className="text-zinc-500" />;
-      default: return <Terminal size={14} />;
+  const getToolAction = () => {
+    switch (toolName) {
+      case 'write_file': return 'Created';
+      case 'replace': return 'Edited';
+      case 'read_file': return 'Read';
+      case 'list_directory':
+      case 'glob':
+      case 'search_file_content': return 'Explored';
+      case 'run_shell_command': return 'Executed';
+      default: return 'Called';
     }
   };
 
-  const getStatusText = () => {
-    switch (status) {
-      case 'pending': return 'Needs Approval';
-      case 'running': return 'Running';
-      case 'success': return 'Success';
-      case 'error': return 'Failed';
-      case 'rejected': return 'Rejected';
-      default: return '';
+  const getToolIcon = () => {
+    switch (toolName) {
+      case 'write_file':
+      case 'replace': return <FileEdit size={12} className="text-blue-500" />;
+      case 'read_file': return <Code size={12} className="text-zinc-400" />;
+      case 'list_directory':
+      case 'glob':
+      case 'search_file_content': return <Search size={12} className="text-amber-500" />;
+      case 'run_shell_command': return <Terminal size={12} className="text-emerald-500" />;
+      default: return <Cpu size={12} className="text-zinc-400" />;
     }
   };
 
-  const isWriteFile = toolName === 'write_file';
+  const getToolDescription = () => {
+    if (!args) return <span className="text-zinc-400 ml-1">{toolName}</span>;
+    
+    const path = args.file_path || args.path || args.dir_path || '';
+    const name = path.split('/').pop() || '';
+    if (name) return <span className="text-blue-600 font-bold ml-1">{name}</span>;
+    if (args.command) return <span className="text-zinc-600 font-mono ml-1 text-[10px]">{args.command.substring(0, 40)}{args.command.length > 40 ? '...' : ''}</span>;
+    if (args.pattern) return <span className="text-zinc-600 font-mono ml-1">"{args.pattern}"</span>;
+    return <span className="text-zinc-400 ml-1">{toolName}</span>;
+  };
+
+  const isFileTool = toolName === 'write_file' || toolName === 'replace';
+
+  const handleOpenDiff = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      const path = args.file_path || args.path;
+      if (path) {
+          window.dispatchEvent(new CustomEvent('OPEN_FILE_DIFF', { detail: { path } }));
+      }
+  };
+
+  const truncatedArgs = React.useMemo(() => {
+      if (!args) return null;
+      const copy = { ...args };
+      if (copy.content && copy.content.length > 200) {
+          copy.content = copy.content.substring(0, 200) + `\n\n... (${copy.content.length - 200} more characters truncated)`;
+      }
+      return copy;
+  }, [args]);
 
   return (
-    <div className="my-4 border border-white/5 rounded-2xl overflow-hidden bg-zinc-900/50 backdrop-blur-xl shadow-2xl animate-in slide-in-from-left-2 duration-300">
-      {/* Header */}
-      <div className="px-4 py-3 flex items-center justify-between bg-white/5 border-b border-white/5">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center border border-white/5">
-            {isWriteFile ? <FileEdit size={16} className="text-blue-400" /> : <Terminal size={16} className="text-zinc-400" />}
+    <div className="group border-l-2 border-zinc-100 pl-4 py-1.5 my-1 transition-all hover:border-zinc-200">
+      <div className="flex items-center justify-between group/row">
+        <div 
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex items-center gap-2 cursor-pointer flex-1 min-w-0"
+        >
+          <div className="flex-shrink-0 w-5 h-5 rounded-md bg-zinc-50 flex items-center justify-center border border-zinc-100 group-hover/row:bg-white group-hover/row:shadow-sm transition-all">
+            {status === 'running' ? <Loader2 size={10} className="animate-spin text-blue-500" /> : getToolIcon()}
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                Action
-              </span>
-              {status === 'pending' && (
-                <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 text-[9px] font-black uppercase tracking-widest border border-amber-500/20">
-                  Restricted
-                </span>
-              )}
+          
+          <div className="flex items-center text-[11px] font-medium text-zinc-500 truncate">
+            <span>{getToolAction()}</span>
+            {getToolDescription()}
+            
+            <div className="flex items-center gap-1.5 ml-3 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                {status === 'success' && <div className="flex items-center gap-1 text-[10px] font-black text-emerald-500 uppercase tracking-widest"><Check size={10} strokeWidth={3} /> Success</div>}
+                {status === 'error' && <div className="flex items-center gap-1 text-[10px] font-black text-rose-500 uppercase tracking-widest"><X size={10} strokeWidth={3} /> Failed</div>}
+                {status === 'pending' && <div className="flex items-center gap-1 text-[10px] font-black text-amber-500 uppercase tracking-widest animate-pulse"><Shield size={10} strokeWidth={3} /> Needs Approval</div>}
             </div>
-            <div className="text-[13px] font-bold text-zinc-200 font-mono tracking-tight">{toolName}</div>
           </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${
-            status === 'pending' ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
-            status === 'success' ? 'bg-green-500/10 border-green-500/20 text-green-500' :
-            status === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
-            'bg-zinc-800 border-white/5 text-zinc-400'
-          }`}>
-            {getStatusIcon()}
-            <span className="text-[10px] font-black uppercase tracking-widest">{getStatusText()}</span>
+
+          <div className="flex items-center gap-2 ml-auto">
+              {status === 'success' && isFileTool && (
+                  <button 
+                    onClick={handleOpenDiff}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-600 text-[9px] font-black uppercase tracking-widest border border-blue-100 hover:bg-blue-100 transition-colors"
+                  >
+                      <ExternalLink size={10} />
+                      View Changes
+                  </button>
+              )}
+              <ChevronRight 
+                size={12} 
+                className={`text-zinc-300 group-hover/row:text-zinc-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`} 
+              />
           </div>
-          <button 
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="p-1.5 hover:bg-white/5 rounded-lg text-zinc-500 hover:text-zinc-300 transition-all"
-          >
-            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </button>
         </div>
       </div>
 
-      {/* Special Content Preview for write_file */}
-      {status === 'pending' && isWriteFile && args.content && (
-        <div className="px-4 pt-4">
-          <div className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em] mb-2">Content Preview</div>
-          <div className="bg-black/40 rounded-xl p-4 border border-white/5 max-h-48 overflow-y-auto">
-            <pre className="text-[11px] text-zinc-400 font-mono leading-relaxed whitespace-pre-wrap">
-              {args.content}
-            </pre>
-          </div>
-        </div>
-      )}
-
-      {/* Args & Result Details */}
       <AnimatePresence>
         {isExpanded && (
-          <motion.div 
+          <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
-            <div className="p-4 space-y-4 font-mono">
-              {!isWriteFile && (
-                <div>
-                  <div className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em] mb-2">Arguments</div>
-                  <pre className="bg-black/20 p-3 rounded-xl border border-white/5 text-zinc-300 text-[11px] overflow-x-auto">
-                    {JSON.stringify(args, null, 2)}
-                  </pre>
+            <div className="mt-3 space-y-3">
+              {/* Arguments Block */}
+              <div className="bg-zinc-50 rounded-xl p-3 border border-zinc-100">
+                <div className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-2 flex items-center justify-between">
+                    <span>Tool Payload</span>
+                    <span className="font-mono opacity-50">{toolName}</span>
+                </div>
+                <pre className="text-[10px] text-zinc-600 font-mono overflow-x-auto leading-relaxed max-h-64">
+                  {JSON.stringify(truncatedArgs, null, 2)}
+                </pre>
+              </div>
+
+              {/* Execution Feedback */}
+              {status === 'pending' && (
+                <div className="flex items-center gap-2 p-2 bg-amber-50 border border-amber-100 rounded-xl">
+                  <button 
+                    onClick={onReject}
+                    className="flex-1 py-1.5 text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-rose-600 hover:bg-white rounded-lg transition-all"
+                  >
+                    Reject
+                  </button>
+                  <button 
+                    onClick={onApprove}
+                    className="flex-1 py-1.5 text-[10px] font-black uppercase tracking-widest bg-zinc-900 text-white hover:bg-zinc-800 rounded-lg transition-all shadow-md"
+                  >
+                    Approve
+                  </button>
                 </div>
               )}
-              {isWriteFile && (
-                <div>
-                  <div className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em] mb-2">Target Path</div>
-                  <div className="px-3 py-2 bg-black/20 rounded-lg border border-white/5 text-zinc-300 text-[11px] break-all">
-                    {args.path || args.file_path}
-                  </div>
-                </div>
-              )}
+
               {result && (
-                <div>
-                  <div className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em] mb-2">Result</div>
-                  <pre className="bg-green-500/5 p-3 rounded-xl border border-green-500/10 text-green-400/80 text-[11px] overflow-x-auto leading-relaxed">
+                <div className="bg-emerald-50/50 rounded-xl p-3 border border-emerald-100/50">
+                  <div className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-2">Result</div>
+                  <pre className="text-[10px] text-zinc-600 font-mono overflow-x-auto max-h-40">
                     {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
                   </pre>
                 </div>
               )}
+
               {error && (
-                <div>
-                  <div className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em] mb-2">Error</div>
-                  <pre className="bg-red-500/5 p-3 rounded-xl border border-red-500/10 text-red-400/80 text-[11px] overflow-x-auto leading-relaxed">
+                <div className="bg-rose-50 rounded-xl p-3 border border-rose-100">
+                  <div className="text-[9px] font-black text-rose-600 uppercase tracking-widest mb-2">Error</div>
+                  <pre className="text-[10px] text-rose-700 font-mono overflow-x-auto">
                     {error}
                   </pre>
                 </div>
@@ -146,25 +178,6 @@ const ToolCallViewer: React.FC<ToolCallViewerProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Approval Buttons */}
-      {status === 'pending' && (
-        <div className="px-4 py-3 flex items-center justify-end gap-3 bg-white/5 border-t border-white/5">
-          <button 
-            onClick={onReject}
-            className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-400 text-[11px] font-bold uppercase tracking-widest hover:bg-red-500/10 hover:text-red-500 transition-all border border-white/5"
-          >
-            Reject
-          </button>
-          <button 
-            onClick={onApprove}
-            className="px-4 py-2 rounded-xl bg-white text-zinc-950 text-[11px] font-black uppercase tracking-widest hover:bg-zinc-200 transition-all shadow-xl flex items-center gap-2"
-          >
-            <Check size={14} strokeWidth={3} />
-            Approve Action
-          </button>
-        </div>
-      )}
     </div>
   );
 };

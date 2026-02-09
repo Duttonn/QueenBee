@@ -18,7 +18,9 @@ import {
   Link as LinkIcon,
   Github,
   Gitlab,
-  Cloud
+  Cloud,
+  ListTodo,
+  LayoutTemplate
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -208,48 +210,55 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
 
       <div className="mx-3 h-px bg-zinc-200 mb-3"></div>
 
-      <div className="flex-1 overflow-y-auto px-2 scrollbar-none">
-        <div className="flex items-center justify-between px-3 mb-2">
-          <div className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em]">Threads</div>
-        </div>
+      <div className="flex-1 overflow-y-auto px-2 scrollbar-none flex flex-col gap-4">
+        {/* Threads Section */}
+        <div>
+            <div className="flex items-center justify-between px-3 mb-2">
+              <div className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em]">Threads</div>
+            </div>
 
-        {activeProject ? (
-          <div className="space-y-0.5">
-            {activeProject.threads?.length > 0 ? (
-              activeProject.threads.map((thread: any) => (
+            {activeProject && (
+              <div className="space-y-0.5">
+                {/* Persistent Project Status / Plan Item */}
                 <div
-                  key={thread.id}
-                  onClick={() => { setActiveThread(thread.id); onViewChange('build'); }}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all ${activeThreadId === thread.id
+                  onClick={() => { setActiveThread(null); onViewChange('build'); }}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all ${!activeThreadId && activeView === 'build'
                     ? 'bg-white text-zinc-900 border border-zinc-200 shadow-sm'
                     : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
                     }`}
                 >
-                  <MessageSquare size={14} className={activeThreadId === thread.id ? 'text-blue-400' : 'text-zinc-400'} />
-                  <span className="text-[11px] font-bold truncate tracking-tight">{thread.title}</span>
+                  <LayoutTemplate size={14} className={!activeThreadId && activeView === 'build' ? 'text-blue-500' : 'text-zinc-400'} />
+                  <span className="text-[11px] font-bold truncate tracking-tight uppercase tracking-widest">Project Status</span>
                 </div>
-              ))
-            ) : (
-              <div className="px-3 py-8 text-center">
-                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">No threads yet</p>
-                <button
-                  onClick={() => { setActiveThread(null); onViewChange('build'); }}
-                  className="inline-flex items-center gap-1 text-[10px] font-black text-blue-600 uppercase tracking-widest hover:text-blue-700"
-                >
-                  <Plus size={10} />
-                  <span>Start building</span>
-                </button>
+
+                {activeProject.threads?.length > 0 ? (
+                  activeProject.threads.map((thread: any) => (
+                    <div
+                      key={thread.id}
+                      onClick={() => { setActiveThread(thread.id); onViewChange('build'); }}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all ${activeThreadId === thread.id
+                        ? 'bg-white text-zinc-900 border border-zinc-200 shadow-sm'
+                        : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
+                        }`}
+                    >
+                      <MessageSquare size={14} className={activeThreadId === thread.id ? 'text-blue-400' : 'text-zinc-400'} />
+                      <span className="text-[11px] font-bold truncate tracking-tight">{thread.title}</span>
+                    </div>
+                  ))
+                ) : null}
               </div>
             )}
-          </div>
-        ) : (
-          <div className="px-3 py-8 text-center">
-            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Select a project to see threads</p>
-          </div>
-        )}
+            
+            {!activeProject && (
+              <div className="px-3 py-8 text-center">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Select a project to see threads</p>
+              </div>
+            )}
+        </div>
+
       </div>
 
-      <div className="mx-3 h-px bg-zinc-200 mb-4"></div>
+      <div className="mx-3 h-px bg-zinc-200 mb-4 mt-2"></div>
 
       <div className="px-5 mb-4">
         <div className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-3">Remotes</div>
@@ -272,9 +281,12 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
       </div>
 
       <div className="p-3 border-t border-zinc-200 bg-white">
-        <div className="flex items-center gap-3 p-2 rounded-2xl hover:bg-zinc-50 transition-all cursor-pointer group">
+        <div 
+          onClick={onOpenSettings}
+          className="flex items-center gap-3 p-2 rounded-2xl hover:bg-zinc-50 transition-all cursor-pointer group border border-transparent hover:border-zinc-100"
+        >
           <div className="relative">
-            <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-900 text-[10px] font-black shadow-sm border border-zinc-200">
+            <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-900 text-[10px] font-black shadow-sm border border-zinc-200 group-hover:bg-white transition-colors">
               {user?.name ? user.name.split(' ').map((n: string) => n[0]).join('') : 'ND'}
             </div>
             <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-white rounded-full flex items-center justify-center shadow-sm border border-zinc-100">
@@ -282,7 +294,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
             </div>
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[11px] font-black text-zinc-900 truncate uppercase tracking-widest">{user?.name || 'Natao Dutton'}</div>
+            <div className="text-[11px] font-black text-zinc-900 truncate uppercase tracking-widest group-hover:text-blue-600 transition-colors">{user?.name || 'Natao Dutton'}</div>
             <div className="flex items-center gap-1.5">
               <div className="text-[9px] text-blue-600 font-bold uppercase tracking-widest">Pro Plan</div>
               <div className="w-1 h-1 rounded-full bg-zinc-300"></div>

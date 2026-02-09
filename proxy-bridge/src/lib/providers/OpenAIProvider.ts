@@ -132,9 +132,16 @@ export class OpenAIProvider extends LLMProvider {
     }
   }
 
-  async transcribe(audioBlob: Blob): Promise<string> {
+  async transcribe(audioData: any): Promise<string> {
     const formData = new FormData();
-    formData.append('file', audioBlob, 'audio.webm');
+    
+    // In Node.js, we might receive a Buffer. Convert it to a Blob for FormData.
+    let fileItem: any = audioData;
+    if (Buffer.isBuffer(audioData)) {
+      fileItem = new Blob([audioData], { type: 'audio/webm' });
+    }
+
+    formData.append('file', fileItem, 'audio.webm');
     formData.append('model', 'whisper-1');
 
     const response = await fetch(`${this.baseUrl}/audio/transcriptions`, {
