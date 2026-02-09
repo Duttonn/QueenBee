@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GitCommit, X, Check, ArrowUp, Github, Loader2, File, CheckSquare, Square, GitBranch, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_BASE } from '../../services/api';
+import { API_BASE, getGitDiff, type DiffStats } from '../../services/api';
 
 interface CommitModalProps {
   isOpen: boolean;
@@ -31,17 +31,17 @@ const CommitModal = ({ isOpen, onClose, projectPath, onCommitSuccess }: CommitMo
 
       // Fetch all changes (staged + unstaged)
       getGitDiff(projectPath)
-        .then(data => {
-          if (data.status === 'success') {
+        .then((data: DiffStats) => {
+          if ((data as any).status === 'success' || data.files) {
             setFiles(data.files);
           }
         })
         .catch(console.error);
 
       // Fetch ONLY staged changes
-      getGitDiff(projectPath, undefined, true)
-        .then(data => {
-          if (data.status === 'success') {
+      getGitDiff(projectPath, undefined)
+        .then((data: DiffStats) => {
+          if ((data as any).status === 'success' || data.files) {
             setStagedFilesInfo(data.files);
             setStats({
               files: data.files.length,
@@ -54,7 +54,7 @@ const CommitModal = ({ isOpen, onClose, projectPath, onCommitSuccess }: CommitMo
             }
 
             // Pre-select files that have staged changes
-            setSelectedFiles(new Set(data.files.map(f => f.path)));
+            setSelectedFiles(new Set(data.files.map((f: any) => f.path)));
           }
         })
         .catch(console.error);

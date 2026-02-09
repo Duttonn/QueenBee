@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronRight,
   Play,
+  Clock,
   GitCommit,
   File,
   Check,
@@ -24,6 +25,7 @@ import {
   Eye,
   Monitor,
   X,
+  Shield,
   TerminalSquare,
   ExternalLink,
   Code,
@@ -39,6 +41,121 @@ import { useHiveStore } from '../../store/useHiveStore';
 import ToolCallViewer from '../agents/ToolCallViewer';
 import AgentStepsPanel from '../agents/AgentStepsPanel';
 import { ProjectOverview } from '../projects/ProjectOverview';
+
+interface ToolCallSequenceProps {
+  toolCalls: ToolCall[];
+  socket: any;
+  activeProject: any;
+  activeThreadId: string | null;
+}
+
+const ToolCallSequence = ({ toolCalls, socket, activeProject, activeThreadId }: ToolCallSequenceProps) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  if (toolCalls.length === 0) return null;
+
+  // Summarize tools
+  const summary = (() => {
+    const counts: Record<string, number> = {};
+    toolCalls.forEach(tc => {
+      let category = 'Calls';
+      if (['write_file', 'replace', 'apply_patch'].includes(tc.name)) category = 'Edits';
+      else if (['read_file', 'list_directory', 'glob', 'search_file_content'].includes(tc.name)) category = 'Explorations';
+      else if (tc.name === 'run_shell_command') category = 'Commands';
+      
+      counts[category] = (counts[category] || 0) + 1;
+    });
+
+    return Object.entries(counts)
+      .map(([cat, count]) => `${count} ${cat}`)
+      .join(', ');
+  })();
+
+  const allSuccess = toolCalls.every(tc => tc.status === 'success');
+  const anyRunning = toolCalls.some(tc => tc.status === 'running');
+  const anyError = toolCalls.some(tc => tc.status === 'error');
+  const anyPending = toolCalls.some(tc => tc.status === 'pending');
+
+  return (
+    <div className="my-2 border border-zinc-100 rounded-2xl overflow-hidden bg-white/50 shadow-sm transition-all hover:border-zinc-200">
+      <button 
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full px-4 py-2 flex items-center justify-between hover:bg-zinc-50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className={`w-6 h-6 rounded-lg flex items-center justify-center border ${
+            anyError ? 'bg-rose-50 border-rose-100 text-rose-500' :
+            anyPending ? 'bg-amber-50 border-amber-100 text-amber-500' :
+            anyRunning ? 'bg-blue-50 border-blue-100 text-blue-500' :
+            'bg-emerald-50 border-emerald-100 text-emerald-500'
+          }`}>
+                          {anyRunning ? <Loader2 size={12} className="animate-spin" /> : 
+                           anyError ? <X size={12} /> :
+                           anyPending ? <Clock size={12} /> :
+                           <Check size={12} />}          </div>
+          <div className="flex flex-col items-start">
+            <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none mb-1">
+              Agent Tools ({toolCalls.length})
+            </span>
+            <span className="text-[11px] font-bold text-zinc-600 truncate max-w-md">
+              {anyRunning ? 'Processing task...' : summary}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {anyPending && <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[8px] font-black uppercase tracking-widest animate-pulse">Needs Approval</span>}
+          <ChevronRight size={14} className={`text-zinc-300 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+        </div>
+      </button>
+
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="border-t border-zinc-100 bg-white"
+          >
+            <div className="p-2 space-y-1">
+              {toolCalls.map((tool, tIdx) => (
+                <ToolCallViewer
+                  key={tool.id || tIdx}
+                  toolName={tool.name}
+                  args={tool.arguments}
+                  status={tool.status}
+                  result={tool.result}
+                  error={tool.error}
+                  onApprove={() => {
+                    socket?.emit('TOOL_APPROVAL', {
+                      projectId: activeProject?.id,
+                      threadId: activeThreadId,
+                      toolCallId: tool.id || tool.name,
+                      tool: tool.name,
+                      args: tool.arguments,
+                      projectPath: activeProject?.path,
+                      approved: true
+                    });
+                  }}
+                  onReject={() => {
+                    socket?.emit('TOOL_APPROVAL', {
+                      projectId: activeProject?.id,
+                      threadId: activeThreadId,
+                      toolCallId: tool.id || tool.name,
+                      tool: tool.name,
+                      args: tool.arguments,
+                      projectPath: activeProject?.path,
+                      approved: false
+                    });
+                  }}
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
 
 interface AgenticWorkbenchProps {
   messages: Message[];
@@ -359,38 +476,14 @@ const AgenticWorkbench = ({
                     )}
                   </AnimatePresence>
 
-                  {msg.toolCalls && msg.toolCalls.map((tool, tIdx) => (
-                    <ToolCallViewer
-                      key={tool.id || tIdx}
-                      toolName={tool.name}
-                      args={tool.arguments}
-                      status={tool.status}
-                      result={tool.result}
-                      error={tool.error}
-                      onApprove={() => {
-                        socket?.emit('TOOL_APPROVAL', {
-                          projectId: activeProject?.id,
-                          threadId: activeThreadId,
-                          toolCallId: tool.id || tool.name,
-                          tool: tool.name,
-                          args: tool.arguments,
-                          projectPath: activeProject?.path,
-                          approved: true
-                        });
-                      }}
-                      onReject={() => {
-                        socket?.emit('TOOL_APPROVAL', {
-                          projectId: activeProject?.id,
-                          threadId: activeThreadId,
-                          toolCallId: tool.id || tool.name,
-                          tool: tool.name,
-                          args: tool.arguments,
-                          projectPath: activeProject?.path,
-                          approved: false
-                        });
-                      }}
+                  {msg.toolCalls && (
+                    <ToolCallSequence
+                      toolCalls={msg.toolCalls}
+                      socket={socket}
+                      activeProject={activeProject}
+                      activeThreadId={activeThreadId}
                     />
-                  ))}
+                  )}
 
                   {msg.content ? (
                     <div className="text-sm text-zinc-800 prose prose-sm max-w-none prose-zinc prose-pre:p-0 prose-pre:bg-transparent">
