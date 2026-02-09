@@ -66,6 +66,36 @@
           "messages": [
             {
               "role": "user",
+              "content": "@multi_agent_swarm_workflow.svg what can you tell me about this "
+            },
+            {
+              "role": "assistant",
+              "content": "",
+              "toolCalls": [
+                {
+                  "id": "write_memory",
+                  "status": "running",
+                  "arguments": {
+                    "category": "knowledge",
+                    "content": " My analysis is limited to the provided file structure and context."
+                  }
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": "I cannot provide information about `multi_agent_swarm_workflow.svg` as it is not present in the project's file tree."
+            }
+          ],
+          "id": "1770657534055",
+          "title": "@multi_agent_swarm_workflow.sv...",
+          "diff": "+0 -0",
+          "time": "Just now"
+        },
+        {
+          "messages": [
+            {
+              "role": "user",
               "content": "Plan, implement call loss. "
             },
             {
