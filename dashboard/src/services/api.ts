@@ -88,18 +88,22 @@ export async function sendChatMessageStream(
     onComplete: (fullText: string) => void,
     onError: (error: Error) => void,
     onEvent?: (event: { type: string; data: any }) => void,
-    onMessage?: (message: Message) => void
+    onMessage?: (message: Message) => void,
+    maxRetries = 1
 ): Promise<void> {
-    const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'X-Codex-Provider': request.provider || 'mock',
-    };
+    let retries = 0;
+    let fullText = '';
 
-    if (request.apiKey) {
-        headers['Authorization'] = `Bearer ${request.apiKey}`;
-    }
+    const attempt = async (): Promise<void> => {
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            'X-Codex-Provider': request.provider || 'mock',
+        };
 
-    try {
+        if (request.apiKey) {
+            headers['Authorization'] = `Bearer ${request.apiKey}`;
+        }
+
         const response = await fetch(`${API_BASE}/api/chat`, {
             method: 'POST',
             headers,
@@ -115,72 +119,86 @@ export async function sendChatMessageStream(
         });
 
         if (!response.ok) {
-            const error = await response.json();
+            const error = await response.json().catch(() => ({ error: 'Chat request failed' }));
             throw new Error(error.error || 'Chat request failed');
         }
 
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
-        let fullText = '';
 
         if (!reader) {
             throw new Error('Response body is null');
         }
 
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
 
-            const chunk = decoder.decode(value, { stream: true });
+                const chunk = decoder.decode(value, { stream: true });
+                const lines = chunk.split('\n');
+                
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const payload = line.substring(6).trim();
+                        if (payload === '[DONE]') continue;
 
-            const lines = chunk.split('\n');
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    const payload = line.substring(6).trim();
-                    if (payload === '[DONE]') continue;
+                        try {
+                            const data = JSON.parse(payload);
 
-                    try {
-                        const data = JSON.parse(payload);
-
-                        if (data.error) {
-                            onError(new Error(data.error.message || 'Stream error'));
-                            return;
-                        }
-
-                        // Handle Agent Events
-                        if (data.type && data.type !== 'message' && onEvent) {
-                            onEvent(data);
-                        }
-
-                        // Handle Full Message Updates
-                        if (data.type === 'message' && data.data && onMessage) {
-                            onMessage(data.data);
-                            // Also update fullText for completion callback
-                            if (data.data.content) {
-                                fullText = data.data.content;
+                            if (data.error) {
+                                throw new Error(data.error.message || 'Stream error');
                             }
-                            continue; // Skip the chunk logic for message events
-                        }
 
-                        // Try OpenAI format first
-                        let content = data.choices?.[0]?.delta?.content;
+                            // Handle Agent Events
+                            if (data.type && data.type !== 'message' && onEvent) {
+                                onEvent(data);
+                            }
 
-                        // Fallback to direct content
-                        if (!content && data.content) {
-                            content = data.content;
-                        }
+                            // Handle Full Message Updates
+                            if (data.type === 'message' && data.data && onMessage) {
+                                onMessage(data.data);
+                                if (data.data.content) {
+                                    fullText = data.data.content;
+                                }
+                                continue;
+                            }
 
-                        if (content) {
-                            fullText += content;
-                            onChunk(content);
+                            // Try OpenAI format first
+                            let content = data.choices?.[0]?.delta?.content;
+
+                            // Fallback to direct content
+                            if (!content && data.content) {
+                                content = data.content;
+                            }
+
+                            if (content) {
+                                fullText += content;
+                                onChunk(content);
+                            }
+                        } catch (e: any) {
+                            if (e.message?.includes('Stream error')) throw e;
                         }
-                    } catch (e) { }
+                    }
                 }
             }
+        } finally {
+            reader.releaseLock();
         }
+    };
 
+    try {
+        await attempt();
         onComplete(fullText);
     } catch (error: any) {
+        if (retries < maxRetries) {
+            retries++;
+            const delay = Math.pow(2, retries) * 1000;
+            console.warn(`[API] Stream failed, retrying in ${delay}ms... (Attempt ${retries}/${maxRetries})`, error);
+            await new Promise(r => setTimeout(r, delay));
+            // When retrying, we might want to append a "reconnecting" message or similar
+            return sendChatMessageStream(request, onChunk, onComplete, onError, onEvent, onMessage, maxRetries - retries);
+        }
         onError(error instanceof Error ? error : new Error(String(error)));
     }
 }

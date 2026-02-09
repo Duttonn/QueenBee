@@ -1,5 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import { AsyncLocalStorage } from 'async_hooks';
+
+export const logContext = new AsyncLocalStorage<{ requestId?: string }>();
 
 const LOG_DIR = path.join(process.cwd(), 'logs');
 const LOG_FILE = path.join(LOG_DIR, 'server.log');
@@ -45,8 +48,11 @@ function redact(text: string): string {
 
 function log(level: string, message: string, ...args: any[]) {
   const timestamp = new Date().toISOString();
+  const context = logContext.getStore();
+  const requestId = context?.requestId ? ` [${context.requestId}]` : '';
+  
   const formattedArgs = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
-  const entry = redact(`[${timestamp}] [${level}] ${message} ${formattedArgs}
+  const entry = redact(`[${timestamp}] [${level}]${requestId} ${message} ${formattedArgs}
 `);
   
   console.log(entry.trim()); // Still show in terminal
