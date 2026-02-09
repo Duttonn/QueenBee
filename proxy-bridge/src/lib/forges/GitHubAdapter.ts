@@ -18,7 +18,9 @@ export class GitHubAdapter implements ForgeAdapter {
       id: String(repo.id),
       name: repo.name,
       fullName: repo.full_name,
+      full_name: repo.full_name,
       url: repo.html_url,
+      html_url: repo.html_url,
       description: repo.description || '',
       isPrivate: repo.private,
       forge: 'github'

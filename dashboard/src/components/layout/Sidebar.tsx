@@ -178,11 +178,13 @@ const RemotesSection = ({
   setExpandedFolders,
   isCloning,
   onClone,
+  forges,
 }: {
   expandedFolders: Record<string, boolean>;
   setExpandedFolders: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   isCloning: string | null;
   onClone: (repo: any) => void;
+  forges: any[];
 }) => {
   const [repos, setRepos] = useState<Record<ForgeType, RemoteRepo[]>>({ github: [], gitlab: [] });
   const [loading, setLoading] = useState<Record<ForgeType, boolean>>({ github: false, gitlab: false });
@@ -195,7 +197,13 @@ const RemotesSection = ({
     if (isExpanding && !fetched[forge]) {
       setLoading(prev => ({ ...prev, [forge]: true }));
       try {
-        const res = await fetch(forgeConfig[forge].endpoint);
+        const forgeData = forges.find(f => f.id === forge);
+        const headers: Record<string, string> = {};
+        if (forgeData?.accessToken) {
+          headers['Authorization'] = `Bearer ${forgeData.accessToken}`;
+        }
+
+        const res = await fetch(forgeConfig[forge].endpoint, { headers });
         if (res.ok) {
           const data = await res.json();
           const repoList = Array.isArray(data) ? data : data.repos ?? data.data ?? [];
@@ -484,6 +492,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
         setExpandedFolders={setExpandedFolders}
         isCloning={isCloning}
         onClone={handleImportRepo}
+        forges={forges}
       />
 
       <div className="p-3 border-t border-zinc-200 bg-white">
