@@ -473,9 +473,9 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (confirm('Delete this thread?')) {
+                            // if (confirm('Delete this thread?')) {
                               useHiveStore.getState().deleteThread(activeProject.id, thread.id);
-                            }
+                            // }
                           }}
                           className="opacity-0 group-hover/thread:opacity-100 p-1.5 hover:bg-rose-50 hover:text-rose-500 text-zinc-400 rounded-lg transition-all"
                           title="Delete Thread"
