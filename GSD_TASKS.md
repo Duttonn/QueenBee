@@ -68,29 +68,12 @@
 ## 🔧 FIXES & IMPROVEMENTS
 - [DONE] `FIX-01`: [Frontend] Fix Command Line Interface (CLI) Aesthetic & Functionality
 - [DONE] `FIX-02`: [Full-Stack] Fix Diff Viewer Rendering & Alignment Issues
-- [IN PROGRESS] `FEAT-02`: [Frontend] Enhance Commit UX and Integration
-  - **Description**: Replace the basic hammer icon with a proper "Commit" button using the Open style. Revamp the changes/diff view to match the provided "Complete Changes" mockups (split pane, checkboxes, etc.). Ensure backend commit integration is solid.
+- [DONE] `FEAT-02`: [Frontend] Enhance Commit UX and Integration
+- [ ] `BUG-01`: [Integration] Fix Whisper Transcription 500 Error
+  - **Description**: User reports a 500 Internal Server Error on `POST /api/voice`. This breaks the Dictation (Ctrl+M) feature.
+  - **Error**: `POST http://127.0.0.1:3000/api/voice 500 (Internal Server Error)`
   - **Actions**:
-    - Update `AgenticWorkbench.tsx` header to use the new Commit button style.
-    - Create/Update `CommitModal.tsx` or similar for the commit flow (stage, message, push).
-    - Update `DiffViewer.tsx` to support the new full-featured changes view.
-    - Verify `api/git/commit` endpoint usage.
-  - **Files**: `dashboard/src/components/layout/AgenticWorkbench.tsx`, `dashboard/src/components/projects/DiffViewer.tsx`, `dashboard/src/components/layout/CodexLayout.tsx`
-  - **Worker**: FRONTEND
-- [ ] `FEAT-01`: [Full-Stack] Visual GSD Task Management in Sidebar
-  - **Description**: Provide a visual rendering of the GSD tasks in the left sidebar to track agent progress.
-  - **Actions**:
-    - Create a backend endpoint `GET /api/tasks` to parse and serve tasks from `GSD_TASKS.md`.
-    - Implement a `TaskStatus` component in the Sidebar to display active and pending tasks.
-    - Group tasks by project/category and use the Zinc palette for a premium aesthetic.
-    - Ensure real-time updates via the existing Socket.io infrastructure if possible.
-  - **Files**: `proxy-bridge/src/lib/TaskManager.ts`, `dashboard/src/components/layout/Sidebar.tsx`, `dashboard/src/store/useHiveStore.ts`
-  - **Worker**: INTEGRATION
-  - **Description**: The command line theme does not match the app's aesthetic. The input field is non-functional, and the button to open it is missing.
-  - **Actions**:
-    - Update CLI theme to match the application (Zinc palette).
-    - Restore the missing CLI button in the top right.
-    - Ensure input field accepts commands and executes them.
-    - Verify functionality in both Web Workspace and Local macOS app.
-  - **Files**: `dashboard/src/components/layout/XtermTerminal.tsx`, `dashboard/src/components/layout/CodexLayout.tsx`, `dashboard/src/components/layout/TerminalPane.tsx`
-  - **Worker**: FRONTEND
+    - Investigate `proxy-bridge/src/server.ts` or the voice route handler.
+    - Check for missing environment variables (OPENAI_API_KEY) or FFmpeg issues.
+    - Verify `useVoiceRecording.ts` payload structure.
+  - **Worker**: BACKEND
