@@ -41,7 +41,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         res.setHeader('Set-Cookie', `auth_verifier=; Path=/; HttpOnly; Max-Age=0`);
 
         // Redirect to dashboard (isElectron ? custom protocol : web url)
-        const redirectBase = isElectron ? 'queenbee://auth/callback' : 'http://localhost:5173/auth/callback';
+        const frontendUrl = process.env.FRONTEND_URL || 'http://127.0.0.1:5173';
+        const redirectBase = isElectron ? 'queenbee://auth/callback' : `${frontendUrl}/auth/callback`;
         const authData = encodeURIComponent(JSON.stringify({
             success: true,
             user: {

@@ -14,7 +14,7 @@ export class BrowserRelay {
   async attachToTab(tabId: string) {
     console.log(`[Browser] Attaching to tab: ${tabId}`);
     // Logic to initiate CDP handshake
-    this.socket.emit('BROWSER_ATTACHED', { tabId, url: 'https://localhost:3000' });
+    this.socket.emit('BROWSER_ATTACHED', { tabId, url: process.env.API_BASE_URL || 'http://127.0.0.1:3000' });
   }
 
   async captureSnapshot() {
