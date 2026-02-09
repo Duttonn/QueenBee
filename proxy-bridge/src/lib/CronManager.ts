@@ -9,9 +9,10 @@ import { getDb } from './db';
 
 export interface AutomationJob {
   id: string;
-  type?: 'GSD_SCAN' | 'SYNC_REPOS' | 'DATA_GEN' | 'MAINTENANCE';
+  type?: 'GSD_SCAN' | 'SYNC_REPOS' | 'PR_REVIEW' | 'CHANGELOG' | 'DATA_GEN' | 'CI_MONITOR' | 'RELEASE_NOTES' | 'TEST_NIGHTLY' | 'MAINTENANCE';
   title?: string;
   schedule: string; // Cron format
+  script?: string;
   projectId?: string;
   projectPath?: string;
   lastRun?: string;
@@ -91,8 +92,17 @@ export class CronManager {
           case 'MAINTENANCE':
             await this.handleMaintenance(job);
             break;
+          case 'PR_REVIEW':
+          case 'CHANGELOG':
+          case 'DATA_GEN':
+          case 'CI_MONITOR':
+          case 'RELEASE_NOTES':
+          case 'TEST_NIGHTLY':
+            await this.handleAgentJob(job);
+            break;
           default:
-            console.log(`[CronManager] No logic implemented for job type ${jobType}`);
+            console.log(`[CronManager] No specific logic implemented for job type ${jobType}, falling back to general agent job`);
+            await this.handleAgentJob(job);
         }
         
         broadcast('UI_UPDATE', {
@@ -145,6 +155,20 @@ export class CronManager {
         }
       }
     }
+  }
+
+  private async handleAgentJob(job: AutomationJob) {
+    const projectPath = job.projectPath || Paths.getWorkspaceRoot();
+    const instruction = job.script || `Perform background task for type: ${job.type}`;
+    
+    console.log(`[CronManager] Spawning agent for job ${job.id} with instruction: ${instruction}`);
+    
+    const mockSocket = { 
+      emit: (event: string, data: any) => console.log(`[BackgroundAgent] ${event}`, data) 
+    } as any;
+    
+    const runner = new AutonomousRunner(mockSocket, projectPath);
+    await runner.executeLoop(instruction);
   }
 
   addJob(job: Omit<AutomationJob, 'id'>) {

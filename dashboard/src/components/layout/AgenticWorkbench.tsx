@@ -63,6 +63,7 @@ interface AgenticWorkbenchProps {
   onBuild?: () => void;
   onAddThread?: () => void;
   onOpenIn?: (app: 'vscode' | 'finder' | 'terminal' | 'xcode') => void;
+  onStop?: () => void;
 }
 
 const MemoizedMarkdown = React.memo(({ content }: { content: string }) => (
@@ -135,7 +136,8 @@ const AgenticWorkbench = ({
   onCommit,
   onBuild,
   onAddThread,
-  onOpenIn
+  onOpenIn,
+  onStop
 }: AgenticWorkbenchProps) => {
   console.log(`[AgenticWorkbench] Rendering: activeThreadId=${activeThreadId}, messages=${messages.length}, isLoading=${isLoading}`);
   const [expandedThinking, setExpandedThinking] = useState<Record<number, boolean>>({});
@@ -212,16 +214,15 @@ const AgenticWorkbench = ({
     setExpandedThinking(prev => ({ ...prev, [index]: !prev[index] }));
   };
 
-  const handleCopyMessage = (content: string, index: number) => {
-      const cleanContent = content.replace(/```thinking[\s\S]*?```/g, '').trim();
-      navigator.clipboard.writeText(cleanContent);
-      setCopiedIndex(index);
-      setTimeout(() => setCopiedIndex(null), 2000);
-  };
-
-  const ChatView = () => (
-    <div className="flex-1 flex overflow-hidden relative h-full">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 relative h-full">
+      const handleCopyMessage = (content: string, index: number) => {
+          const cleanContent = content.replace(/```thinking[\s\S]*?```/g, '').trim();
+          navigator.clipboard.writeText(cleanContent);
+          setCopiedIndex(index);
+          setTimeout(() => setCopiedIndex(null), 2000);
+      };
+  
+      const messagesList = (
+        <div className="flex-1 flex overflow-hidden relative h-full">      <div className="flex-1 overflow-y-auto p-4 space-y-4 relative h-full">
         <AnimatePresence>
           {showLiveEye && (
             <motion.div
@@ -618,7 +619,7 @@ const AgenticWorkbench = ({
           <button
             onClick={onAddThread}
             className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-400 hover:text-blue-500 transition-all"
-            title="New Thread"
+            title="New Thread (Cmd+N)"
           >
             <Plus size={18} />
           </button>
@@ -630,7 +631,7 @@ const AgenticWorkbench = ({
              <button
                 onClick={() => setSplitDirection(prev => prev === 'vertical' ? 'horizontal' : 'vertical')}
                 className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-500 hover:text-zinc-900 transition-all"
-                title="Toggle Split Direction"
+                title={splitDirection === 'vertical' ? "Horizontal Split" : "Vertical Split"}
              >
                 {splitDirection === 'vertical' ? <Columns size={16} /> : <Rows size={16} />}
              </button>
@@ -639,7 +640,7 @@ const AgenticWorkbench = ({
           <button
             onClick={() => setShowLiveEye(!showLiveEye)}
             className={`p-2 rounded-xl transition-all ${showLiveEye ? 'bg-blue-50 text-blue-600' : 'hover:bg-zinc-100 text-zinc-500 hover:text-blue-600'}`}
-            title="Live Eye View"
+            title="Live Eye View (CDP Stream)"
           >
             <Eye size={18} />
           </button>
@@ -647,26 +648,36 @@ const AgenticWorkbench = ({
           <button
             onClick={onToggleInspector}
             className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-500 hover:text-blue-600 transition-all"
-            title="Deep Inspector"
+            title="Deep Inspector (React Tree)"
           >
             <Layers size={18} />
           </button>
 
           <button
             onClick={onToggleDiff}
-            className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-500 hover:text-blue-600 transition-all"
-            title="Changes Viewer"
+            className={`p-2 hover:bg-zinc-100 rounded-xl transition-all text-zinc-500 hover:text-blue-600`}
+            title="Changes Viewer (Git Diff)"
           >
-            <Plus className="rotate-45" size={18} />
+            <GitCommit size={18} />
           </button>
 
           <button
             onClick={onToggleTerminal}
             className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-500 hover:text-zinc-700 transition-all"
-            title="Toggle Terminal"
+            title="Toggle Terminal (Ctrl+`)"
           >
             <TerminalSquare size={18} />
           </button>
+
+          {isLoading && onStop && (
+            <button
+              onClick={onStop}
+              className="p-2 hover:bg-rose-100 rounded-xl text-rose-500 transition-all animate-pulse"
+              title="Abort Agent"
+            >
+              <X size={18} strokeWidth={2.5} />
+            </button>
+          )}
 
           {/* Open In Dropdown */}
           <div className="relative">
@@ -783,11 +794,11 @@ const AgenticWorkbench = ({
                     />
                 </div>
                 <div className="flex-1 overflow-hidden relative bg-white border-l border-zinc-100">
-                    <ChatView />
+                    {messagesList}
                 </div>
             </div>
         ) : (
-            <ChatView />
+            messagesList
         )}
       </div>
 

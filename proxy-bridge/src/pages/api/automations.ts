@@ -11,7 +11,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     }
 
     if (req.method === 'POST') {
-        const { title, description, schedule, script } = req.body;
+        const { title, description, schedule, script, type } = req.body;
 
         // Basic validation
         if (!title) {
@@ -22,6 +22,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
             id: uuidv4(),
             title,
             description: description || '',
+            type,
             schedule: schedule || '0 0 * * *', // Default to daily if not provided
             active: true,
             script: script || '',
