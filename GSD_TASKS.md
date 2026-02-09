@@ -237,3 +237,140 @@
   - **Fix**: Add redaction filter that masks patterns matching `sk-*`, `ghp_*`, `AKIA*`, `password`, `secret`, `token`, `Bearer *` before writing to log file.
   - **Worker**: BACKEND
   - **Estimate**: 1h
+
+## 🚀 PHASE 6: CODEX PARITY & UX POLISH (Browser Audit — 2026-02-09)
+> **Source**: Live browser testing via Chrome extension + comparison against Codex App reference screenshots.
+> **Method**: Every page, modal, and interaction tested against `dashboard/projects/QueenBee/screenshots/`.
+
+### ✅ VERIFIED WORKING (Phase 5 Bulletproofing Confirmed)
+
+- [DONE] `BP-04` verified: Triage Inbox shows "ALL CLEAR — No findings to triage" (no mock data)
+- [DONE] `BP-05` verified: RealTimeLogFeed shows "No log events yet" empty state (no fake setInterval logs)
+- [DONE] `BP-06` verified: LoginPage imports `API_BASE` from `services/api` (no hardcoded localhost)
+- [DONE] `BP-16` verified: useHiveStore.ts, InboxPanel.tsx all use centralized `API_BASE`
+- [DONE] `BP-13` verified: AutomationDashboard shows "No execution history yet" (no fake data)
+- [DONE] `BP-15` verified: GlobalCommandBar shows working commands (Spawn Agent, Switch Workspace, System Status, New Thread, Refresh Projects)
+- [DONE] Commit Modal: Shows branch, staged files with +/- stats, file selection, "Just Commit" / "Commit & Push" / "Create Pull Request"
+- [DONE] Project Selector: Dropdown lists all projects (BLACKJACKADVISOR, PROJETHPC, FITCH, QUEENBEE) + "ADD PROJECT"
+- [DONE] Settings: Full settings modal with Appearance, Custom Skills, Source Code, Integrations, Plugins, Config (YAML), Usage & Billing tabs
+- [DONE] Thread Navigation: Sidebar threads load and display tool calls, observations, and assistant responses correctly
+
+### 🔴 CRITICAL — Bugs Found During Testing
+
+- [DONE] `P6-01`: [Frontend] Socket connection fails on page load — "Failed to boot socket server"
+  - **Files**: `dashboard/src/store/useHiveStore.ts:21`, `dashboard/src/App.tsx:39`
+  - **Problem**: Console shows `[HiveStore] Failed to boot socket server: TypeError: Failed to fetch` on every page load. The `initSocket()` call to `${API_BASE}/api/logs/stream` via `fetch()` fails, then the socket.io connection attempt may also fail. This means real-time events (DIFF_UPDATE, FILE_CHANGE, LOG_RELAY, TOOL_EXECUTION) are not received.
+  - **Fix**: Add retry logic with exponential backoff to `initSocket()`. The initial fetch to `/api/logs/stream` may not be needed if socket.io connects directly. Add a visible "Disconnected" indicator in the UI when socket is down.
+  - **Validation**: Reload page → no console errors. Socket connects. Real-time events flow.
+  - **Worker**: FRONTEND
+  - **Estimate**: 2h
+
+- [DONE] `P6-02`: [Frontend] "+ New Thread" button on Project Status page does nothing
+  - **Files**: `dashboard/src/components/layout/Sidebar.tsx`, Project Status view component
+  - **Problem**: The blue "+ New Thread" button visible on the Project Status page does not create a thread. No visual feedback, no error. The actual "New Thread" action is hidden inside the project selector dropdown, which is non-obvious.
+  - **Fix**: Wire the blue "+ New Thread" button to the same `createThread()` action used by the dropdown. Alternatively, remove the button if it's intended to be accessed only via the dropdown or Cmd+K.
+  - **Validation**: Click "+ New Thread" → new thread appears in sidebar and is selected.
+  - **Worker**: FRONTEND
+  - **Estimate**: 1h
+
+### 🟠 HIGH — Codex Parity Gaps (vs Reference Screenshots)
+
+- [DONE] `P6-03`: [Frontend] GitHub/GitLab Remotes section is non-interactive
+  - **Files**: `dashboard/src/components/layout/Sidebar.tsx`
+  - **Problem**: Sidebar shows "GitHub (12)" and "GitLab (3)" with counts but clicking does nothing. No expand/collapse to show repos. Per PRD 3.11, should support repo browsing and one-click clone.
+  - **Fix**: Make GitHub/GitLab sections expandable. Show repo list when clicked. Add "Clone" action per repo. Fetch from `/api/github/repos` and `/api/gitlab/repos`.
+  - **Validation**: Click "GitHub" → expands to show 12 repos. Click a repo → clones or navigates.
+  - **Worker**: FRONTEND
+  - **Estimate**: 4h
+
+- [DONE] `P6-04`: [Frontend] Automations page missing template cards (Codex parity)
+  - **Files**: `dashboard/src/components/layout/AutomationDashboard.tsx`
+  - **Problem**: Codex shows a "Let's automate" landing with 9 preset template cards ("Find and fix a bug every morning", "Review PR comments every hour", etc.). Queen Bee only shows "Agentic Jobs" header with an empty "Recent Runs" section and a generic "Create New" button.
+  - **Fix**: Add a template grid when no automations exist (empty state). Templates: GSD_SCAN, SYNC_REPOS, PR_REVIEW, CHANGELOG, DATA_GEN, CI_MONITOR, RELEASE_NOTES, TEST_NIGHTLY, MAINTENANCE. Each template pre-fills the Create Automation modal.
+  - **Validation**: Open Automations with no jobs → see template card grid matching Codex style.
+  - **Worker**: FRONTEND
+  - **Estimate**: 3h
+
+- [DONE] `P6-05`: [Frontend] Automation Create modal missing day-of-week selector
+  - **Files**: `dashboard/src/components/layout/AutomationDashboard.tsx`
+  - **Problem**: Codex's "Create automation" modal has day-of-week pills (Mo Tu We Th Fr Sa Su) and a workspace list dropdown. Queen Bee's modal only has name, description, target project dropdown, and time. Missing schedule granularity.
+  - **Fix**: Add day-of-week toggles (Mo-Su) below the schedule time. Store as cron-style data. Show selected days as pills.
+  - **Validation**: Create automation → select Mon/Wed/Fri at 09:30 → job shows "MWF 09:30" in card.
+  - **Worker**: FRONTEND
+  - **Estimate**: 2h
+
+- [DONE] `P6-06`: [Frontend] Composer missing Code mode toggle and effort selector (Codex parity)
+  - **Files**: `dashboard/src/components/layout/AgenticWorkbench.tsx`
+  - **Problem**: Codex composer has: `+ | </> Code v | GPT-5.2-Codex v | Medium v | 🔒 🎙 ⬆`. Queen Bee has: `👁 + | LOCAL WORKTREE CLOUD | GEMINI-2.5-FLASH v | 🎙 ▶`. Missing the "Code" mode toggle and "Medium" effort/quality selector.
+  - **Fix**: Add a mode selector (Code / Chat / Plan) and an effort level (Low / Medium / High) to the composer toolbar. Wire mode to system prompt template. Wire effort to temperature/reasoning level.
+  - **Validation**: Switch to "Code" mode → system prompt includes code-focused instructions. Select "High" effort → model uses higher reasoning.
+  - **Worker**: FRONTEND
+  - **Estimate**: 3h
+
+- [DONE] `P6-07`: [Frontend] Thread sidebar missing diff stats and timestamps (Codex parity)
+  - **Files**: `dashboard/src/components/layout/Sidebar.tsx`
+  - **Problem**: Codex thread list shows: thread name + `+47 -20  3h` (diff stats + time ago). Queen Bee threads show only the thread name (e.g., "hello", "fiebfinezf") with no metadata. Many threads have identical generic names.
+  - **Fix**: Show `+X -Y` diff stats and relative timestamp ("3h", "10h") next to each thread. Auto-generate descriptive thread names from the first user message (truncated to ~40 chars).
+  - **Validation**: Sidebar threads show diff stats and timestamps. New threads auto-named from first message.
+  - **Worker**: FRONTEND
+  - **Estimate**: 3h
+
+### 🟡 MEDIUM — UX Improvements
+
+- [DONE] `P6-08`: [Frontend] Skills page should show recommended skills (Codex parity)
+  - **Files**: `dashboard/src/components/layout/SkillsPage.tsx`
+  - **Problem**: Codex Skills page shows Installed skills (Figma MCP, Skill Creator, Skill Installer) and a Recommended grid (Doc, GH Address Comments, GH Fix CI, Imagegen, etc.). Queen Bee shows "No skills installed yet" and an empty Recommended section.
+  - **Fix**: Populate the Recommended section with built-in skill templates: Doc editing, GitHub PR review, CI fix, Code refactor, Test generator, Security scan. Each with icon, name, and description.
+  - **Validation**: Open Skills → see 6+ recommended skill cards. Click one → installs/enables it.
+  - **Worker**: FRONTEND
+  - **Estimate**: 3h
+
+- [DONE] `P6-09`: [Frontend] Diff viewer not accessible from committed file in thread
+  - **Files**: `dashboard/src/components/layout/AgenticWorkbench.tsx`, `dashboard/src/components/projects/DiffViewer.tsx`
+  - **Problem**: Codex shows inline "4 files changed +4 -18 | Review changes" link in chat after agent work. Queen Bee shows tool calls but no inline diff link. DiffViewer only accessible via Commit modal.
+  - **Fix**: After agent completes file modifications, show a "Review changes" summary inline in chat with file count, +/- stats. Clicking opens DiffViewer in a slide-over panel.
+  - **Validation**: Agent modifies files → chat shows "3 files changed +47 -12 | Review changes ↗" → click opens diff.
+  - **Worker**: FRONTEND
+  - **Estimate**: 4h
+
+- [DONE] `P6-10`: [Frontend] Composer bottom bar missing environment and branch selectors (Codex parity)
+  - **Files**: `dashboard/src/components/layout/AgenticWorkbench.tsx`
+  - **Problem**: Codex bottom bar shows: `Local | Worktree | Cloud | ⚙ No environment v | 🔀 From main v`. Queen Bee has LOCAL/WORKTREE/CLOUD tabs but no environment or branch selectors.
+  - **Fix**: Add environment dropdown ("No environment", "Development", "Staging", "Production") and branch selector ("From main", custom branches) to the composer bottom bar.
+  - **Validation**: Select "Worktree" + "From main" → agent creates worktree from main. Select environment → context injected into prompts.
+  - **Worker**: FRONTEND
+  - **Estimate**: 3h
+
+- [DONE] `P6-11`: [Frontend] Top toolbar icons (eye, layers, X, screen) have no tooltips or visible function
+  - **Files**: `dashboard/src/components/layout/TopToolbar.tsx` or equivalent
+  - **Problem**: Top-right toolbar has 4 icon buttons (eye, layers/stack, X, screen/monitor) between PLAN and OPEN. They have no tooltips and clicking them produces no visible effect. Users don't know what they do.
+  - **Fix**: Add tooltips: "Live Preview", "Inspector", "Stop Agent", "Terminal". Wire each to its respective feature (Live Eye CDP, Deep Inspector, agent abort, terminal toggle).
+  - **Validation**: Hover icons → see tooltips. Click "Terminal" → terminal opens. Click "Stop Agent" → running agent aborts.
+  - **Worker**: FRONTEND
+  - **Estimate**: 2h
+
+### 🔵 LOW — Polish & Nice-to-Have
+
+- [DONE] `P6-12`: [Frontend] "New thread" empty state should show welcome screen (Codex parity)
+  - **Files**: `dashboard/src/components/layout/AgenticWorkbench.tsx`
+  - **Problem**: Codex shows a welcome screen with person image and "Let's build [ProjectName] v" when starting a new thread. Queen Bee shows the Project Status GSD view as default, which is functional but less inviting.
+  - **Fix**: When no thread is selected, show a centered welcome: Queen Bee icon + "Let's build [ProjectName]" + model selector. First message auto-creates a thread.
+  - **Validation**: Select no thread → see welcome screen. Type message → thread auto-created and named.
+  - **Worker**: FRONTEND
+  - **Estimate**: 2h
+
+- [DONE] `P6-13`: [Frontend] Phase cards on Project Status should be clickable/expandable
+  - **Files**: Project Status view component
+  - **Problem**: Phase cards (Phase 1: Short-Term, Phase 2: Mid-Term, etc.) show tasks but clicking them does nothing. Tasks like "FEAT-01" are not interactive.
+  - **Fix**: Make phase cards expandable. Clicking a task should navigate to or create a thread for that task. Add progress bars based on task completion ratios.
+  - **Validation**: Click "FEAT-01" → opens or creates a thread focused on that task.
+  - **Worker**: FRONTEND
+  - **Estimate**: 3h
+
+- [DONE] `P6-14`: [Frontend] Automation modal X button does not reliably close
+  - **Files**: `dashboard/src/components/layout/AutomationDashboard.tsx`
+  - **Problem**: The X close button on the "New Automation" modal requires multiple clicks or clicks outside modal to close. The Cancel button works but the X is unreliable.
+  - **Fix**: Ensure the X button properly calls `setShowCreateModal(false)`. Add click-outside-to-close with proper event handling.
+  - **Validation**: Click X → modal closes on first click. Click outside modal → modal closes.
+  - **Worker**: FRONTEND
+  - **Estimate**: 30m
