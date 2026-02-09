@@ -1,13 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import fs from 'fs/promises';
 import path from 'path';
+import os from 'os';
 
-const ALLOWED_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.css', '.json', '.md', '.html'];
+const ALLOWED_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.css', '.json', '.md', '.html', '.svg', '.png', '.txt'];
 const PROJECT_ROOT = process.cwd();
-const ALLOWED_ROOTS = [
-    PROJECT_ROOT,
-    path.join(PROJECT_ROOT, '..'), // Allow parent to reach dashboard if running from proxy-bridge
-];
 
 /**
  * File API for reading and writing source files
@@ -24,23 +21,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const filePath = req.query.path as string || (req.body as any)?.path;
+    let baseDir = (req.query.projectPath as string) || (req.body as any)?.projectPath || PROJECT_ROOT;
 
     if (!filePath) {
         return res.status(400).json({ error: 'File path is required' });
     }
 
-    // Security: Resolve path relative to PROJECT_ROOT and normalize
+    // Handle tilde in project path
+    if (baseDir.startsWith('~')) {
+        baseDir = baseDir.replace('~', os.homedir());
+    }
+
+    // Security: Resolve path relative to baseDir and normalize
     const absolutePath = path.isAbsolute(filePath) 
         ? path.normalize(filePath) 
-        : path.resolve(PROJECT_ROOT, filePath);
+        : path.resolve(baseDir, filePath);
     
-    // Security: Validate path is within allowed directories
-    const isAllowed = ALLOWED_ROOTS.some(root => absolutePath.startsWith(path.normalize(root)));
+    // Security check: ensure baseDir is absolute
+    const absoluteBaseDir = path.isAbsolute(baseDir) ? baseDir : path.resolve(PROJECT_ROOT, baseDir);
 
-    if (!isAllowed) {
+    // Security: Validate path is within the requested baseDir or project root
+    if (!absolutePath.startsWith(path.normalize(absoluteBaseDir)) && !absolutePath.startsWith(path.normalize(PROJECT_ROOT))) {
         return res.status(403).json({
             error: 'Access denied',
-            message: `File path must be within allowed project directories. Resolved: ${absolutePath}`
+            message: `File path must be within the project directory. Resolved: ${absolutePath}`
         });
     }
 

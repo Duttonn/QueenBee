@@ -25,6 +25,9 @@ export class AutonomousRunner {
   private writable: Writable | null = null;
   private requestId: string | null = null;
 
+  private static fileTreeCache = new Map<string, { files: string[]; timestamp: number }>();
+  private static CACHE_TTL = 30000; // 30 seconds
+
   constructor(
     socket: Socket, 
     projectPath: string, 
@@ -130,6 +133,12 @@ export class AutonomousRunner {
         console.log('[RecursiveRunner] Solo agent ended with tool calls but no text. Requesting summary...');
         result = await this.session!.prompt("Great. Please provide a brief summary of what you did for the user.", options);
       }
+      return result;
+    }
+
+    // Optimization: If no tool calls were made in the last turn, assume completion and skip verification
+    if (!result.tool_calls || result.tool_calls.length === 0) {
+      console.log('[RecursiveRunner] Turn ended with no tool calls. Skipping verification.');
       return result;
     }
 
@@ -291,6 +300,14 @@ ${isolationDirective}
   }
 
   private async scanFiles(dir: string, depth = 0): Promise<string[]> {
+    if (depth === 0) {
+      const cached = AutonomousRunner.fileTreeCache.get(dir);
+      if (cached && Date.now() - cached.timestamp < AutonomousRunner.CACHE_TTL) {
+        console.log(`[AutonomousRunner] Using cached file tree for ${dir}`);
+        return cached.files;
+      }
+    }
+
     if (depth > 2) return [];
     if (!fs.existsSync(dir)) return [];
     try {
@@ -304,6 +321,10 @@ ${isolationDirective}
         } else {
           results.push(`FILE: ${entry.name}`);
         }
+      }
+
+      if (depth === 0) {
+        AutonomousRunner.fileTreeCache.set(dir, { files: results, timestamp: Date.now() });
       }
       return results;
     } catch { return []; }

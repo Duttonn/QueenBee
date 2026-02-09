@@ -317,6 +317,17 @@ export async function getProjects(): Promise<any[]> {
 }
 
 /**
+ * Get flat list of files in a project for autocompletion
+ */
+export async function getProjectFiles(projectPath: string): Promise<string[]> {
+    const params = new URLSearchParams({ path: projectPath });
+    const response = await fetch(`${API_BASE}/api/projects/files?${params}`);
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.files || [];
+}
+
+/**
  * Health check for the backend
  */
 export async function healthCheck(): Promise<boolean> {
