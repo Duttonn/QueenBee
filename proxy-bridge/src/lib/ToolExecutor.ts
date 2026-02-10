@@ -33,7 +33,7 @@ export class ToolExecutor {
   }
 
   private static ALLOWED_COMMANDS = new Set([
-    'git', 'npm', 'npx', 'node', 'python3', 'python', 'ls', 'cat', 'head', 'tail',
+    'git', 'npm', 'npx', 'node', 'python3', 'python', 'pip', 'pip3', 'ls', 'cat', 'head', 'tail',
     'mkdir', 'cp', 'mv', 'rm', 'touch', 'echo', 'grep', 'find', 'wc', 'diff',
     'tsc', 'eslint', 'prettier', 'jest', 'vitest', 'cargo', 'go', 'make', 'cd',
     'pwd', 'which', 'env', 'sort', 'uniq', 'sed', 'awk', 'tr', 'chmod',

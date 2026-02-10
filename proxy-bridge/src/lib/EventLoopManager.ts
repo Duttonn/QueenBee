@@ -104,7 +104,11 @@ export class EventLoopManager {
                     threadId,
                     toolCallId
                 });
-            } catch (error: any) {}
+            } catch (error: any) {
+                console.error(`[EventLoop] Manual tool execution failed for ${tool}:`, error.message);
+            }
+        } else if (approved && !tool) {
+            console.warn(`[EventLoop] TOOL_APPROVAL received 'approved' but tool name is missing for ${toolCallId}.`);
         } else if (!approved) {
             broadcast('TOOL_RESULT', {
                 projectId,

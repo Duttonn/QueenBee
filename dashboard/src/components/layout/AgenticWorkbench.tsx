@@ -182,7 +182,7 @@ const ToolCallSequence = ({ toolCalls, socket, activeProject, activeThreadId }: 
                     socket?.emit('TOOL_APPROVAL', {
                       projectId: activeProject?.id,
                       threadId: activeThreadId,
-                      toolCallId: tool.id || tool.name,
+                      toolCallId: tool.id,
                       tool: tool.name,
                       args: tool.arguments,
                       projectPath: activeProject?.path,
@@ -193,7 +193,7 @@ const ToolCallSequence = ({ toolCalls, socket, activeProject, activeThreadId }: 
                     socket?.emit('TOOL_APPROVAL', {
                       projectId: activeProject?.id,
                       threadId: activeThreadId,
-                      toolCallId: tool.id || tool.name,
+                      toolCallId: tool.id,
                       tool: tool.name,
                       args: tool.arguments,
                       projectPath: activeProject?.path,

@@ -387,65 +387,111 @@
   - **Worker**: INTEGRATION
 
 ## 🐝 PHASE 12: THE SOVEREIGN SWARM (Execution & Protocol)
-> **Goal**: Replace manual triggers with the `@qb` protocol and implement ephemeral worker isolation.
+> **Goal**: Replace manual triggers with the `@qb` protocol, prevent swarm file conflicts, and implement typed worker spawning.
+> **Priority Order**: @qb alias → File Event Bus → Worker Templates → Staggered Launch → Deep-Think → Polish
 
-### 🟡 PHASE 12.1: THE QUEEN'S PROTOCOL (@qb)
+### 🔴 P1 — Swarm UX Entry Point
 - [ ] `QB-01`: [Frontend] **Command Alias Engine**
+  - **Priority**: P1 — Unlocks the entire swarm UX
   - **Description**: Map `@qb` to the internal swarm orchestration workflow.
   - **Context**: Update `handleSendMessage` in `CodexLayout.tsx`. Use a regex `^@qb\s+` to intercept.
   - **Criteria**: Typing `@qb build a login page` should trigger the same logic as the previous `.zip` command.
+  - **Worker**: FRONTEND
 
-- [ ] `QB-02`: [Frontend] **Visual Command Suggester**
-  - **Description**: When user types `@`, show a high-end suggestion list.
-  - **Context**: Similar to `MentionDropdown.tsx` but specialized for system commands.
-  - **Criteria**: Show `@qb` with a Hexagon icon and the subtitle "Summon Hive Architect."
+### 🔴 P1 — Swarm Safety (File Conflicts)
+- [ ] `NB-01`: [Backend] **File Change Event Bus**
+  - **Priority**: P1 — Prevents the #1 swarm failure mode (agents overwriting each other's files)
+  - **Description**: Track which agents own which files. When `write_file` is called, check if another active agent has also written to the same file. If so, inject a system message alert into the other agent's context via Roundtable.
+  - **Files**: NEW `proxy-bridge/src/lib/FileWatcher.ts`, MODIFY `proxy-bridge/src/lib/ToolExecutor.ts` (write_file handler), MODIFY `proxy-bridge/src/lib/Roundtable.ts`
+  - **Implementation**:
+    - `FileWatcher`: In-memory map of `filePath → { lastWriter: agentId, timestamp }`. No fs.watch needed — just track on write_file tool calls.
+    - On write_file: Check if `lastWriter !== currentAgent`. If conflict, post to Roundtable: `"⚠️ {agentId} modified {file} which was last edited by {otherAgent}"`
+    - Expose `getFileOwnership()` for diagnostics
+  - **Criteria**: Worker A edits `App.tsx`, Worker B gets a system message alert without needing `chat_with_team`.
+  - **Worker**: BACKEND
 
-### 🟠 PHASE 12.2: ARCHITECTURAL DEEP-THINK
-- [ ] `QB-03`: [Backend] **Architect "Lens" Mode**
-  - **Description**: Implement a "Background Scout" agent that runs immediately when `@qb` is called.
-  - **Context**: While the Architect talks to the user, a secondary worker should call `list_directory` and `search_file_content` to build a 500-token summary of the project architecture.
-  - **Criteria**: Architect response should include "Scouting complete: Found [N] modules" without blocking the user conversation.
-
-- [ ] `QB-04`: [Backend] **KPI & Requirement Schema**
-  - **Description**: Force the Architect to output a JSON-structured requirement list before worker proposal.
-  - **Context**: Update `AutonomousRunner.ts` architect directive to include a `VALIDATE_REQUIREMENTS` step.
-  - **Criteria**: Render these as a "Checklist" in the UI, not just raw text.
-
-### 🔴 PHASE 12.3: WORKER SPAWNING (MICRO-TASKS)
+### 🟠 P2 — Core Swarm Execution
 - [ ] `QB-05`: [Backend] **Worker Prompt Templating**
-  - **Description**: Create specialized worker personas: `UI_BEE`, `LOGIC_BEE`, `TEST_BEE`.
-  - **Context**: Store prompts in `proxy-bridge/src/lib/prompts/workers/`.
-  - **Criteria**: Architect selects template based on task type.
+  - **Priority**: P2 — Specialized prompts prevent "jack-of-all-trades" LLM drift
+  - **Description**: Create specialized worker personas with focused system prompts.
+  - **Files**: NEW `proxy-bridge/src/lib/prompts/workers/ui-bee.ts`, NEW `proxy-bridge/src/lib/prompts/workers/logic-bee.ts`, NEW `proxy-bridge/src/lib/prompts/workers/test-bee.ts`, NEW `proxy-bridge/src/lib/prompts/workers/index.ts`
+  - **Implementation**:
+    - `UI_BEE`: Focus on components, styling, accessibility. Tools: write_file, read_file, search. No shell access.
+    - `LOGIC_BEE`: Focus on business logic, APIs, data flow. Full tool access.
+    - `TEST_BEE`: Focus on test writing, coverage. Tools: write_file, read_file, run_shell (test commands only).
+    - `getWorkerPrompt(type: WorkerType)`: Returns the full system prompt for the worker type.
+    - Architect selects template based on task analysis.
+  - **Criteria**: Architect can reference `UI_BEE` in spawn_worker and the worker gets a specialized prompt.
+  - **Worker**: BACKEND
 
 - [ ] `QB-06`: [Integration] **Parallel Launch Sequencer**
-  - **Description**: Instead of launching all workers at once (OOM risk), implement a staggered launch.
-  - **Context**: `ToolExecutor.handleSpawnWorker` should check `PolicyStore` for `max_parallel_launches`.
-  - **Criteria**: Workers launch every 500ms with a cascading "Honey-Drop" animation in the sidebar.
+  - **Priority**: P2 — OOM/rate-limit protection for multi-worker launches
+  - **Description**: Stagger worker launches instead of spawning all at once.
+  - **Files**: MODIFY `proxy-bridge/src/lib/ToolExecutor.ts` (spawn_worker handler), MODIFY `proxy-bridge/src/lib/PolicyStore.ts`
+  - **Implementation**:
+    - Add `max_parallel_launches` to PolicyStore defaults (default: 3)
+    - On spawn_worker: Check active worker count. If at limit, queue with 500ms delay between launches.
+    - Emit `WORKER_LAUNCHING` socket event with stagger index for frontend animation
+    - Track active workers per swarm session in SessionManager
+  - **Criteria**: Spawning 5 workers triggers staggered launches (3 immediate, 2 queued). No OOM.
+  - **Worker**: INTEGRATION
 
-## 🧠 PHASE 13: THE NEURAL BUS (Roundtable v2)
-> **Goal**: Transform the group chat into a functional message bus for agent-to-agent data sharing.
+### 🟡 P3 — Swarm Intelligence
+- [ ] `NB-03`: [Backend] **Memory Distillation from Team Chat**
+  - **Priority**: P3 — Turns team decisions into persistent rules
+  - **Description**: Periodically scan `team_chat.jsonl` and extract "Agreed Standards" into MemoryStore.
+  - **Files**: MODIFY `proxy-bridge/src/lib/MemoryDistillation.ts`, MODIFY `proxy-bridge/src/lib/HeartbeatService.ts`
+  - **Implementation**:
+    - Add `distillTeamChat(projectPath)` to MemoryDistillation — reads last 20 Roundtable messages, asks LLM to extract rules/standards
+    - Run from HeartbeatService tick (every 5min, only if new messages since last distillation)
+    - Store extracted rules as `type: 'team_standard'` in MemoryStore
+  - **Criteria**: Architect says "Use Tailwind for all styling" → becomes a persistent preference for all workers.
+  - **Worker**: BACKEND
 
-### 🟡 PHASE 13.1: AGENT SUBSCRIPTIONS
-- [ ] `NB-01`: [Backend] **File Change Event Bus**
-  - **Description**: Agents can "subscribe" to a file. If Worker A edits `App.tsx`, Worker B (UI) gets a system message alert.
-  - **Context**: `FileWatcher.ts` emits to the `Roundtable`.
-  - **Criteria**: No manual `chat_with_team` needed for critical file sync.
+- [ ] `QB-03`: [Backend] **Architect "Lens" Mode (Tool-Based)**
+  - **Priority**: P3 — Refinement, not critical path
+  - **Description**: Add a `scout_project` tool that the Architect calls itself to scan the codebase structure.
+  - **Files**: MODIFY `proxy-bridge/src/lib/ToolDefinitions.ts`, MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`
+  - **NOTE**: Changed from original design (separate background agent) to a single tool call. Spawning a second LLM call in parallel is expensive and complex. The Architect already has `list_directory` and `search_file_content` — this tool just bundles them into a structured summary.
+  - **Implementation**:
+    - `scout_project` tool: Calls list_directory recursively (max depth 3), counts files by extension, identifies key config files (package.json, tsconfig, etc.), returns a 500-token structured summary.
+    - Architect directive updated to call `scout_project` as STEP 1 before deep analysis.
+  - **Criteria**: Architect calls scout_project → gets "Found 12 modules, 3 config files, primary language: TypeScript".
+  - **Worker**: BACKEND
 
+- [ ] `QB-04`: [Backend] **Requirement Checklist (Guideline-Based)**
+  - **Priority**: P3 — Refinement
+  - **Description**: Guide the Architect to output structured requirements before proposing workers.
+  - **Files**: MODIFY `proxy-bridge/src/lib/AutonomousRunner.ts` (architect directive)
+  - **NOTE**: Changed from original design (forced JSON output) to a system prompt guideline with fallback parsing. Hard-forcing JSON schema is fragile across providers.
+  - **Implementation**:
+    - Update architect directive STEP 2 to include: "Output requirements as a markdown checklist: `- [ ] REQ-01: Description`"
+    - Add a `parseRequirements(content)` helper that extracts `- [ ] REQ-XX:` patterns from response
+    - Frontend renders parsed requirements as interactive checklist (if found), falls back to raw text
+  - **Criteria**: Architect outputs "- [ ] REQ-01: Login page with OAuth" → UI renders as a ticked checklist.
+  - **Worker**: BACKEND + FRONTEND
+
+### 🟢 P4 — Token Optimization & Polish
 - [ ] `NB-02`: [Frontend] **Roundtable "Mentions"**
+  - **Priority**: P4 — Token savings, not blocking
   - **Description**: User can tag a specific worker in the group chat using `@WorkerName`.
   - **Context**: Inject the user message ONLY into that worker's context to save tokens.
   - **Criteria**: Visual highlight in `RoundtablePanel.tsx`.
+  - **Worker**: FRONTEND
 
-### 🟠 PHASE 13.2: COLLECTIVE MEMORY (CORTEX)
-- [ ] `NB-03`: [Backend] **Memory Distillation Worker**
-  - **Description**: Background agent that periodically reads `team_chat.jsonl` and extracts "Agreed Standards" into the Cortex.
-  - **Context**: Use `MemoryDistillation.ts`.
-  - **Criteria**: If Architect says "Use Tailwind," this becomes a permanent style rule for the session.
+- [ ] `QB-02`: [Frontend] **Visual Command Suggester**
+  - **Priority**: P4 — Polish, not blocking
+  - **Description**: When user types `@`, show a suggestion dropdown.
+  - **Context**: Similar to `MentionDropdown.tsx` but specialized for system commands.
+  - **Criteria**: Show `@qb` with a Hexagon icon and the subtitle "Summon Hive Architect."
+  - **Worker**: FRONTEND
 
-## 🎨 PHASE 14: THE QUEEN'S AESTHETIC (Apple-Grade Polish)
+## 🎨 PHASE 13: THE QUEEN'S AESTHETIC (Apple-Grade Polish)
 > **Goal**: Transition from "Developer Tool" to "Professional OS Experience."
+> **STATUS**: DEFERRED — Phase 12 must stabilize first. UI polish on moving targets is wasted effort.
+> **WHEN**: Only after @qb protocol, worker templates, and file bus are stable and tested.
 
-### 🟡 PHASE 14.1: ICONOGRAPHY & MOTION
+### 🟡 PHASE 13.1: ICONOGRAPHY & MOTION (DEFERRED)
 - [ ] `QA-01`: [Frontend] **Custom Hex-Glyph Library**
   - **Description**: Replace Lucide icons with custom SVG paths inspired by honeycomb geometry.
   - **Context**: `dashboard/src/assets/icons/`.
@@ -461,10 +507,10 @@
   - **Context**: Apply to `Sidebar.tsx` and `CodexLayout.tsx`.
   - **Criteria**: Must remain readable; Zinc-50/80 background.
 
-### 🟠 PHASE 14.2: FEEDBACK & STATE
+### 🟠 PHASE 13.2: FEEDBACK & STATE (DEFERRED)
 - [ ] `QA-04`: [Frontend] **Neural Pulse Indicator**
   - **Description**: The `@qb` command box should have a subtle "breathing" glow when the Architect is thinking.
-  - **Context**: Border-color animation in `ComposerBar`.
+  - **Context**: Border-color animation in `ComposerBar`. Depends on `@qb` protocol (QB-01) being stable.
   - **Criteria**: Light amber glow (`#F59E0B`).
 
 - [ ] `QA-05`: [Frontend] **Status Pastille Revamp**
