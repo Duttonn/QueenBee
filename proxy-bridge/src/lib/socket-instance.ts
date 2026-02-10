@@ -1,15 +1,17 @@
 import { Server } from 'socket.io';
-import { logContext } from './logger';
+import { logContext, logger } from './logger';
 
-// Use global to persist across hot-reloads in Next.js development
-const globalForSocket = global as unknown as { io: Server | undefined };
+// BP-11: Hardened singleton for Next.js dev mode
+// Using a symbol or a very specific string on global ensures it survives HMR
+const SOCKET_KEY = '__QUEEN_BEE_IO_INSTANCE__';
 
 export function getIO(): Server | null {
-  return globalForSocket.io || null;
+  return (global as any)[SOCKET_KEY] || null;
 }
 
 export function setIO(server: Server) {
-  globalForSocket.io = server;
+  (global as any)[SOCKET_KEY] = server;
+  console.log(`[SocketInstance] IO instance set globally via ${SOCKET_KEY}`);
 }
 
 export function broadcast(event: string, data: any) {
@@ -20,8 +22,9 @@ export function broadcast(event: string, data: any) {
       ? { ...data, requestId: context.requestId }
       : data;
       
+    logger.verbose(`[Socket] Broadcasting event: ${event}`, data);
     io.emit(event, payload);
   } else {
-    console.warn(`[SocketInstance] Cannot broadcast '${event}': IO not initialized.`);
+    console.warn(`[SocketInstance] Cannot broadcast '${event}': IO not initialized in current process.`);
   }
 }

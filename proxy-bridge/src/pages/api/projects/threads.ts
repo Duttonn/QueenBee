@@ -1,5 +1,14 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { getDb, saveDb } from '../../../lib/db';
+import { sessionManager } from '../../../lib/SessionManager';
+
+export const config = {
+    api: {
+        bodyParser: {
+            sizeLimit: '10mb',
+        },
+    },
+};
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
     try {
@@ -42,6 +51,9 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         if (req.method === 'DELETE') {
             const { projectId, threadId } = req.query;
             if (!projectId || !threadId) return res.status(400).json({ error: 'projectId and threadId required' });
+
+            // Abort any active sessions for this thread
+            sessionManager.abortThread(threadId as string);
 
             const projectIndex = db.projects.findIndex(p => p.id === projectId);
             if (projectIndex === -1) {

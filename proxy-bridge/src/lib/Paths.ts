@@ -122,10 +122,32 @@ export class Paths {
     return path.join(process.cwd(), 'data');
   }
 
-  /**
-   * Resolves the root of the proxy-bridge Next.js app.
-   */
-  static getProxyBridgeRoot(): string {
-    return process.cwd();
+    /**
+
+     * Resolves the root of the proxy-bridge Next.js app.
+
+     */
+
+    static getProxyBridgeRoot(): string {
+
+      return process.cwd();
+
+    }
+
+  
+
+    /**
+
+     * Resolves the .queenbee config directory for a specific project.
+
+     */
+
+    static getProjectConfigDir(projectPath: string): string {
+
+      return path.join(projectPath, '.queenbee');
+
+    }
+
   }
-}
+
+  

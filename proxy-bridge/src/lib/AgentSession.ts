@@ -3,6 +3,12 @@ import { unifiedLLMService } from './UnifiedLLMService';
 import { ToolExecutor } from './ToolExecutor';
 import { AGENT_TOOLS } from './ToolDefinitions';
 import { EventEmitter } from 'events';
+import { sessionManager } from './SessionManager';
+import { HeartbeatService } from './HeartbeatService';
+import { EventLog } from './EventLog';
+import { MemoryStore } from './MemoryStore';
+import { MemoryDistillation } from './MemoryDistillation';
+import { PolicyStore } from './PolicyStore';
 
 /**
  * AgentSession encapsulates the agentic loop (Think -> Act -> Observe).
@@ -17,6 +23,10 @@ export class AgentSession extends EventEmitter {
   private threadId: string | null;
   private apiKey: string | null;
   private mode: string;
+  private eventLog?: EventLog;
+  private memoryStore?: MemoryStore;
+  private policyStore?: PolicyStore;
+  private distillation: MemoryDistillation | null = null;
 
   constructor(projectPath: string, options: { 
     systemPrompt?: string, 
@@ -24,10 +34,21 @@ export class AgentSession extends EventEmitter {
     providerId?: string,
     threadId?: string,
     apiKey?: string,
-    mode?: string
+    mode?: string,
+    eventLog?: EventLog,
+    memoryStore?: MemoryStore,
+    policyStore?: PolicyStore
   } = {}) {
     super();
-    this.executor = new ToolExecutor();
+    this.eventLog = options.eventLog;
+    this.memoryStore = options.memoryStore;
+    this.policyStore = options.policyStore;
+    this.executor = new ToolExecutor(this.eventLog, this.policyStore);
+
+    if (this.memoryStore) {
+      this.distillation = new MemoryDistillation(this.memoryStore);
+    }
+
     this.projectPath = projectPath;
     this.maxSteps = options.maxSteps || 10;
     this.providerId = options.providerId || 'auto';
@@ -45,10 +66,16 @@ export class AgentSession extends EventEmitter {
    */
   async prompt(text: string, options?: LLMProviderOptions): Promise<LLMMessage> {
     const lastMsg = this.messages[this.messages.length - 1];
+    // Check if the message is already there to avoid duplicates in the message history
     if (!lastMsg || lastMsg.content !== text || lastMsg.role !== 'user') {
-      const userMessage: LLMMessage = { role: 'user', content: text };
+      const userMessage: LLMMessage = { 
+        id: `msg-user-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        role: 'user', 
+        content: text 
+      };
       this.messages.push(userMessage);
-      this.emit('event', { type: 'message', data: { ...userMessage, threadId: this.threadId } });
+      // We DO NOT emit the 'message' event here for the user message 
+      // because the frontend already added it optimistically.
     }
     return this.runLoop(options);
   }
@@ -56,14 +83,26 @@ export class AgentSession extends EventEmitter {
   /**
    * Core Agentic Loop
    */
-  private async runLoop(options?: LLMProviderOptions): Promise<LLMMessage> {
-    let stepCount = 0;
+      private async runLoop(options?: LLMProviderOptions): Promise<LLMMessage> {
+        let stepCount = 0;
+  
+        try {
+          while (stepCount < this.maxSteps) {
+            if (this.threadId && sessionManager.isAborted(this.threadId)) {
+              throw new Error("Execution aborted by user (thread deleted)");
+            }
 
-    try {
-      while (stepCount < this.maxSteps) {
-        stepCount++;
-        
+            // Record heartbeat pulse
+            if (this.threadId) {
+              HeartbeatService.ping(this.threadId).catch(err => console.error('[AgentSession] Heartbeat failed:', err));
+            }
+
+            stepCount++;        
         this.emit('event', { type: 'step_start', data: { step: stepCount, status: 'thinking' } });
+
+        if (this.eventLog) {
+          await this.eventLog.emit('step_start', this.threadId || 'unknown', { step: stepCount });
+        }
 
         const response: LLMResponse = await unifiedLLMService.chat(this.providerId, this.messages, {
           ...options,
@@ -73,7 +112,15 @@ export class AgentSession extends EventEmitter {
         
         console.log(`[AgentSession] LLM Response: content length=${response.content?.length || 0}, tool_calls=${response.tool_calls?.length || 0}`);
 
+        if (this.eventLog) {
+          await this.eventLog.emit('step_end', this.threadId || 'unknown', { 
+            step: stepCount, 
+            tool_calls: response.tool_calls?.length || 0 
+          });
+        }
+
         const assistantMessage: LLMMessage = { 
+          id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           role: 'assistant', 
           content: response.content, 
           tool_calls: response.tool_calls 
@@ -114,6 +161,7 @@ export class AgentSession extends EventEmitter {
             this.emit('event', { type: 'tool_end', data: { toolName, result, toolCallId: toolCall.id } });
 
             return {
+              id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               role: 'tool',
               tool_call_id: toolCall.id,
               name: toolName,
@@ -123,6 +171,7 @@ export class AgentSession extends EventEmitter {
             this.emit('event', { type: 'tool_error', data: { toolName, error: error.message, toolCallId: toolCall.id } });
             
             return {
+              id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               role: 'tool',
               tool_call_id: toolCall.id,
               name: toolName,
@@ -168,34 +217,39 @@ export class AgentSession extends EventEmitter {
   }
 
   private async summarizeSession() {
-    console.log('[AgentSession] Performing Memory Flush...');
-    try {
-      const summaryPrompt: LLMMessage = {
-        role: 'system',
-        content: `Summarize the technical changes, architectural findings, and key facts from this session for the MEMORY.md file. 
-        Be extremely concise and professional. Categorize into 'knowledge' or 'architecture' where applicable.`
-      };
+    if (this.distillation) {
+      await this.distillation.distill(this.providerId, this.messages, this.apiKey || undefined);
+    } else {
+      // Fallback to legacy behavior if MemoryStore is not available
+      console.log('[AgentSession] Performing Legacy Memory Flush...');
+      try {
+        const summaryPrompt: LLMMessage = {
+          role: 'system',
+          content: `Summarize the technical changes, architectural findings, and key facts from this session for the MEMORY.md file. 
+          Be extremely concise and professional. Categorize into 'knowledge' or 'architecture' where applicable.`
+        };
 
-      const history = this.messages.slice(-10); // Last 10 messages for context
-      const response = await unifiedLLMService.chat(this.providerId, [summaryPrompt, ...history], {
-        apiKey: this.apiKey || undefined
-      });
-
-      if (response.content) {
-        await this.executor.execute({
-          name: 'write_memory',
-          arguments: {
-            category: 'knowledge',
-            content: response.content
-          }
-        }, {
-          projectPath: this.projectPath,
-          mode: this.mode,
-          agentId: 'memory-flush'
+        const history = this.messages.slice(-10); // Last 10 messages for context
+        const response = await unifiedLLMService.chat(this.providerId, [summaryPrompt, ...history], {
+          apiKey: this.apiKey || undefined
         });
+
+        if (response.content) {
+          await this.executor.execute({
+            name: 'write_memory',
+            arguments: {
+              category: 'knowledge',
+              content: response.content
+            }
+          }, {
+            projectPath: this.projectPath,
+            mode: this.mode,
+            agentId: 'memory-flush'
+          });
+        }
+      } catch (error) {
+        console.error('[AgentSession] Failed to summarize session:', error);
       }
-    } catch (error) {
-      console.error('[AgentSession] Failed to summarize session:', error);
     }
   }
 

@@ -78,7 +78,7 @@ Génère le contenu pour un fichier PLAN.md avec :
 
     const newContent = content.replace(
       regex,
-      `- [IN PROGRESS: ${agentId}] \`${taskId}\``
+      `- [IN PROGRESS: ${agentId} @ ${new Date().toISOString()}] \`${taskId}\``
     );
 
     await fs.writeFile(targetFile, newContent);

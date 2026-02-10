@@ -203,4 +203,44 @@ The following components are partially implemented and require immediate worker 
 3.  **Inbox/Triage**: Verified working (View loads, no crash).
 4.  **Project Crash**: Fixed `Layers` import error. Verified stable.
 
+---
 
+### 3.18 Human-in-the-Loop Security (Shield Mode)
+**Source**: BP-01 / Security Audit
+
+Queen Bee implements a "Shield Mode" for sensitive shell operations:
+- **Restricted Commands**: High-risk commands (e.g., `rm -rf`, `pip install`, `sudo`) are intercepted by the `ToolExecutor`.
+- **Interactive Approval**: Instead of blocking, the agent pauses and broadcasts a `TOOL_CONFIRMATION_REQUEST`.
+- **User Control**: A "Needs Approval" card appears in the UI showing the full command. Execution only resumes upon manual user approval.
+- **Policy Management**: Users can edit the restricted command list via the **Security** tab in Settings.
+
+---
+
+### 3.19 Multi-modal Visual Reasoning
+**Source**: P4-01 enhancement
+
+Agents can now process and analyze visual information:
+- **Image Support**: Users can attach images (PNG, JPG, SVG) via the composer.
+- **Base64 Encoding**: Images are converted to base64 and delivered as `image_url` parts in multi-part messages.
+- **Provider Integration**: `GeminiProvider` maps visual data to native `inlineData` for LLM analysis.
+- **UI Preview**: Uploaded images appear as interactive chips in the composer and inline in the chat history.
+
+---
+
+### 3.20 Thread Abortion & Graceful Cleanup
+**Source**: Devil's Audit / Reliability
+
+A centralized session management system ensures instant deactivation of background activity:
+- **SessionManager**: Tracks active `AbortController` instances for every thread.
+- **Instant Kill**: Deleting a thread triggers an `AbortSignal` that propagates to the agent loop and shell executor.
+- **Process Termination**: Active `exec` processes are killed immediately using the `signal` option.
+
+---
+
+### 3.21 UX Infrastructure Hardening
+**Source**: Phase 5/6 Polish
+
+Significant reliability improvements to the core workbench:
+- **ID-Based Deduplication**: Transitioned from content-based to unique ID-based message tracking, eliminating double-displays during streaming.
+- **Debounced Thread Persistence**: Thread state updates are batched and debounced to optimize network traffic and UI smoothness.
+- **Streaming Resilience**: Added SSE heartbeats and retry logic to handle unstable connections.

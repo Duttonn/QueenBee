@@ -8,6 +8,7 @@ export interface GSDTask {
   id: string;
   status: 'todo' | 'in_progress' | 'done';
   agentId?: string;
+  claimedAt?: string;
   title: string;
   worker?: string;
 }
@@ -65,19 +66,26 @@ export class TaskManager {
         const [_, statusRaw, id, title] = taskMatch;
         let status: 'todo' | 'in_progress' | 'done' = 'todo';
         let agentId: string | undefined = undefined;
+        let claimedAt: string | undefined = undefined;
 
         if (statusRaw.includes('DONE') || statusRaw.includes('x')) {
             status = 'done';
         } else if (statusRaw.includes('IN PROGRESS')) {
             status = 'in_progress';
-            const agentMatch = statusRaw.match(/IN PROGRESS: (.*)/);
-            if (agentMatch) agentId = agentMatch[1];
+            const agentMatch = statusRaw.match(/IN PROGRESS: (.*?)( @ (.*))?$/);
+            if (agentMatch) {
+                agentId = agentMatch[1].trim();
+                if (agentMatch[3]) {
+                    claimedAt = agentMatch[3].trim();
+                }
+            }
         }
 
         currentTask = {
             id,
             status,
             agentId,
+            claimedAt,
             title,
         };
         currentPhase.tasks.push(currentTask);
@@ -109,9 +117,36 @@ export class TaskManager {
       
       if (!regex.test(content)) return false;
 
+      const timestamp = new Date().toISOString();
       const newContent = content.replace(
         regex,
-        `- [IN PROGRESS: ${agentId}] \`${taskId}\``
+        `- [IN PROGRESS: ${agentId} @ ${timestamp}] \`${taskId}\``
+      );
+
+      await fs.writeFile(filePath, newContent);
+      return true;
+    } catch (error) {
+      console.error('TaskManager Error:', error);
+      return false;
+    }
+  }
+
+  static async revertTask(taskId: string, projectPath?: string): Promise<boolean> {
+    try {
+      const filePath = this.getTasksPath(projectPath);
+      if (!fs.existsSync(filePath)) return false;
+      
+      let content = await fs.readFile(filePath, 'utf-8');
+      const safeTaskId = taskId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // Match any IN PROGRESS status for this task
+      const pattern = `- \\[IN PROGRESS:.*?\\] \`${safeTaskId}\``;
+      const regex = new RegExp(pattern);
+      
+      if (!regex.test(content)) return false;
+
+      const newContent = content.replace(
+        regex,
+        `- [ ] \`${taskId}\``
       );
 
       await fs.writeFile(filePath, newContent);

@@ -515,7 +515,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
       });
     }
 
-          const messageId = Date.now().toString();
+          const messageId = `msg-user-${Date.now()}`;
           const userMessage: Message = { 
             id: messageId,
             role: 'user', 
@@ -532,10 +532,14 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
               : content 
           };
           addMessage(selectedProjectId, currentThreadId, userMessage);
+          
+          // BP-13: Add placeholder assistant message so the bubble appears immediately
+          const assistantId = `msg-ans-${Date.now()}`;
+          addMessage(selectedProjectId, currentThreadId, { id: assistantId, role: 'assistant', content: '' });
+
           setIsLoading(true);
           setStreamError(null);
           setPendingFiles([]); // Clear on send
-          addMessage(selectedProjectId, currentThreadId, { id: messageId + '-ans', role: 'assistant', content: '' });
     const activeProvider = providers.find(p => p.id === activeProviderId);
     const providerToUse = activeProvider?.id || 'mock';
     const modelToUse = selectedModel || availableModels[0]?.name || 'mock-model';
@@ -674,34 +678,9 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           setIsLoading(false);
         },
         (event) => {
-          const thread = useHiveStore.getState().projects
-            .find(p => p.id === selectedProjectId)
-            ?.threads?.find((t: any) => t.id === currentThreadId);
-          const msgIndex = (thread?.messages?.length || 1) - 1;
-
-          if (event.type === 'tool_start') {
-            updateToolCall(selectedProjectId, currentThreadId!, msgIndex, event.data.toolCallId, {
-              status: 'running',
-              name: event.data.toolName,
-              arguments: event.data.args
-            });
-          } else if (event.type === 'tool_end') {
-            // Check if this tool modifies the filesystem
-            const modifyingTools = ['write_file', 'replace', 'apply_patch', 'delete_file', 'create_worktree', 'write_memory', 'plan_tasks', 'add_task', 'claim_task', 'run_shell'];
-            if (modifyingTools.includes(event.data.tool)) {
-              didModify = true;
-            }
-
-            updateToolCall(selectedProjectId, currentThreadId!, msgIndex, event.data.toolCallId, {
-              status: 'success',
-              result: event.data.result
-            });
-          } else if (event.type === 'tool_error') {
-            updateToolCall(selectedProjectId, currentThreadId!, msgIndex, event.data.toolCallId, {
-              status: 'error',
-              error: event.data.error
-            });
-          } else if (event.type === 'step_start' || event.type === 'agent_status') {
+          // BP-17: Let SocketHook (useSocketEvents.ts) handle technical tool states
+          // This prevents state fighting between SSE and Socket.io which was causing slowness.
+          if (event.type === 'step_start' || event.type === 'agent_status') {
             if (event.data.status) {
               useHiveStore.getState().setQueenStatus(event.data.status);
             }

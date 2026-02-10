@@ -1,0 +1,4 @@
+{
+  "heartbeat_interval": 300000,
+  "max_parallel_agents": 4
+}

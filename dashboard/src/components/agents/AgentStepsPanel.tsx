@@ -157,7 +157,7 @@ const AgentStepsPanel = () => {
 
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[10px] font-bold text-zinc-900 uppercase tracking-tight">{step.tool.replace(/_/g, ' ')}</span>
+                        <span className="text-[10px] font-bold text-zinc-900 uppercase tracking-tight">{(step.tool || 'unknown').replace(/_/g, ' ')}</span>
                         <span className="text-[8px] font-medium text-zinc-400">
                           {new Date(step.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                         </span>

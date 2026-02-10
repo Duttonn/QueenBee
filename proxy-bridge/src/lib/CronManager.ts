@@ -60,17 +60,32 @@ export class CronManager {
     }
   }
 
+  private convertToCron(time: string): string {
+    if (cron.validate(time)) return time;
+    
+    // Check if it's HH:MM format
+    const match = time.match(/^(\d{1,2}):(\d{2})$/);
+    if (match) {
+      const [_, hour, minute] = match;
+      return `${parseInt(minute)} ${parseInt(hour)} * * *`;
+    }
+    
+    return time; // Return original and let validator handle it
+  }
+
   scheduleJob(job: AutomationJob) {
     if (this.jobs.has(job.id)) {
       this.jobs.get(job.id)?.stop();
     }
 
-    if (!cron.validate(job.schedule)) {
-      console.error(`[CronManager] Invalid schedule for job ${job.id}: ${job.schedule}`);
+    const cronSchedule = this.convertToCron(job.schedule);
+
+    if (!cron.validate(cronSchedule)) {
+      console.error(`[CronManager] Invalid schedule for job ${job.id}: ${job.schedule} (Resolved to: ${cronSchedule})`);
       return;
     }
 
-    const task = cron.schedule(job.schedule, async () => {
+    const task = cron.schedule(cronSchedule, async () => {
       const jobType = job.type || (job.title?.toLowerCase().includes('sync') ? 'SYNC_REPOS' : 'MAINTENANCE');
       console.log(`[CronManager] Running job ${job.id} (${jobType})`);
       job.lastRun = new Date().toISOString();
@@ -138,7 +153,7 @@ export class CronManager {
     const mockSocket = { 
       emit: (event: string, data: any) => console.log(`[BackgroundAgent] ${event}`, data) 
     } as any;
-    const runner = new AutonomousRunner(mockSocket, projectPath);
+    const runner = new AutonomousRunner(mockSocket, projectPath, 'auto', null, null, 'local');
     await runner.executeLoop("Perform a full scan of the workspace and update GSD_TASKS.md if necessary.");
   }
 
@@ -167,7 +182,7 @@ export class CronManager {
       emit: (event: string, data: any) => console.log(`[BackgroundAgent] ${event}`, data) 
     } as any;
     
-    const runner = new AutonomousRunner(mockSocket, projectPath);
+    const runner = new AutonomousRunner(mockSocket, projectPath, 'auto', null, null, 'local');
     await runner.executeLoop(instruction);
   }
 

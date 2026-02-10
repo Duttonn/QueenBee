@@ -53,10 +53,24 @@ def get_git_diff(project_path, file_path=None, cached=False):
             untracked_result = subprocess.run(untracked_cmd, cwd=project_path, capture_output=True, text=True, check=True)
             for untracked_file in untracked_result.stdout.splitlines():
                 if untracked_file not in file_stats:
+                    abs_path = os.path.join(project_path, untracked_file)
+                    if os.path.isdir(abs_path): continue
+                    
+                    # Skip common binary extensions
+                    if any(untracked_file.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.pdf', '.zip', '.exe', '.bin', '.out']):
+                        file_stats[untracked_file] = {"added": 0, "removed": 0}
+                        continue
+
                     try:
-                        with open(os.path.join(project_path, untracked_file), 'r', errors='ignore') as f:
+                        # Check file size first - limit to 100KB for untracked preview
+                        if os.path.getsize(abs_path) > 100 * 1024:
+                            file_stats[untracked_file] = {"added": 0, "removed": 0}
+                            continue
+
+                        with open(abs_path, 'r', errors='ignore') as f:
                             content = f.read()
-                            lines_count = len(content.splitlines())
+                            lines_data = content.splitlines()
+                            lines_count = len(lines_data)
                             file_stats[untracked_file] = {"added": lines_count, "removed": 0}
                             total_added += lines_count
                             
@@ -66,8 +80,11 @@ def get_git_diff(project_path, file_path=None, cached=False):
                             fake_diff += "--- /dev/null\n"
                             fake_diff += f"+++ b/{untracked_file}\n"
                             fake_diff += f"@@ -0,0 +1,{lines_count} @@\n"
-                            for c_line in content.splitlines():
+                            # Limit preview lines to 1000
+                            for c_line in lines_data[:1000]:
                                 fake_diff += f"+{c_line}\n"
+                            if lines_count > 1000:
+                                fake_diff += "+... (file truncated)\n"
                             diff_output += fake_diff
                     except Exception:
                         continue

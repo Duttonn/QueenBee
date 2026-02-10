@@ -12,6 +12,7 @@ export interface Automation {
     active: boolean;
     script?: string;
     lastRun?: string;
+    allowedCommands?: string[];
 }
 
 export interface Skill {
@@ -60,7 +61,7 @@ interface AppState {
     addAutomation: (auto: Partial<Automation>) => Promise<void>;
     toggleAutomation: (id: string, active: boolean) => Promise<void>;
     deleteAutomation: (id: string) => Promise<void>;
-    runAutomation: (script: string) => Promise<ExecutionResult>;
+    runAutomation: (script: string, allowedCommands?: string[]) => Promise<ExecutionResult>;
 
     // Skills
     installSkill: (skill: Partial<Skill>) => Promise<void>;
@@ -72,6 +73,7 @@ interface AppState {
     // Git
     commit: (repoPath: string, message: string) => Promise<void>;
     getGitStatus: (repoPath: string) => Promise<any>;
+    getAllowedCommands: () => Promise<string[]>;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -135,11 +137,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
     },
 
-    runAutomation: async (script) => {
+    runAutomation: async (script, allowedCommands) => {
         const res = await fetch(`${API_BASE}/execution/run`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ command: script })
+            body: JSON.stringify({ command: script, allowedCommands })
         });
         return await res.json();
     },
@@ -196,5 +198,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     getGitStatus: async (repoPath) => {
         const res = await fetch(`${API_BASE}/git/status?path=${encodeURIComponent(repoPath)}`);
         return await res.json();
+    },
+
+    getAllowedCommands: async () => {
+        try {
+            const res = await fetch(`${API_BASE}/config/security`);
+            if (res.ok) {
+                const data = await res.json();
+                return data.allowedCommands || [];
+            }
+        } catch (e) {
+            console.error("Failed to fetch allowed commands", e);
+        }
+        return [];
     }
 }));

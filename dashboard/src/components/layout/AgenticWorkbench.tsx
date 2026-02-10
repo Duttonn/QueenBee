@@ -130,11 +130,16 @@ const ToolCallSequence = ({ toolCalls, socket, activeProject, activeThreadId }: 
             className="flex items-center gap-2 text-[11px] font-medium text-zinc-400 hover:text-zinc-600 transition-colors group/row"
           >
             <span>{stats.type}</span>
-            <span className="text-blue-500 font-bold hover:underline">{stats.name}</span>
-            <div className="flex items-center gap-1.5 ml-1">
-              {stats.added > 0 && <span className="text-emerald-500 font-bold">+{stats.added}</span>}
-              {stats.removed > 0 && <span className="text-rose-500 font-bold">-{stats.removed}</span>}
-            </div>
+            <span className="text-blue-600 font-bold truncate max-w-[200px] hover:underline">{stats.name}</span>
+            
+            {(stats.added > 0 || stats.removed > 0) && (
+              <div className="flex items-center gap-1.5 ml-1 text-[10px] font-mono">
+                {stats.added > 0 && <span className="text-emerald-600 font-bold">+{stats.added}</span>}
+                {stats.added > 0 && stats.removed > 0 && <span className="text-zinc-300">|</span>}
+                {stats.removed > 0 && <span className="text-rose-600 font-bold">-{stats.removed}</span>}
+              </div>
+            )}
+            
             {anyPending && <div className="w-1.5 h-1.5 rounded-full bg-amber-400 ml-1 animate-pulse" />}
             <ChevronRight size={12} className={`text-zinc-300 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
           </button>
@@ -349,7 +354,6 @@ interface AgenticWorkbenchProps {
   workbenchView,
   onViewChange
 }: AgenticWorkbenchProps) => {
-  console.log(`[AgenticWorkbench] Rendering: activeThreadId=${activeThreadId}, messages=${messages.length}, isLoading=${isLoading}`);
   const [expandedThinking, setExpandedThinking] = useState<Record<number, boolean>>({});
   const [isAgentMenuOpen, setIsAgentMenuOpen] = useState(false);
   const [isOpenMenuOpen, setIsOpenMenuOpen] = useState(false);
@@ -365,6 +369,8 @@ interface AgenticWorkbenchProps {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { spawnAgent, socket, queenStatus, tasks } = useHiveStore();
+
+  const hasPendingApproval = messages.some(m => m.toolCalls?.some(tc => tc.status === 'pending'));
 
   useEffect(() => {
     if (activeProject?.path) {
@@ -433,6 +439,22 @@ interface AgenticWorkbenchProps {
       const messagesList = (
         <div className="flex-1 flex overflow-hidden relative h-full">      <div className="flex-1 overflow-y-auto p-4 space-y-4 relative h-full">
         <AnimatePresence>
+          {hasPendingApproval && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="sticky top-0 left-0 right-0 z-30 mb-4"
+            >
+              <div className="bg-orange-500 text-white px-4 py-2 rounded-2xl shadow-xl flex items-center justify-between border border-orange-400">
+                <div className="flex items-center gap-2">
+                  <Shield size={16} className="animate-pulse" />
+                  <span className="text-[11px] font-black uppercase tracking-widest">Action Required — Agent is waiting for your approval</span>
+                </div>
+                <div className="text-[10px] font-bold opacity-80">Check message below</div>
+              </div>
+            </motion.div>
+          )}
           {showLiveEye && (
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -469,13 +491,12 @@ interface AgenticWorkbenchProps {
             </motion.div>
           )}
         </AnimatePresence>
-        {messages.map((msg, index) => {
-          const prevMsg = index > 0 ? messages[index - 1] : null;
-          const isGrouped = (msg.role === 'assistant' || msg.role === 'tool') && 
-                            (prevMsg?.role === 'assistant' || prevMsg?.role === 'tool');
+        {messages.filter(m => m.role !== 'tool').map((msg, index, filteredMessages) => {
+          const prevMsg = index > 0 ? filteredMessages[index - 1] : null;
+          const isGrouped = msg.role === 'assistant' && prevMsg?.role === 'assistant';
 
           return (
-          <div key={index} className={isGrouped ? '-mt-4' : 'mt-4 first:mt-0'}>
+          <div key={index} className={isGrouped ? '-mt-1' : 'mt-4 first:mt-0'}>
                           {msg.role === 'user' && (
                             <div className="flex gap-3">
                               <div className="w-7 h-7 rounded-full bg-zinc-100 flex items-center justify-center flex-shrink-0 border border-zinc-200 shadow-sm mt-1">
@@ -638,10 +659,6 @@ interface AgenticWorkbenchProps {
                                         </div>
                                       )}                </div>
               </div>
-            )}
-
-            {msg.role === 'tool' && (
-              <div className="hidden" />
             )}
 
             {msg.role === 'system' && (
