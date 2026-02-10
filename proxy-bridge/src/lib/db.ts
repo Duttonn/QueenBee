@@ -24,6 +24,8 @@ export interface Automation {
     active: boolean;
     script?: string;
     lastRun?: string;
+    projectPath?: string;
+    allowedCommands?: string[];
 }
 
 export interface Skill {

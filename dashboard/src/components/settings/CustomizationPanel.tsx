@@ -398,12 +398,7 @@ const CustomizationPanel = ({ isOpen, onClose }: CustomizationPanelProps) => {
                                                 <h2 className="text-2xl font-black text-zinc-900 uppercase tracking-tight mb-2">Security & Permissions</h2>
                                                 <p className="text-zinc-500 text-sm">Manage restricted commands and access controls for autonomous agents.</p>
                                             </div>
-                                            <RestrictedCommands 
-                                                onSave={(cmds) => {
-                                                    setRestrictedCommands(cmds);
-                                                    console.log('Saved restricted commands:', cmds);
-                                                }} 
-                                            />
+                                            <RestrictedCommands />
                                         </div>
                                     </motion.div>
                                 )}

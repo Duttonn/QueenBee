@@ -80,7 +80,7 @@ const ToolCallViewer: React.FC<ToolCallViewerProps> = ({
   }, [args]);
 
   return (
-    <div className="group border-l-2 border-zinc-100 pl-4 py-1.5 my-1 transition-all hover:border-zinc-200">
+    <div className={`group border-l-2 pl-4 py-2 my-2 transition-all rounded-r-2xl ${status === 'pending' ? 'border-orange-500 bg-orange-50/50 shadow-sm ring-1 ring-orange-100' : 'border-zinc-100 hover:border-zinc-200'}`}>
       <div className="flex items-center justify-between group/row">
         <div 
           onClick={() => setIsExpanded(!isExpanded)}
@@ -94,10 +94,10 @@ const ToolCallViewer: React.FC<ToolCallViewerProps> = ({
             <span>{getToolAction()}</span>
             {getToolDescription()}
             
-            <div className="flex items-center gap-1.5 ml-3 opacity-0 group-hover/row:opacity-100 transition-opacity">
+            <div className={`flex items-center gap-1.5 ml-3 transition-opacity ${status === 'pending' ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100'}`}>
                 {status === 'success' && <div className="flex items-center gap-1 text-[10px] font-black text-emerald-500 uppercase tracking-widest"><Check size={10} strokeWidth={3} /> Success</div>}
                 {status === 'error' && <div className="flex items-center gap-1 text-[10px] font-black text-rose-500 uppercase tracking-widest"><X size={10} strokeWidth={3} /> Failed</div>}
-                {status === 'pending' && <div className="flex items-center gap-1 text-[10px] font-black text-amber-500 uppercase tracking-widest animate-pulse"><Shield size={10} strokeWidth={3} /> Needs Approval</div>}
+                {status === 'pending' && <div className="flex items-center gap-1.5 px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full text-[9px] font-black uppercase tracking-widest animate-pulse border border-orange-200 shadow-sm"><Shield size={10} strokeWidth={3} /> Action Required</div>}
             </div>
           </div>
 

@@ -10,6 +10,7 @@ export interface LLMToolCall {
 }
 
 export interface LLMMessage {
+  id?: string;
   role: LLMRole;
   content: string | any[] | null;
   name?: string;

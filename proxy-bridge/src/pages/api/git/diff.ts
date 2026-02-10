@@ -18,9 +18,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // We call our Python extractor for the heavy lifting of parsing
     const scriptPath = path.join(process.cwd(), 'src/lib/git_diff_extractor.py');
     const cachedFlag = staged === 'true' ? '--cached' : '';
-    const output = execSync(`python3 "${scriptPath}" "${absoluteProjectPath}" "${filePath || ''}" ${cachedFlag}`).toString();
     
-    const diffData = JSON.parse(output);
+    // BP-14: Increase maxBuffer to 10MB to handle larger diffs/untracked files
+    const output = execSync(`python3 "${scriptPath}" "${absoluteProjectPath}" "${filePath || ''}" ${cachedFlag}`, {
+        maxBuffer: 10 * 1024 * 1024
+    }).toString();
+    
+    let diffData;
+    try {
+        diffData = JSON.parse(output);
+    } catch (parseError) {
+        console.error('[DiffAPI] Failed to parse script output as JSON:', output.substring(0, 500));
+        return res.status(500).json({ error: 'Internal script error: invalid JSON output' });
+    }
     
     if (diffData.status === 'error') {
         return res.status(500).json({ error: diffData.message });
@@ -28,6 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     res.status(200).json(diffData);
   } catch (error: any) {
+    console.error('[DiffAPI] execSync error:', error.message);
     res.status(500).json({ error: 'Failed to extract diff', details: error.message });
   }
 }

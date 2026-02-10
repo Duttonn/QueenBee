@@ -11,7 +11,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     }
 
     if (req.method === 'POST') {
-        const { title, description, schedule, script, type } = req.body;
+        const { title, description, schedule, script, type, targetPath, allowedCommands } = req.body;
 
         // Basic validation
         if (!title) {
@@ -26,7 +26,9 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
             schedule: schedule || '0 0 * * *', // Default to daily if not provided
             active: true,
             script: script || '',
-            lastRun: undefined
+            lastRun: undefined,
+            projectPath: targetPath,
+            allowedCommands: allowedCommands || []
         };
 
         db.automations.push(newAutomation);
@@ -34,14 +36,14 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
         // Sync with CronManager
         if (newAutomation.active) {
-            cronManager.scheduleJob(newAutomation);
+            cronManager.scheduleJob(newAutomation as any);
         }
 
         return res.status(201).json(newAutomation);
     }
 
     if (req.method === 'PUT') {
-        const { id, active, ...updates } = req.body;
+        const { id, active, targetPath, ...updates } = req.body;
         const index = db.automations.findIndex(a => a.id === id);
 
         if (index === -1) {
@@ -50,6 +52,9 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
         // Update fields
         db.automations[index] = { ...db.automations[index], ...updates };
+        if (targetPath) {
+            db.automations[index].projectPath = targetPath;
+        }
         if (typeof active === 'boolean') {
             db.automations[index].active = active;
         }
@@ -58,7 +63,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
         // Sync with CronManager
         if (db.automations[index].active) {
-            cronManager.scheduleJob(db.automations[index]);
+            cronManager.scheduleJob(db.automations[index] as any);
         } else {
             cronManager.stopJob(id);
         }

@@ -37,7 +37,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
   if (res.socket && (res.socket as any).server.io) {
     console.log('[LogRelay] Socket.io already running');
-    setIO((res.socket as any).server.io); // Ensure singleton is populated
+    const existingIo = (res.socket as any).server.io;
+    setIO(existingIo); 
     res.end();
     return;
   }
@@ -55,7 +56,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   });
 
   (res.socket as any).server.io = io;
-  setIO(io); // Register globally
+  setIO(io); // BP-12: Ensure singleton is populated IMMEDIATELY on creation
 
   io.on('connection', (socket) => {
     console.log('[LogRelay] Dashboard connected:', socket.id);

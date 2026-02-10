@@ -2,9 +2,14 @@ import { exec } from 'child_process';
 import fs from 'fs-extra';
 import path from 'path';
 import { broadcast } from './socket-instance';
+import { sessionManager } from './SessionManager';
 import { Paths } from './Paths';
 import { CloudFSManager } from './CloudFSManager';
 import { ProjectTaskManager } from './ProjectTaskManager';
+import { ProposalService } from './ProposalService';
+import { EventLog } from './EventLog';
+import { PolicyStore } from './PolicyStore';
+import { Roundtable } from './Roundtable';
 
 // Simple Mutex for concurrent file writes
 class Mutex {
@@ -28,11 +33,20 @@ const workerRegistry = new Map<string, { status: string; prUrl?: string }>();
  * ToolExecutor: Parses and executes tool calls from the LLM.
  */
 export class ToolExecutor {
+  private eventLog?: EventLog;
+  private policyStore?: PolicyStore;
+
+  constructor(eventLog?: EventLog, policyStore?: PolicyStore) {
+    this.eventLog = eventLog;
+    this.policyStore = policyStore;
+  }
+
   private static ALLOWED_COMMANDS = new Set([
     'git', 'npm', 'npx', 'node', 'python3', 'python', 'ls', 'cat', 'head', 'tail',
     'mkdir', 'cp', 'mv', 'rm', 'touch', 'echo', 'grep', 'find', 'wc', 'diff',
     'tsc', 'eslint', 'prettier', 'jest', 'vitest', 'cargo', 'go', 'make', 'cd',
-    'pwd', 'which', 'env', 'sort', 'uniq', 'sed', 'awk', 'tr', 'chmod'
+    'pwd', 'which', 'env', 'sort', 'uniq', 'sed', 'awk', 'tr', 'chmod',
+    'bash', 'sh', 'pdftotext'
   ]);
 
   private static pendingConfirmations = new Map<string, (approved: boolean) => void>();
@@ -48,11 +62,11 @@ export class ToolExecutor {
     }
   }
 
-  private validateCommand(command: string): boolean {
+  private validateCommand(command: string, allowedCommands: string[] = []): boolean {
     const subCommands = command.split(/[|;&]+/).map(s => s.trim()).filter(Boolean);
     for (const sub of subCommands) {
       const baseCmd = sub.split(/\s+/)[0].replace(/^.*\//, '');
-      if (!ToolExecutor.ALLOWED_COMMANDS.has(baseCmd)) {
+      if (!ToolExecutor.ALLOWED_COMMANDS.has(baseCmd) && !allowedCommands.includes(baseCmd)) {
         return false;
       }
     }
@@ -77,15 +91,24 @@ export class ToolExecutor {
 
   async execute(
     tool: { name: string; arguments: any; id?: string },
-    contextOrPath: string | { projectPath: string; agentId?: string | null; threadId?: string; projectId?: string; toolCallId?: string; mode?: string },
+    contextOrPath: string | { 
+      projectPath: string; 
+      agentId?: string | null; 
+      threadId?: string; 
+      projectId?: string; 
+      toolCallId?: string; 
+      mode?: string;
+      allowedCommands?: string[]; 
+    },
     legacyAgentId?: string | null
   ) {
     let projectPath: string;
     let agentId: string | null = 'unknown';
     let threadId: string | undefined;
     let projectId: string | undefined;
-    let toolCallId: string | undefined = tool.id;
+    let toolCallId: string | undefined = tool.id || `call-${Date.now()}`;
     let mode: string = 'local';
+    let allowedCommands: string[] = [];
 
     if (typeof contextOrPath === 'string') {
       projectPath = contextOrPath;
@@ -97,6 +120,13 @@ export class ToolExecutor {
       projectId = contextOrPath.projectId;
       mode = contextOrPath.mode || 'local';
       if (contextOrPath.toolCallId) toolCallId = contextOrPath.toolCallId;
+      if (contextOrPath.allowedCommands) allowedCommands = contextOrPath.allowedCommands;
+    }
+
+    // BP-19: Strict Tool Validation
+    if (!tool.name) {
+      console.error(`[ToolExecutor] CRITICAL: Tool name is missing for call ID ${toolCallId}`);
+      throw new Error(`Execution Failed: Tool name is missing for call ID ${toolCallId}`);
     }
 
     const cloudFS = mode === 'cloud' ? new CloudFSManager(projectPath) : null;
@@ -110,10 +140,21 @@ export class ToolExecutor {
       threadId,
       toolCallId
     });
+
+    if (this.eventLog) {
+      await this.eventLog.emit('tool_executed', agentId || 'unknown', {
+        tool: tool.name,
+        arguments: tool.arguments,
+        projectId,
+        threadId,
+        toolCallId
+      });
+    }
     
     try {
       let result = null;
       switch (tool.name) {
+        // ... (write_file case remains same)
         case 'write_file':
           if (cloudFS) {
             await cloudFS.writeFile(tool.arguments.path, tool.arguments.content);
@@ -127,10 +168,10 @@ export class ToolExecutor {
                 const oldContent = await fs.readFile(filePath, 'utf-8');
                 const oldLines = oldContent.split('\n').length;
                 const newLines = tool.arguments.content.split('\n').length;
-                // This is a very rough heuristic for prototype display
                 stats = { added: newLines, removed: oldLines };
               } else {
-                stats = { added: tool.arguments.content.split('\n').length, removed: 0 };
+                const newLines = tool.arguments.content.split('\n').length;
+                stats = { added: newLines, removed: 0 };
               }
             } catch (e) {}
 
@@ -141,18 +182,41 @@ export class ToolExecutor {
           break;
           
         case 'run_shell':
-          result = await this.runShellCommand(tool.arguments.command, projectPath, { projectId, threadId, toolCallId });
+          result = await this.runShellCommand(tool.arguments.command, projectPath, { projectId, threadId, toolCallId, allowedCommands });
           break;
           
-        case 'read_file':
-          if (cloudFS) {
-            result = await cloudFS.readFile(tool.arguments.path);
-          } else {
-            const readPath = this.validatePath(projectPath, tool.arguments.path);
-            result = await fs.readFile(readPath, 'utf-8');
-          }
-          break;
-
+        // ... (other cases remain same)
+          
+                  case 'read_file':
+                    const readPath = this.validatePath(projectPath, tool.arguments.path);
+                    const stats = await fs.stat(readPath);
+                    
+                    // Limit file size to 1MB to prevent context overflow and 413 errors
+                    if (stats.size > 1024 * 1024) {
+                      result = `Error: File too large (${(stats.size / 1024 / 1024).toFixed(2)}MB). Use a more specific tool or read a smaller file.`;
+                      break;
+                    }
+        
+                    const ext = path.extname(readPath).toLowerCase();
+                    const binaryExtensions = ['.pdf', '.png', '.jpg', '.jpeg', '.gif', '.zip', '.tar', '.gz', '.exe', '.bin'];
+                    
+                    if (binaryExtensions.includes(ext)) {
+                      result = `Error: Cannot read binary file ${tool.arguments.path} as text. Use specialized agents for binary analysis if available.`;
+                      break;
+                    }
+        
+                    if (cloudFS) {
+                      result = await cloudFS.readFile(tool.arguments.path);
+                    } else {
+                      const content = await fs.readFile(readPath, 'utf-8');
+                      // Basic check for binary content (null bytes or excessive non-printable characters)
+                      if (content.includes('\u0000') || (content.match(/[\x00-\x08\x0E-\x1F]/g) || []).length > content.length * 0.1) {
+                        result = `Error: File ${tool.arguments.path} appears to be binary or has encoding issues.`;
+                      } else {
+                        result = content;
+                      }
+                    }
+                    break;
         case 'create_worktree':
           const wtName = tool.arguments.name;
           const worktreePath = path.join(Paths.getWorktreesDir(), wtName);
@@ -215,6 +279,41 @@ export class ToolExecutor {
           const claimed = await ptm.claimTask(tool.arguments.taskId, agentId || 'unknown', projectPath);
           result = { success: claimed, taskId: tool.arguments.taskId, message: claimed ? 'Task claimed' : 'Task not found or already claimed' };
           break;
+
+        case 'submit_proposal':
+          const proposalService = new ProposalService(projectPath);
+          const proposal = await proposalService.submit(agentId || 'unknown', tool.arguments.action, tool.arguments.reason);
+          
+          if (this.eventLog) {
+            await this.eventLog.emit('proposal_submitted', agentId || 'unknown', {
+              proposalId: proposal.id,
+              action: proposal.action,
+              reason: proposal.reason
+            });
+          }
+
+          result = { success: true, proposal, message: `Proposal submitted: ${proposal.id}` };
+          break;
+
+        case 'chat_with_team':
+          const roundtable = new Roundtable(projectPath);
+          const teamMsg = await roundtable.postMessage(
+            agentId || 'unknown',
+            contextOrPath && typeof contextOrPath !== 'string' ? contextOrPath.agentId || 'agent' : 'agent',
+            tool.arguments.content,
+            { threadId, taskId: tool.arguments.taskId }
+          );
+
+          if (this.eventLog) {
+            await this.eventLog.emit('team_message_sent', agentId || 'unknown', {
+              messageId: teamMsg.id,
+              content: teamMsg.content,
+              taskId: teamMsg.taskId
+            });
+          }
+
+          result = { success: true, message: "Message sent to team channel." };
+          break;
           
         default:
           throw new Error(`Unknown tool: ${tool.name}`);
@@ -228,6 +327,17 @@ export class ToolExecutor {
         threadId,
         toolCallId 
       });
+
+      if (this.eventLog) {
+        await this.eventLog.emit('tool_result', agentId || 'unknown', {
+          tool: tool.name,
+          status: 'success',
+          result,
+          projectId,
+          threadId,
+          toolCallId
+        });
+      }
       return result;
     } catch (error: any) {
       console.error(`[ToolExecutor] Error executing tool '${tool.name}':`, error);
@@ -239,6 +349,17 @@ export class ToolExecutor {
         threadId,
         toolCallId
       });
+
+      if (this.eventLog) {
+        await this.eventLog.emit('tool_result', agentId || 'unknown', {
+          tool: tool.name,
+          status: 'error',
+          error: error.message,
+          projectId,
+          threadId,
+          toolCallId
+        });
+      }
       throw error;
     }
   }
@@ -248,22 +369,85 @@ export class ToolExecutor {
     
     console.log(`[Swarm] Spawning worker for task ${taskId}...`);
     
-    broadcast('UI_UPDATE', {
-      action: 'SPAWN_THREAD',
-      payload: {
-        id: `worker-${taskId}-${Date.now()}`,
-        title: `Worker: ${taskId}`,
-        agentId: 'worker-bee',
-        parentTaskId: taskId,
-        instructions
-      }
-    });
+    // 1. Prepare worktree details
+    const wtName = `worker-${taskId.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`;
+    const worktreeDir = path.join(Paths.getWorktreesDir(), wtName);
+    const branchName = `agent/${wtName}`;
 
-    return { 
-      success: true, 
-      taskId, 
-      message: `Worker agent spawned for task ${taskId}. It will report back when finished.` 
-    };
+    try {
+      // 2. Create the worktree
+      await new Promise((resolve, reject) => {
+        const cmd = `git worktree add -b ${branchName} "${worktreeDir}" HEAD`;
+        exec(cmd, { cwd: Paths.getWorkspaceRoot() }, (error, stdout, stderr) => {
+          if (error) reject(new Error(`Failed to create worktree: ${stderr}`));
+          else resolve(stdout);
+        });
+      });
+
+      // 3. Start the background runner (non-blocking)
+      this.runBackgroundWorker(worktreeDir, taskId, instructions, wtName).catch(err => {
+        console.error(`[Swarm] Worker for ${taskId} failed:`, err);
+        workerRegistry.set(taskId, { status: 'failed' });
+      });
+
+      broadcast('UI_UPDATE', {
+        action: 'SPAWN_THREAD',
+        payload: {
+          id: `worker-${taskId}-${Date.now()}`,
+          title: `Worker: ${taskId}`,
+          agentId: wtName,
+          parentTaskId: taskId,
+          instructions,
+          worktreePath: worktreeDir
+        }
+      });
+
+      return { 
+        success: true, 
+        taskId, 
+        worktreePath: worktreeDir,
+        message: `Worker agent spawned for task ${taskId} in isolated worktree.` 
+      };
+    } catch (error: any) {
+      console.error(`[Swarm] Failed to spawn worker:`, error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  private async runBackgroundWorker(worktreePath: string, taskId: string, instructions: string, agentId: string) {
+    const { AutonomousRunner } = await import('./AutonomousRunner');
+    const { getIO } = await import('./socket-instance');
+    
+    const io = getIO();
+    // Create a mock socket that redirects emits to the global io instance
+    const mockSocket = {
+      emit: (event: string, data: any) => {
+        if (io) io.emit(event, { ...data, agentId, parentTaskId: taskId });
+      },
+      on: () => {},
+      off: () => {}
+    } as any;
+
+    const runner = new AutonomousRunner(
+      mockSocket,
+      worktreePath,
+      'auto',
+      `swarm-${taskId}-${Date.now()}`,
+      null,
+      'local', // Working directly inside the worktree
+      agentId
+    );
+
+    workerRegistry.set(taskId, { status: 'running' });
+    
+    try {
+      await runner.executeLoop(instructions);
+      workerRegistry.set(taskId, { status: 'completed' });
+    } catch (error) {
+      console.error(`[Swarm] Background worker ${agentId} error:`, error);
+      workerRegistry.set(taskId, { status: 'failed' });
+      throw error;
+    }
   }
 
   private async handleWriteMemory(projectPath: string, category: string, content: string, agentId: string | null, cloudFS?: CloudFSManager | null) {
@@ -359,9 +543,17 @@ export class ToolExecutor {
   private async runShellCommand(
     command: string, 
     cwd: string, 
-    context: { projectId?: string, threadId?: string, toolCallId?: string }
+    context: { projectId?: string, threadId?: string, toolCallId?: string, allowedCommands?: string[] }
   ): Promise<any> {
-    const isAllowed = this.validateCommand(command);
+    let isAllowed = this.validateCommand(command, context.allowedCommands);
+    
+    if (this.policyStore) {
+      const isRestricted = await this.policyStore.get('restrict_shell_commands');
+      if (isRestricted) {
+        console.log(`[ToolExecutor] Policy 'restrict_shell_commands' is ON. Forcing confirmation for: ${command}`);
+        isAllowed = false; // Force confirmation flow
+      }
+    }
     
     if (!isAllowed) {
       if (!context.toolCallId) {
@@ -384,25 +576,40 @@ export class ToolExecutor {
       const approved = await new Promise<boolean>((resolve) => {
         ToolExecutor.pendingConfirmations.set(context.toolCallId!, resolve);
         
+        // Listen for abort signal
+        const signal = context.threadId ? sessionManager.getSignal(context.threadId) : null;
+        const onAbort = () => {
+            if (ToolExecutor.pendingConfirmations.has(context.toolCallId!)) {
+                ToolExecutor.confirm(context.toolCallId!, false);
+            }
+        };
+        signal?.addEventListener('abort', onAbort);
+
         // Auto-reject after 5 minutes
         setTimeout(() => {
           if (ToolExecutor.pendingConfirmations.has(context.toolCallId!)) {
-            ToolExecutor.pendingConfirmations.delete(context.toolCallId!);
-            resolve(false);
+            signal?.removeEventListener('abort', onAbort);
+            ToolExecutor.confirm(context.toolCallId!, false);
           }
         }, 300000);
       });
 
       if (!approved) {
-        throw new Error("Command execution rejected by user.");
+        throw new Error("Command execution rejected by user or thread deleted.");
       }
     }
 
     this.validateCwd(cwd, cwd);
+    const signal = context.threadId ? sessionManager.getSignal(context.threadId) : undefined;
+
     return new Promise((resolve, reject) => {
-      exec(command, { cwd, timeout: 30000 }, (error, stdout, stderr) => {
+      exec(command, { cwd, timeout: 30000, signal }, (error, stdout, stderr) => {
         if (error) {
-          reject(new Error(`Command failed: ${error.message}\n${stderr}`));
+          if (error.name === 'AbortError') {
+            reject(new Error('Command aborted: thread deleted.'));
+          } else {
+            reject(new Error(`Command failed: ${error.message}\n${stderr}`));
+          }
         } else {
           resolve({ stdout, stderr });
         }

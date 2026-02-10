@@ -89,6 +89,10 @@ export class EventLoopManager {
     this.socket.on('TOOL_APPROVAL', async ({ projectId, threadId, toolCallId, approved, tool, args, projectPath }) => {
         console.log(`[EventLoop] Tool approval received for ${toolCallId}: ${approved ? 'APPROVED' : 'REJECTED'}`);
         
+        // Resume any suspended ToolExecutor calls
+        ToolExecutor.confirm(toolCallId, approved);
+
+        // Legacy/Fallback handling for non-suspended flows (if any)
         if (approved) {
             try {
                 // We need to know which tool to execute. 

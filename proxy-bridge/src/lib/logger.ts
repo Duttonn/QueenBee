@@ -23,6 +23,9 @@ export const logger = {
   },
   debug: (message: string, ...args: any[]) => {
     log('DEBUG', message, ...args);
+  },
+  verbose: (message: string, ...args: any[]) => {
+    log('VERBOSE', message, ...args);
   }
 };
 
@@ -51,10 +54,30 @@ function log(level: string, message: string, ...args: any[]) {
   const context = logContext.getStore();
   const requestId = context?.requestId ? ` [${context.requestId}]` : '';
   
-  const formattedArgs = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
-  const entry = redact(`[${timestamp}] [${level}]${requestId} ${message} ${formattedArgs}
-`);
+  const formattedArgs = args.map(arg => {
+    if (typeof arg === 'object' && arg !== null) {
+      try {
+        return JSON.stringify(arg, null, 2);
+      } catch (e) {
+        return '[Circular Object]';
+      }
+    }
+    return String(arg);
+  }).join(' ');
+
+  const entry = redact(`[${timestamp}] [${level}]${requestId} ${message}\n${formattedArgs ? formattedArgs + '\n' : ''}`);
   
-  console.log(entry.trim()); // Still show in terminal
-  fs.appendFileSync(LOG_FILE, entry);
+  // Terminal Colors
+  const colors: Record<string, string> = {
+    'INFO': '\x1b[36m', // Cyan
+    'ERROR': '\x1b[31m', // Red
+    'WARN': '\x1b[33m', // Yellow
+    'DEBUG': '\x1b[90m', // Gray
+    'VERBOSE': '\x1b[35m', // Magenta
+  };
+  const reset = '\x1b[0m';
+  const color = colors[level] || reset;
+
+  console.log(`${color}${entry.trim()}${reset}`); 
+  fs.appendFileSync(LOG_FILE, entry + '---\n');
 }

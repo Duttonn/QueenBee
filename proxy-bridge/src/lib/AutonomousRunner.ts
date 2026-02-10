@@ -4,9 +4,14 @@ import { AgentSession } from './AgentSession';
 import { LLMMessage, LLMProviderOptions, LLMResponse } from './types/llm';
 import { unifiedLLMService } from './UnifiedLLMService';
 import { logContext } from './logger';
+import { sessionManager } from './SessionManager';
+import { Roundtable } from './Roundtable';
 import fs from 'fs-extra';
 import path from 'path';
 import { Writable } from 'stream';
+import { EventLog } from './EventLog';
+import { MemoryStore } from './MemoryStore';
+import { PolicyStore } from './PolicyStore';
 
 export type AgentRole = 'solo' | 'orchestrator' | 'worker';
 
@@ -24,6 +29,10 @@ export class AutonomousRunner {
   private session: AgentSession | null = null;
   private writable: Writable | null = null;
   private requestId: string | null = null;
+  
+  private eventLog: EventLog;
+  private memoryStore: MemoryStore;
+  private policyStore: PolicyStore;
 
   private static fileTreeCache = new Map<string, { files: string[]; timestamp: number }>();
   private static CACHE_TTL = 30000; // 30 seconds
@@ -48,6 +57,10 @@ export class AutonomousRunner {
     this.composerMode = composerMode;
     this.tm = new ProjectTaskManager(projectPath);
     this.requestId = logContext.getStore()?.requestId || null;
+
+    this.eventLog = new EventLog(projectPath);
+    this.memoryStore = new MemoryStore(projectPath);
+    this.policyStore = new PolicyStore(projectPath);
     
     if (agentId?.includes('orchestrator')) {
       this.role = 'orchestrator';
@@ -70,36 +83,85 @@ export class AutonomousRunner {
     }
   }
 
-  async streamIntermediateSteps(userPrompt: string, history: LLMMessage[] = [], options?: LLMProviderOptions) {
-      if (!this.session) {
-          const systemPrompt = await this.getEnhancedContext();
-          this.session = new AgentSession(this.projectPath, {
-              systemPrompt,
-              maxSteps: 15,
-              providerId: this.providerId,
-              threadId: this.threadId,
-              apiKey: this.apiKey || undefined,
-              mode: this.mode
-          });
-
-          this.session.messages = [
-              ...this.session.messages, // System prompt is already here
-              ...history.filter(m => m.role !== 'system').map(m => ({
-                  role: m.role,
-                  content: m.content || '',
-                  tool_calls: m.tool_calls,
-                  tool_call_id: m.tool_call_id,
-                  name: m.name
-              }))
-          ];
-
-          this.session.on('event', (data) => this.sendEvent(data));
+      async streamIntermediateSteps(userPrompt: string, history: LLMMessage[] = [], options?: LLMProviderOptions) {
+          if (this.threadId) {
+            sessionManager.register(this.threadId);
+          }
+  
+          try {
+            // BP-15: Greeting Guard
+            // If the prompt is just a greeting, respond directly without full context enhancement
+            const isGreeting = /^(hello|hi|hey|greetings|hola|yo|good morning|good afternoon|good evening)[.!?]*$/i.test(userPrompt.trim());
+            
+            if (!this.session) {
+                const systemPrompt = isGreeting 
+                  ? "You are Queen Bee, a helpful AI assistant. The user is just saying hello. Respond briefly and naturally, and ask how you can help with their project today. Do not use any tools."
+                  : await this.getEnhancedContext();
+                
+                this.session = new AgentSession(this.projectPath, {
+                    systemPrompt,
+                    maxSteps: isGreeting ? 1 : 15,
+                    providerId: this.providerId,
+                    threadId: this.threadId,
+                    apiKey: this.apiKey || undefined,
+                    mode: this.mode,
+                    eventLog: this.eventLog,
+                    memoryStore: this.memoryStore,
+                    policyStore: this.policyStore
+                });
+  
+                this.session.messages = [
+                    ...this.session.messages, // System prompt is already here
+                    ...history.filter(m => m.role !== 'system').map(m => ({
+                        id: m.id, // Ensure IDs are preserved if they exist
+                        role: m.role,
+                        content: m.content || '',
+                        tool_calls: m.tool_calls,
+                        tool_call_id: m.tool_call_id,
+                        name: m.name
+                    }))
+                ];
+  
+                this.session.on('event', (data) => {
+                    this.sendEvent(data);
+                    
+                    // BP-10: Direct socket broadcast for the Agent Execution panel
+                    if (data.type === 'tool_start') {
+                        this.socket.emit('TOOL_EXECUTION', {
+                            tool: data.data.toolName,
+                            status: 'running',
+                            args: data.data.args,
+                            threadId: this.threadId,
+                            toolCallId: data.data.toolCallId
+                        });
+                    } else if (data.type === 'tool_end') {
+                        this.socket.emit('TOOL_RESULT', {
+                            tool: data.data.toolName,
+                            status: 'success',
+                            result: data.data.result,
+                            threadId: this.threadId,
+                            toolCallId: data.data.toolCallId
+                        });
+                    } else if (data.type === 'tool_error') {
+                        this.socket.emit('TOOL_RESULT', {
+                            tool: data.data.toolName,
+                            status: 'error',
+                            error: data.data.error,
+                            threadId: this.threadId,
+                            toolCallId: data.data.toolCallId
+                        });
+                    }
+                });
+            }
+  
+            await this.executeRecursiveLoop(userPrompt, options);
+          } finally {
+            if (this.threadId) {
+              sessionManager.cleanup(this.threadId);
+            }
+          }
+          this.sendEvent({ event: 'agent_finished', threadId: this.threadId });
       }
-
-      await this.executeRecursiveLoop(userPrompt, options);
-      this.sendEvent({ event: 'agent_finished' });
-  }
-
   async executeLoop(userPrompt: string, history: LLMMessage[] = [], options?: LLMProviderOptions) {
     if (!this.session) {
       const systemPrompt = await this.getEnhancedContext();
@@ -109,7 +171,10 @@ export class AutonomousRunner {
         providerId: this.providerId,
         threadId: this.threadId,
         apiKey: this.apiKey || undefined,
-        mode: this.mode
+        mode: this.mode,
+        eventLog: this.eventLog,
+        memoryStore: this.memoryStore,
+        policyStore: this.policyStore
       });
       
       this.session.messages = [
@@ -124,15 +189,30 @@ export class AutonomousRunner {
   /**
    * Recursive Runner: Plan -> Execute -> Fix
    */
-  private async executeRecursiveLoop(userPrompt: string, options?: LLMProviderOptions): Promise<LLMMessage> {
-    let result = await this.session!.prompt(userPrompt, options);
+      private async executeRecursiveLoop(userPrompt: string, options?: LLMProviderOptions): Promise<LLMMessage> {
+        if (this.threadId && sessionManager.isAborted(this.threadId)) {
+          throw new Error("Execution aborted by user (thread deleted)");
+        }
+
+        // BP-18: Intent Guard
+        // Explicitly inject the user's current goal to prevent "task drift"
+        const currentGoalContext = `
+# CURRENT USER INTENT
+The user wants you to: "${userPrompt}"
+STRICT RULE: Do not perform ANY technical actions (benchmarks, refactors, files edits) that are not directly required to fulfill THIS SPECIFIC intent. 
+If you finish this task, stop and wait for the next command.`;
+
+        let result = await this.session!.prompt(userPrompt + currentGoalContext, options);    
     
-    // Solo Agent: Ensure we have a text response if the loop ended with tools
+    // BP-12: Ensure we ALWAYS have a summary if tools were used, even for solo agents
+    const toolsUsed = this.session!.messages.some(m => m.role === 'tool');
+    if (!result.content && (result.tool_calls || toolsUsed)) {
+      console.log('[RecursiveRunner] Agent ended with tool calls or used tools but no text. Requesting summary...');
+      result = await this.session!.prompt("Great. Please provide a brief summary of what you just finished doing for the user.", options);
+    }
+
+    // Solo Agent: return immediately after summary
     if (this.role === 'solo') {
-      if (!result.content && result.tool_calls) {
-        console.log('[RecursiveRunner] Solo agent ended with tool calls but no text. Requesting summary...');
-        result = await this.session!.prompt("Great. Please provide a brief summary of what you did for the user.", options);
-      }
       return result;
     }
 
@@ -146,6 +226,9 @@ export class AutonomousRunner {
     const maxRetries = 2;
 
     while (retryCount < maxRetries) {
+      if (this.threadId && sessionManager.isAborted(this.threadId)) {
+        throw new Error("Execution aborted by user (thread deleted)");
+      }
       const verification = await this.verifyTask(result);
       
       if (verification.passed) {
@@ -226,6 +309,8 @@ export class AutonomousRunner {
   async getEnhancedContext() {
     const files = await this.scanFiles(this.projectPath);
     const tasks = await this.tm.getPendingTasks();
+    const roundtable = new Roundtable(this.projectPath);
+    const teamContext = await roundtable.getFormattedContext(10);
     
     let sharedMemory = 'No shared memory recorded yet.';
     const memoryPath = path.join(this.projectPath, 'MEMORY.md');
@@ -249,7 +334,7 @@ export class AutonomousRunner {
       modeDirective = `
 # MODE: CODE (Implementation & Build)
 - Focus on technical precision and direct implementation.
-- Be proactive in using tools (write_file, replace, run_shell) to complete the task.
+- While you are proactive in implementation, you MUST wait for a user instruction before using tools (write_file, replace, run_shell).
 - Minimize conversational filler; prioritize correct, production-ready code.`;
     }
 
@@ -283,6 +368,12 @@ export class AutonomousRunner {
       isolationDirective = `- DO NOT create worktrees. Work directly in the project directory.`;
     }
 
+    const memories = await this.memoryStore.getAll();
+    const structuredMemories = memories
+      .filter(m => m.confidence >= 0.7)
+      .map(m => `[${m.type.toUpperCase()}] ${m.content}`)
+      .join('\n');
+
     return `
 ${modeDirective}
 ${roleDirective}
@@ -296,16 +387,24 @@ ${files.join('\n')}
 # SHARED PROJECT MEMORY (MEMORY.md)
 ${sharedMemory}
 
-# AUTONOMY & SAFETY
-1. **Read-Only Default**: Only modify files if asked for a fix/update/change.
-2. **Conciseness**: Show code immediately. No long preambles.
-3. **High Trust**: Never ask questions. Make professional assumptions.
-4. **Transparency**: List assumptions at the end under '🧠 ASSUMPTIONS'.
+# STRUCTURED MEMORY (Cortex)
+${structuredMemories || 'No structured memories yet.'}
+
+# AUTONOMY & INITIATIVE
+1. **Technical Problem Solving**: Be creative and proactive. If a file is too large or in a binary format (like PDF), use your tools to find a workaround (e.g., write a script to extract text, use system tools like 'pdftotext').
+2. **Task Completion**: Your goal is to fulfill the user's intent. Do not give up easily or ask the user to perform manual technical steps if you can automate them.
+3. **Reference-Aware**: Use TASKS.md and the File Tree to guide your implementation, but always prioritize the user's latest command.
+4. **Conciseness**: Show code immediately when a technical task is requested. No long preambles.
+5. **Transparency**: List assumptions at the end under '🧠 ASSUMPTIONS'.
 
 # TOOL USAGE & ISOLATION
 ${isolationDirective}
 - Use 'write_memory' to share architecturally significant findings.
 - Use 'read_memory' for deep technical details from the cortex.
+
+# TEAM COORDINATION (Roundtable)
+The following is the recent history of messages from other agents in this swarm. Use this to guide your work and avoid duplication.
+${teamContext}
 `;
   }
 

@@ -179,5 +179,36 @@ export const AGENT_TOOLS = [
         required: ['taskId']
       }
     }
-  }
-];
+  },
+    {
+      type: 'function',
+      function: {
+        name: 'submit_proposal',
+        description: 'Submit a proposal for a risky action or architectural change. The proposal will be pending until approved.',
+        parameters: {
+          type: 'object',
+          properties: {
+            action: { type: 'string', description: 'Description of the proposed action.' },
+            reason: { type: 'string', description: 'Reason why this action is necessary.' }
+          },
+          required: ['action']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'chat_with_team',
+        description: 'Send a message to the shared team channel to coordinate with other agents or ask for status.',
+        parameters: {
+          type: 'object',
+          properties: {
+            content: { type: 'string', description: 'The message to send to your teammates.' },
+            taskId: { type: 'string', description: 'Optional: The task ID this message relates to.' }
+          },
+          required: ['content']
+        }
+      }
+    }
+  ];
+  

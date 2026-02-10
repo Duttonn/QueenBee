@@ -4,11 +4,21 @@ import { EventLoopManager } from './src/lib/EventLoopManager';
 import { setIO } from './src/lib/socket-instance';
 import { TaskManager } from './src/lib/TaskManager';
 import { cronManager } from './src/lib/CronManager';
+import { HeartbeatService } from './src/lib/HeartbeatService';
+import { TriggerEngine } from './src/lib/TriggerEngine';
+import { Paths } from './src/lib/Paths';
 
 const PORT = 3001;
 
 // Initialize Cron Jobs
 cronManager.init().catch(err => console.error('Failed to init cron manager', err));
+
+// Start Heartbeat Service
+HeartbeatService.start().catch(err => console.error('Failed to start heartbeat service', err));
+
+// Start Trigger Engine
+const triggerEngine = new TriggerEngine(Paths.getWorkspaceRoot());
+triggerEngine.start().catch(err => console.error('Failed to start trigger engine', err));
 
 const httpServer = createServer(async (req, res) => {
   // Simple router for Claim API

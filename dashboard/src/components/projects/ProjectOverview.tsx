@@ -13,7 +13,6 @@ export const ProjectOverview = ({ onNewThread, onStartPlanning, hasPlan = false 
   const { tasks, fetchTasks } = useHiveStore();
   
   useEffect(() => {
-    console.log('[ProjectOverview] Fetching tasks... Current count:', tasks.length);
     fetchTasks();
     const interval = setInterval(fetchTasks, 5000);
     return () => clearInterval(interval);
@@ -22,7 +21,6 @@ export const ProjectOverview = ({ onNewThread, onStartPlanning, hasPlan = false 
   // If no plan exists, show empty state
   // We check both the prop and the actual tasks array
   if (!hasPlan && (!tasks || tasks.length === 0)) {
-      console.log('[ProjectOverview] No plan found, showing empty state.');
       return (
         <div className="flex-1 h-full flex flex-col items-center justify-center bg-zinc-50/30 p-8 text-center">
             <div className="w-24 h-24 bg-white rounded-3xl flex items-center justify-center shadow-xl shadow-black/5 mb-6">
@@ -110,8 +108,8 @@ export const ProjectOverview = ({ onNewThread, onStartPlanning, hasPlan = false 
                     {phaseTasks.length === 0 ? (
                         <div className="p-4 text-center text-xs text-zinc-400 italic">No tasks in this phase</div>
                     ) : (
-                        phaseTasks.map((task: any) => (
-                            <div key={task.id} className="group p-2 hover:bg-zinc-50 rounded-xl transition-colors">
+                        phaseTasks.map((task: any, tIdx: number) => (
+                            <div key={`${phase.name}-${task.id}-${tIdx}`} className="group p-2 hover:bg-zinc-50 rounded-xl transition-colors">
                                 <div className="flex gap-3">
                                     <div className="mt-0.5 flex-shrink-0">
                                         <StatusIcon status={task.status} />

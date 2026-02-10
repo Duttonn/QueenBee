@@ -275,25 +275,24 @@ export const useHiveStore = create<HiveState>()(
                       ...p,
                       threads: p.threads.map((t: any) => {
                         if (t.id === threadId) {
-                          // Precise deduplication by ID
-                          if (message.id && t.messages?.some((m: any) => m.id === message.id)) {
-                              // If it's a tool message or has content, and we already have it, skip
-                              // Exception: if the existing one is empty and this one is not, we might want to update it, 
-                              // but usually replaceLastMessage handles that.
+                          const currentMessages = t.messages || [];
+                          
+                          // BP-13: Precise deduplication by ID
+                          if (message.id && currentMessages.some((m: any) => m.id === message.id)) {
+                              console.log(`[HiveStore] Skipping duplicate message ID: ${message.id}`);
                               return t;
                           }
       
-                          // Fallback for messages without IDs (if any)
-                          if (!message.id) {
-                              const isDuplicate = t.messages?.some((m: any) => 
-                                m.role === message.role && 
-                                JSON.stringify(m.content) === JSON.stringify(message.content) && 
-                                message.content !== '' && message.content !== null
-                              );
-                              if (isDuplicate) return t;
+                          // Fallback deduplication for assistant messages that might be streaming
+                          if (message.role === 'assistant' && !message.id) {
+                              const lastMsg = currentMessages[currentMessages.length - 1];
+                              if (lastMsg?.role === 'assistant' && !lastMsg.content && (!lastMsg.toolCalls || lastMsg.toolCalls.length === 0)) {
+                                  // This is likely the placeholder we should have updated instead of adding
+                                  return t;
+                              }
                           }
       
-                          return { ...t, messages: [...(t.messages || []), message] };
+                          return { ...t, messages: [...currentMessages, message] };
                         }
                         return t;
                       })

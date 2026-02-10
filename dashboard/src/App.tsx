@@ -7,6 +7,7 @@ import OnboardingFlow from './components/auth/OnboardingFlow';
 import { useAuthStore } from './store/useAuthStore';
 import { useHiveStore } from './store/useHiveStore';
 import { useSocketEvents } from './hooks/useSocketEvents'; // Added for TASK-03
+import { useDebugLogger } from './hooks/useDebugLogger';
 import { SystemService } from './services/SystemService';
 
 function App() {
@@ -14,6 +15,8 @@ function App() {
   const { initSocket, fetchProjects } = useHiveStore(); // Destructure initSocket and fetchProjects
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isCallback, setIsCallback] = useState(false);
+
+  useDebugLogger();
 
   // Load secure API keys once on mount
   useEffect(() => {
@@ -29,29 +32,54 @@ function App() {
     }
   }, [isAuthenticated, isOnboarded]);
 
-  // Global Log Relay to Backend
-  const { socket } = useHiveStore();
-  useEffect(() => {
-    if (!socket) return;
+      // Global Log Relay to Backend
+      const { socket } = useHiveStore();
+      useEffect(() => {
+        if (!socket || (window as any).__QUEEN_BEE_LOGS_PATCHED__) return;
+  
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+        const originalDebug = console.debug;
+        
+        (window as any).__QUEEN_BEE_LOGS_PATCHED__ = true;
+        let isRelaying = false;
+  
+        const relay = (type: string, args: any[]) => {
+          if (isRelaying) return;
+          
+          // BP-16: Log Noise Filter
+          const messageStr = args.map(arg => String(arg)).join(' ');
+          const noisePatterns = [
+            'Rendering:', 
+            'Fetching tasks', 
+            'Projects loaded', 
+            'Socket connected', 
+            'Setting activeThreadId',
+            'heartbeat',
+            'Checking if target directory',
+            'Encountered two children with the same key'
+          ];
+          
+          if (noisePatterns.some(p => messageStr.includes(p))) return;
 
-    const originalLog = console.log;
-    const originalError = console.error;
-    const originalWarn = console.warn;
-
-    const relay = (type: string, args: any[]) => {
-      socket.emit('LOG_RELAY', {
-        type,
-        message: args.map(arg => {
+          isRelaying = true;
           try {
-            return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
-          } catch (e) {
-            return '[Unserializable Object]';
+            socket.emit('LOG_RELAY', {
+              type,
+              message: args.map(arg => {
+                try {
+                  return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
+                } catch (e) {
+                  return '[Unserializable Object]';
+                }
+              }).join(' '),
+              timestamp: new Date().toISOString()
+            });
+          } finally {
+            isRelaying = false;
           }
-        }).join(' '),
-        timestamp: new Date().toISOString()
-      });
-    };
-
+        };
     console.log = (...args) => {
       relay('info', args);
       originalLog.apply(console, args);

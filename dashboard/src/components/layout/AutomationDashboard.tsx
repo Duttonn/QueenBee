@@ -22,7 +22,8 @@ import {
   MonitorCheck,
   Tag,
   TestTube2,
-  Wrench
+  Wrench,
+  AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore, type Automation } from '../../store/useAppStore';
@@ -72,7 +73,7 @@ const TEMPLATES: AutomationTemplate[] = [
   { 
     icon: <FileText className="text-purple-500" size={22} />, 
     title: 'Changelog', 
-    description: 'Generate changelog weekly', 
+    description: 'Analyze recent commits and generate a weekly CHANGELOG.md update.', 
     type: 'CHANGELOG',
     schedule: '10:00', 
     days: ['Fr'],
@@ -150,8 +151,96 @@ function formatScheduleDisplay(schedule: string, days?: string[]): string {
   return `${abbrev} ${schedule}`;
 }
 
+// Automation Details Modal
+const AutomationDetailsModal = ({ isOpen, onClose, automation, onUpdate }: {
+  isOpen: boolean;
+  onClose: () => void;
+  automation: Automation;
+  onUpdate: (id: string, updates: Partial<Automation>) => void;
+}) => {
+  const [allowedCommands, setAllowedCommands] = useState<string[]>([]);
+  const { getAllowedCommands } = useAppStore();
+
+  React.useEffect(() => {
+    getAllowedCommands().then(setAllowedCommands);
+  }, []);
+
+  if (!isOpen) return null;
+
+  const scriptLines = (automation.script || '').split('\n');
+  const restrictedLines = scriptLines.map((line, idx) => {
+    const cmd = line.trim().split(/\s+/)[0];
+    if (!cmd) return null;
+    const isRestricted = !allowedCommands.includes(cmd) && !['#', '//'].includes(cmd[0]);
+    return isRestricted ? { line: idx, cmd } : null;
+  }).filter((x): x is { line: number, cmd: string } => x !== null);
+
+  const handleAuthorize = (cmd: string) => {
+     const currentAllowed = automation.allowedCommands || [];
+     if (!currentAllowed.includes(cmd)) {
+         onUpdate(automation.id, { allowedCommands: [...currentAllowed, cmd] });
+     }
+  };
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/20 backdrop-blur-sm"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.95, opacity: 0 }}
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-zinc-200"
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="px-6 py-4 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50">
+            <div>
+                <h3 className="text-lg font-bold text-zinc-900">{automation.title}</h3>
+                <p className="text-xs text-zinc-500">Automation Details & Logs</p>
+            </div>
+            <button onClick={onClose}><X size={20} className="text-zinc-400 hover:text-zinc-600" /></button>
+          </div>
+          
+          <div className="p-6">
+            <h4 className="text-xs font-black text-zinc-400 uppercase tracking-widest mb-3">Script Execution Plan</h4>
+            <div className="bg-zinc-900 rounded-xl p-4 font-mono text-xs text-zinc-300 overflow-x-auto relative max-h-96 overflow-y-auto">
+                {scriptLines.map((line, i) => {
+                    const restriction = restrictedLines.find(r => r.line === i);
+                    return (
+                        <div key={i} className="flex items-center gap-3 py-0.5 group">
+                            <span className="text-zinc-700 select-none w-4 text-right">{i + 1}</span>
+                            <span className={restriction ? "text-amber-400" : ""}>{line}</span>
+                            {restriction && (
+                                <div className="ml-auto flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <span className="text-[10px] text-amber-500 font-bold bg-amber-950/30 px-2 py-0.5 rounded flex items-center gap-1">
+                                        <AlertTriangle size={10} /> Restricted
+                                    </span>
+                                    <button 
+                                        onClick={() => handleAuthorize(restriction.cmd)}
+                                        className="text-[10px] bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-bold transition-colors"
+                                    >
+                                        Authorize
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
 // Recipe Card Component
-const AutomationCard = ({ icon, title, description, active, onToggle, onDelete, onRun, lastRunStatus, schedule, days }: {
+const AutomationCard = ({ icon, title, description, active, onToggle, onDelete, onRun, onClick, lastRunStatus, schedule, days }: {
   icon: React.ReactNode;
   title: string;
   description: string;
@@ -159,11 +248,15 @@ const AutomationCard = ({ icon, title, description, active, onToggle, onDelete, 
   onToggle: () => void;
   onDelete: () => void;
   onRun: () => void;
+  onClick: () => void;
   lastRunStatus?: 'success' | 'failed' | 'idle';
   schedule?: string;
   days?: string[];
 }) => (
-  <div className="bg-white border border-zinc-200 rounded-3xl p-6 hover:shadow-xl hover:shadow-zinc-200/50 transition-all group relative overflow-hidden">
+  <div 
+    onClick={onClick}
+    className="bg-white border border-zinc-200 rounded-3xl p-6 hover:shadow-xl hover:shadow-zinc-200/50 transition-all group relative overflow-hidden cursor-pointer"
+  >
     <div className="flex justify-between items-start mb-4">
       <div className="p-3 bg-zinc-50 rounded-2xl group-hover:bg-white group-hover:shadow-sm transition-all">{icon}</div>
       <div className="flex items-center gap-2">
@@ -195,7 +288,7 @@ const AutomationCard = ({ icon, title, description, active, onToggle, onDelete, 
     </div>
 
     <button
-      onClick={onRun}
+      onClick={(e) => { e.stopPropagation(); onRun(); }}
       className="w-full flex items-center justify-center gap-2 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold uppercase tracking-widest rounded-xl transition-all shadow-sm active:scale-95"
     >
       <PlayIcon size={12} fill="currentColor" />
@@ -428,6 +521,7 @@ const ExecutionLog = () => {
 const AutomationDashboard = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<AutomationTemplate | null>(null);
+  const [selectedAutomation, setSelectedAutomation] = useState<Automation | null>(null);
   const { automations, addAutomation, toggleAutomation, deleteAutomation, runAutomation } = useAppStore();
 
   const getIcon = (title: string, type?: Automation['type']) => {
@@ -490,13 +584,21 @@ const AutomationDashboard = () => {
                 onRun={async () => {
                   if (recipe.script) {
                     try {
-                      const res = await runAutomation(recipe.script);
+                      const res = await runAutomation(recipe.script, recipe.allowedCommands);
+                      const errorMsg = (res as any).error || '';
+                      if (errorMsg.includes('BLOCKED_COMMAND')) {
+                          const cmdMatch = errorMsg.match(/'([^']+)'/);
+                          const cmdName = cmdMatch ? cmdMatch[1] : 'a restricted command';
+                          alert(`Execution Blocked: The command '${cmdName}' is restricted and hasn't been authorized for this automation.\n\nOpen the details view to authorize it.`);
+                          return;
+                      }
                       console.log(`Result: ${res.stdout}`);
-                    } catch (e) { console.error('Error running automation'); }
+                    } catch (e) { console.error('Error running automation', e); }
                   } else {
                     alert('No script defined for this automation.');
                   }
                 }}
+                onClick={() => setSelectedAutomation(recipe)}
               />
             ))}
           </div>
@@ -512,6 +614,21 @@ const AutomationDashboard = () => {
         onCreate={addAutomation}
         initialTemplate={selectedTemplate}
       />
+
+      {selectedAutomation && (
+        <AutomationDetailsModal 
+            isOpen={!!selectedAutomation} 
+            onClose={() => setSelectedAutomation(null)} 
+            automation={selectedAutomation}
+            onUpdate={(id, updates) => {
+                fetch(`http://127.0.0.1:3000/api/automations`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, ...updates })
+                }).then(() => window.location.reload());
+            }}
+        />
+      )}
     </div>
   );
 };
