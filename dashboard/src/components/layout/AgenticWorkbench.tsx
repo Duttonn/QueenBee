@@ -359,6 +359,19 @@ interface AgenticWorkbenchProps {
   const [isOpenMenuOpen, setIsOpenMenuOpen] = useState(false);
   const [showLiveEye, setShowLiveEye] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [inputValue, setInputValue] = useState('');
+  
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'inherit';
+      const scrollHeight = textareaRef.current.scrollHeight;
+      const initialHeight = 44; // Approx height for 1 line
+      const maxHeight = initialHeight * 3;
+      textareaRef.current.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
+    }
+  }, [inputValue]);
   
   // Branch State
   const [branches, setBranches] = useState<{ current: string, all: string[] }>({ current: 'main', all: [] });

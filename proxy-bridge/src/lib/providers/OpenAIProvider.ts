@@ -15,6 +15,10 @@ export class OpenAIProvider extends LLMProvider {
     this.baseUrl = baseUrl;
   }
 
+  hasKey(): boolean {
+    return !!this.apiKey && this.apiKey.length > 0;
+  }
+
   async chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
     const model = options?.model || 'gpt-4';
     
@@ -44,8 +48,8 @@ export class OpenAIProvider extends LLMProvider {
         }
       };
     } catch (error: any) {
-      console.error('OpenAI Chat Error:', error.response?.data || error.message);
-      throw new Error(`OpenAI Chat failed: ${error.response?.data?.error?.message || error.message}`);
+      console.error(`[OpenAIProvider:${this.id}] Chat Error:`, error.response?.data || error.message);
+      throw new Error(`[${this.id}] Chat failed (${this.baseUrl}): ${error.response?.data?.error?.message || error.message}`);
     }
   }
 

@@ -320,7 +320,7 @@ const RemotesSection = ({
 };
 
 const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, selectedProjectId, onProjectSelect, onAddProject }: SidebarProps) => {
-  const { projects, addProject, activeThreadId, setActiveThread, addThread, selectedProjectId: storeSelectedProjectId } = useHiveStore();
+  const { projects, addProject, activeThreadId, setActiveThread, addThread, selectedProjectId: storeSelectedProjectId, unreadThreads } = useHiveStore();
   const { forges, user } = useAuthStore();
   const connectedForges = forges.filter(f => f.connected);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
@@ -440,52 +440,142 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                   <span className="text-[11px] font-bold truncate tracking-tight uppercase tracking-widest">Project Status</span>
                 </div>
 
-                {activeProject.threads?.length > 0 ? (
-                  activeProject.threads.map((thread: any) => {
-                    const displayName = getThreadDisplayName(thread);
-                    const relTime = formatRelativeTime(thread.time || thread.id);
-                    const diffMatch = thread.diff ? thread.diff.match(/(\+\d+)\s+(-\d+)/) : null;
-                    return (
-                      <div
-                        key={thread.id}
-                        onClick={() => { setActiveThread(thread.id); onViewChange('build'); }}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all group/thread ${activeThreadId === thread.id
-                          ? 'bg-white text-zinc-900 border border-zinc-200 shadow-sm'
-                          : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
-                          }`}
-                      >
-                        <MessageSquare size={14} className={`flex-shrink-0 ${activeThreadId === thread.id ? 'text-blue-400' : 'text-zinc-400'}`} />
-                        <div className="flex-1 min-w-0">
-                          <span className="text-[11px] font-bold truncate tracking-tight block">{displayName}</span>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            {diffMatch && (
-                              <span className="text-xs">
-                                <span className="text-emerald-500 font-bold">{diffMatch[1]}</span>
-                                {' '}
-                                <span className="text-red-400 font-bold">{diffMatch[2]}</span>
-                              </span>
-                            )}
-                            {relTime && (
-                              <span className="text-xs text-zinc-400">{relTime}</span>
-                            )}
+                {activeProject.threads?.length > 0 ? (() => {
+                  // Separate solo threads from swarm threads
+                  const soloThreads: any[] = [];
+                  const swarmGroups: Record<string, any[]> = {};
+
+                  activeProject.threads.forEach((t: any) => {
+                    if (t.parentTaskId || t.id.startsWith('worker-')) {
+                      const groupId = t.parentTaskId || 'default-swarm';
+                      if (!swarmGroups[groupId]) swarmGroups[groupId] = [];
+                      swarmGroups[groupId].push(t);
+                    } else {
+                      soloThreads.push(t);
+                    }
+                  });
+
+                  return (
+                    <div className="space-y-4">
+                      {/* Swarm Groups */}
+                      {Object.entries(swarmGroups).map(([groupId, groupThreads]) => (
+                        <div key={groupId} className="space-y-0.5">
+                          <div className="px-3 py-1.5 flex items-center gap-2">
+                            <div className="w-1.5 h-3 bg-amber-400 rounded-full" />
+                            <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">🐝 Swarm: {groupId.split('-').slice(0, 2).join(' ')}</span>
                           </div>
+                          
+                          {/* Roundtable for this swarm */}
+                          <div
+                            onClick={() => { setActiveThread(`roundtable-${groupId}`); onViewChange('build'); }}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all ${activeThreadId === `roundtable-${groupId}`
+                              ? 'bg-amber-50 text-amber-900 border border-amber-100 shadow-sm'
+                              : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
+                              }`}
+                          >
+                            <Users size={14} className={activeThreadId === `roundtable-${groupId}` ? 'text-amber-600' : 'text-zinc-400'} />
+                            <span className="text-[11px] font-bold truncate uppercase tracking-tight">Roundtable</span>
+                          </div>
+
+                          {groupThreads.map((thread: any) => {
+                            const displayName = getThreadDisplayName(thread);
+                            const relTime = formatRelativeTime(thread.time || thread.id);
+                            const diffMatch = thread.diff ? thread.diff.match(/(\+\d+)\s+(-\d+)/) : null;
+                            const isThreadActive = (activeThreadId === thread.id && useHiveStore.getState().queenStatus !== 'idle') || 
+                                                  thread.messages?.some((m: any) => m.role === 'assistant' && !m.content && (!m.toolCalls || m.toolCalls.length === 0));
+                            const isUnread = unreadThreads.has(thread.id) && activeThreadId !== thread.id;
+
+                            return (
+                              <div
+                                key={thread.id}
+                                onClick={() => { setActiveThread(thread.id); onViewChange('build'); }}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all group/thread ml-2 border-l border-zinc-100 ${activeThreadId === thread.id
+                                  ? 'bg-white text-zinc-900 border border-zinc-200 shadow-sm'
+                                  : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
+                                  }`}
+                              >
+                                {isThreadActive ? (
+                                  <Loader2 size={14} className="flex-shrink-0 text-blue-500 animate-spin" />
+                                ) : (
+                                  <Bot size={14} className={`flex-shrink-0 ${activeThreadId === thread.id ? 'text-blue-400' : 'text-zinc-400'}`} />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`text-[11px] font-bold truncate tracking-tight block ${isUnread ? 'text-zinc-900' : ''}`}>{displayName}</span>
+                                    {isUnread && (
+                                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-sm shadow-blue-200 flex-shrink-0" />
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // if (confirm('Delete this thread?')) {
-                              useHiveStore.getState().deleteThread(activeProject.id, thread.id);
-                            // }
-                          }}
-                          className="opacity-0 group-hover/thread:opacity-100 p-1.5 hover:bg-rose-50 hover:text-rose-500 text-zinc-400 rounded-lg transition-all"
-                          title="Delete Thread"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    );
-                  })
-                ) : null}
+                      ))}
+
+                      {/* Solo Threads */}
+                      {soloThreads.length > 0 && (
+                        <div className="space-y-0.5">
+                          {soloThreads.map((thread: any) => {
+                            const displayName = getThreadDisplayName(thread);
+                            const relTime = formatRelativeTime(thread.time || thread.id);
+                            const diffMatch = thread.diff ? thread.diff.match(/(\+\d+)\s+(-\d+)/) : null;
+                            const isThreadActive = (activeThreadId === thread.id && useHiveStore.getState().queenStatus !== 'idle') || 
+                                                  thread.messages?.some((m: any) => m.role === 'assistant' && !m.content && (!m.toolCalls || m.toolCalls.length === 0));
+                            const isUnread = unreadThreads.has(thread.id) && activeThreadId !== thread.id;
+
+                            return (
+                              <div
+                                key={thread.id}
+                                onClick={() => { setActiveThread(thread.id); onViewChange('build'); }}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all group/thread ${activeThreadId === thread.id
+                                  ? 'bg-white text-zinc-900 border border-zinc-200 shadow-sm'
+                                  : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
+                                  }`}
+                              >
+                                {isThreadActive ? (
+                                  <Loader2 size={14} className="flex-shrink-0 text-blue-500 animate-spin" />
+                                ) : (
+                                  <MessageSquare size={14} className={`flex-shrink-0 ${activeThreadId === thread.id ? 'text-blue-400' : 'text-zinc-400'}`} />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`text-[11px] font-bold truncate tracking-tight block ${isUnread ? 'text-zinc-900' : ''}`}>{displayName}</span>
+                                    {isUnread && (
+                                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-sm shadow-blue-200 flex-shrink-0" />
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    {diffMatch && (
+                                      <span className="text-xs">
+                                        <span className="text-emerald-500 font-bold">{diffMatch[1]}</span>
+                                        {' '}
+                                        <span className="text-red-400 font-bold">{diffMatch[2]}</span>
+                                      </span>
+                                    )}
+                                    {relTime && (
+                                      <span className="text-xs text-zinc-400">{relTime}</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    useHiveStore.getState().deleteThread(activeProject.id, thread.id);
+                                  }}
+                                  className="opacity-0 group-hover/thread:opacity-100 p-1.5 hover:bg-rose-50 hover:text-rose-500 text-zinc-400 rounded-lg transition-all"
+                                  title="Delete Thread"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()) : null}
               </div>
             )}
             

@@ -18,13 +18,29 @@ export const AGENT_TOOLS = [
     type: 'function',
     function: {
       name: 'read_file',
-      description: 'Read the content of a file.',
+      description: 'Read the content of a file. If the file is large (>200 lines), it returns a summary (line count + symbol map). Use read_file_range for specific windows.',
       parameters: {
         type: 'object',
         properties: {
           path: { type: 'string', description: 'Relative path to the file.' }
         },
         required: ['path']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_file_range',
+      description: 'Read a specific range of lines from a file.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Relative path to the file.' },
+          start: { type: 'number', description: 'Starting line number (1-indexed).' },
+          end: { type: 'number', description: 'Ending line number (inclusive).' }
+        },
+        required: ['path', 'start', 'end']
       }
     }
   },
@@ -207,6 +223,35 @@ export const AGENT_TOOLS = [
             taskId: { type: 'string', description: 'Optional: The task ID this message relates to.' }
           },
           required: ['content']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'teach_agent',
+        description: 'Explicitly teach the agent a new stylistic rule or personal preference. This will be remembered in future sessions.',
+        parameters: {
+          type: 'object',
+          properties: {
+            rule: { type: 'string', description: 'The rule to learn (e.g. "Always use camelCase for variables").' },
+            type: { type: 'string', enum: ['style', 'preference', 'lesson'], description: 'The type of learning.' }
+          },
+          required: ['rule']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'learn_style',
+        description: 'Before writing code, use this to analyze existing files and learn the user\'s coding style for a specific file type.',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'The path of the file you are about to create or modify (to find similar files).' }
+          },
+          required: ['path']
         }
       }
     }

@@ -244,3 +244,81 @@ Significant reliability improvements to the core workbench:
 - **ID-Based Deduplication**: Transitioned from content-based to unique ID-based message tracking, eliminating double-displays during streaming.
 - **Debounced Thread Persistence**: Thread state updates are batched and debounced to optimize network traffic and UI smoothness.
 - **Streaming Resilience**: Added SSE heartbeats and retry logic to handle unstable connections.
+
+---
+
+### 3.22 Agent Nervous System (VoxYZ Coordination)
+**Source**: VoxYZ Gap Implementation
+
+A distributed coordination layer for the multi-agent swarm:
+- **PolicyStore**: Centralized JSON configuration for runtime agent parameters (concurrency limits, timeouts, auto-approval flags).
+- **EventLog**: Structured, append-only JSONL log capturing all system events (tool executions, task claims, session completions).
+- **MemoryStore**: Replaced flat MEMORY.md with a structured Cortex. Supports typed memories (insights, patterns, lessons) with confidence scoring.
+- **HeartbeatService**: Periodic system pulse that ensures swarm health. Implements **Stale Task Recovery**, automatically resetting tasks from crashed agents.
+- **Swarm Scalability**: `spawn_worker` tool updated from UI stub to full process spawning in isolated Git worktrees.
+
+---
+
+### 3.23 Atomic Tool Resilience (Ghostwriter Pattern)
+**Source**: Trinity Upgrade / Ghostwriter
+
+Industrial-grade hardening of the shell execution layer:
+- **Script-First Proxy**: The `ToolExecutor` automatically detects complex commands (newlines, heredocs, or >1000 characters).
+- **Temporary Execution**: Instead of passing raw strings to the system shell, it generates, executes, and cleans up unique `.sh` script files.
+- **Resilience**: Eliminates shell syntax errors, buffer overflows, and escaping issues for large payloads.
+
+---
+
+### 3.24 Structured Thought Protocol (Planning Constraint)
+**Source**: Trinity Upgrade / Protocol
+
+Enforcement of a "Look Before You Leap" agentic workflow:
+- **Forced Planning**: Agents are required to output `<plan>` blocks before executing tools and `<plan_update>` blocks after failures.
+- **Failure Persistence**: Tool errors are automatically recorded in the project's **Cortex** (MemoryStore) to ensure agents learn from mistakes in subsequent turns.
+- **Circuit Breaker**: `AutonomousRunner` detects repeated failing tool signatures and injects a "Deep Think Reset" to prevent infinite loops.
+
+---
+
+### 3.25 Semantic Context Pruning (Lens Pattern)
+**Source**: Trinity Upgrade / Lens
+
+Intelligent management of the LLM context window:
+- **Smart `read_file`**: Two-stage process. Files > 200 lines return a **Symbol Map** (regex-extracted classes/functions) instead of raw text.
+- **Windowed Reading**: New `read_file_range` tool for targeted inspection of specific line ranges.
+- **Context Pressure Sensor**: Real-time token estimation. Automatically prunes the oldest message history when context reaches 80% capacity (~80k tokens).
+
+---
+
+### 3.26 Social Swarm Coordination (Roundtable)
+**Source**: Roundtable Spec
+
+Shared communication channel for real-time agent-to-agent interaction:
+- **Roundtable Channel**: A shared `team_chat.jsonl` where all swarm agents log status updates and coordination queries.
+- **Tool-Based Chat**: Added `chat_with_team` tool, allowing agents to proactively guide each other.
+- **Context Injection**: The last 10 messages from the Roundtable are automatically injected into the system prompt of every agent in the swarm.
+
+---
+
+### 3.27 Workbench & UI Refinements
+**Source**: Phase 6 UX Polish
+
+A series of targeted improvements to the Hive dashboard for parity with industry-standard workbench experiences:
+- **Socket Resilience**: Implemented exponential backoff and automatic reconnection logic for the real-time event stream, ensuring the UI stays in sync even after network interruptions.
+- **Expandable Remotes**: The Sidebar "Remotes" section now supports expanding GitHub and GitLab accounts to browse and clone repositories directly within the UI.
+- **Advanced Composer UI**:
+    - **Mode Selector**: Added toggle for "Code", "Chat", and "Plan" modes, each with specialized system prompt templates.
+    - **Effort Selector**: Integrated a "Low/Medium/High" effort switch to control model reasoning depth and token expenditure.
+- **Thread Intelligence**:
+    - **Metadata Visualization**: Sidebar threads now display live `+X -Y` diff stats and relative timestamps (e.g., "2h ago").
+    - **Auto-Naming**: Threads are automatically titled based on the intent of the first user message.
+- **Welcome Experience**: Implemented a "Ready to Build?" welcome screen for new projects, featuring project-specific quick actions and model selection.
+- **UI Bug Fixes**: Hardened modal interactions (click-outside-to-close) and fixed unresponsiveness in the automation day-of-week selector.
+
+---
+
+### 3.28 Advanced Git & Performance
+**Source**: Phase 5/6 Hardening
+
+- **Partial Staging (Line-Level)**: Implementation of a granular staging workflow. Users can now select specific lines or hunks to stage via `git apply --cached`, enabling clean commits for complex changes.
+- **Parallel Tool Execution**: The `AgentSession` now utilizes `Promise.all` to execute independent tool calls in parallel, significantly reducing the latency of multi-file operations.
+- **Recursive File Indexer**: Added a codebase-wide recursive indexer to power `@` file autocompletion, enabling agents and users to reference any file in the project instantly.

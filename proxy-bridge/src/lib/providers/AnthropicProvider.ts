@@ -12,6 +12,10 @@ export class AnthropicProvider extends LLMProvider {
     this.apiBase = apiBase;
   }
 
+  hasKey(): boolean {
+    return !!this.apiKey && this.apiKey.length > 0;
+  }
+
   async chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
     const model = options?.model || 'claude-3-opus-20240229';
     

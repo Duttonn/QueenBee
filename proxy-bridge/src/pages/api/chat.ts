@@ -3,6 +3,7 @@ import { AutonomousRunner } from '../../lib/AutonomousRunner';
 import { logger } from '../../lib/logger';
 import { unifiedLLMService } from '../../lib/UnifiedLLMService';
 import { withLogging } from '../../lib/api-utils';
+import { enqueueForSession } from '../../lib/CommandQueue';
 import path from 'path';
 
 async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -46,22 +47,25 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
     });
 
     try {
-      const runner = new AutonomousRunner(
-        (res as any).socket, // still needed for some fallback logic
-        projectPath,
-        providerId,
-        threadId,
-        apiKey,
-        mode,
-        agentId,
-        composerMode
-      );
-      runner.setWritable(res); // Pass the response stream to the runner
+      const sessionLaneId = threadId || `anon-${Date.now()}`;
+      await enqueueForSession(sessionLaneId, async () => {
+        const runner = new AutonomousRunner(
+          (res as any).socket, // still needed for some fallback logic
+          projectPath,
+          providerId,
+          threadId,
+          apiKey,
+          mode,
+          agentId,
+          composerMode
+        );
+        runner.setWritable(res); // Pass the response stream to the runner
 
-      const lastMessage = messages[messages.length - 1];
-      const history = messages.slice(0, -1);
+        const lastMessage = messages[messages.length - 1];
+        const history = messages.slice(0, -1);
 
-      await runner.streamIntermediateSteps(lastMessage.content, history, { model, apiKey });
+        await runner.streamIntermediateSteps(lastMessage.content, history, { model, apiKey });
+      }, { warnAfterMs: 5000 });
 
       res.write('data: [DONE]\n\n');
       res.end();

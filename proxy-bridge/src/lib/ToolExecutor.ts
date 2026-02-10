@@ -10,21 +10,12 @@ import { ProposalService } from './ProposalService';
 import { EventLog } from './EventLog';
 import { PolicyStore } from './PolicyStore';
 import { Roundtable } from './Roundtable';
-
-// Simple Mutex for concurrent file writes
-class Mutex {
-  private promise: Promise<void> = Promise.resolve();
-  async lock() {
-    let unlockNext: () => void;
-    const nextPromise = new Promise<void>(resolve => unlockNext = resolve);
-    const currentPromise = this.promise;
-    this.promise = nextPromise;
-    await currentPromise;
-    return unlockNext!;
-  }
-}
-
-const memoryMutex = new Mutex();
+import { acquireWriteLock } from './SessionWriteLock';
+import { withRetry } from './RetryUtils';
+import { SecurityAuditor } from './SecurityAuditor';
+import { approvalBridge } from './ExternalApprovalBridge';
+import { MemoryStore } from './MemoryStore';
+import { StyleScraper } from './learning/StyleScraper';
 
 // Registry to track workers in this process (for the prototype)
 const workerRegistry = new Map<string, { status: string; prUrl?: string }>();
@@ -156,6 +147,13 @@ export class ToolExecutor {
       switch (tool.name) {
         // ... (write_file case remains same)
         case 'write_file':
+          // OC-10: Security Audit for file content
+          const audit = await SecurityAuditor.auditContent(tool.arguments.content);
+          if (!audit.safe) {
+            console.error(`[SecurityAuditor] write_file BLOCKED: ${audit.findings.join(' ')}`);
+            throw new Error(`SECURITY_BLOCK: ${audit.findings.join(' ')} ${audit.remediation}`);
+          }
+
           if (cloudFS) {
             await cloudFS.writeFile(tool.arguments.path, tool.arguments.content);
             result = { success: true, path: tool.arguments.path };
@@ -187,36 +185,58 @@ export class ToolExecutor {
           
         // ... (other cases remain same)
           
-                  case 'read_file':
-                    const readPath = this.validatePath(projectPath, tool.arguments.path);
-                    const stats = await fs.stat(readPath);
-                    
-                    // Limit file size to 1MB to prevent context overflow and 413 errors
-                    if (stats.size > 1024 * 1024) {
-                      result = `Error: File too large (${(stats.size / 1024 / 1024).toFixed(2)}MB). Use a more specific tool or read a smaller file.`;
-                      break;
-                    }
-        
-                    const ext = path.extname(readPath).toLowerCase();
-                    const binaryExtensions = ['.pdf', '.png', '.jpg', '.jpeg', '.gif', '.zip', '.tar', '.gz', '.exe', '.bin'];
-                    
-                    if (binaryExtensions.includes(ext)) {
-                      result = `Error: Cannot read binary file ${tool.arguments.path} as text. Use specialized agents for binary analysis if available.`;
-                      break;
-                    }
-        
-                    if (cloudFS) {
-                      result = await cloudFS.readFile(tool.arguments.path);
-                    } else {
-                      const content = await fs.readFile(readPath, 'utf-8');
-                      // Basic check for binary content (null bytes or excessive non-printable characters)
-                      if (content.includes('\u0000') || (content.match(/[\x00-\x08\x0E-\x1F]/g) || []).length > content.length * 0.1) {
-                        result = `Error: File ${tool.arguments.path} appears to be binary or has encoding issues.`;
-                      } else {
-                        result = content;
-                      }
-                    }
-                    break;
+        case 'read_file':
+          const readPath = this.validatePath(projectPath, tool.arguments.path);
+          const stats = await fs.stat(readPath);
+          
+          if (stats.size > 1024 * 1024) {
+            result = `Error: File too large (${(stats.size / 1024 / 1024).toFixed(2)}MB). Use a more specific tool.`;
+            break;
+          }
+
+          const content = await fs.readFile(readPath, 'utf-8');
+          const lines = content.split('\n');
+          
+          if (lines.length > 200) {
+            // Stage 1: Summary Pattern
+            const symbols = lines
+              .map((line, idx) => ({ line, idx: idx + 1 }))
+              .filter(l => /^\s*(export\s+)?(class|function|interface|enum|const|async\s+function)\s+([a-zA-Z0-9_]+)/.test(l.line))
+              .map(l => `Line ${l.idx}: ${l.line.trim()}`);
+            
+            result = `FILE SUMMARY (Large File: ${lines.length} lines)\n\nSymbol Map:\n${symbols.join('\n') || 'No major symbols found.'}\n\nUse 'read_file_range' to read specific parts of this file.`;
+          } else {
+            result = content;
+          }
+
+          // OC-10: Redact secrets from read content
+          if (typeof result === 'string') {
+            const readAudit = await SecurityAuditor.auditContent(result);
+            if (!readAudit.safe) {
+              console.warn(`[SecurityAuditor] read_file WARNING: Secret detected. Redacting...`);
+              result = `[REDACTED BY SECURITY AUDITOR: ${readAudit.findings.join(' ')}]`;
+            }
+          }
+          break;
+
+        case 'read_file_range':
+          const rangePath = this.validatePath(projectPath, tool.arguments.path);
+          const rangeContent = await fs.readFile(rangePath, 'utf-8');
+          const rangeLines = rangeContent.split('\n');
+          const start = Math.max(1, tool.arguments.start);
+          const end = Math.min(rangeLines.length, tool.arguments.end);
+          
+          result = rangeLines.slice(start - 1, end).join('\n');
+
+          // OC-10: Redact secrets from read content
+          if (typeof result === 'string') {
+            const readAudit = await SecurityAuditor.auditContent(result);
+            if (!readAudit.safe) {
+              console.warn(`[SecurityAuditor] read_file_range WARNING: Secret detected. Redacting...`);
+              result = `[REDACTED BY SECURITY AUDITOR: ${readAudit.findings.join(' ')}]`;
+            }
+          }
+          break;
         case 'create_worktree':
           const wtName = tool.arguments.name;
           const worktreePath = path.join(Paths.getWorktreesDir(), wtName);
@@ -314,6 +334,21 @@ export class ToolExecutor {
 
           result = { success: true, message: "Message sent to team channel." };
           break;
+
+        case 'teach_agent':
+          const ms = new MemoryStore(projectPath);
+          await ms.add(tool.arguments.type || 'style', tool.arguments.rule, 1.0);
+          result = { success: true, message: `Rule learned: ${tool.arguments.rule}` };
+          break;
+
+        case 'learn_style':
+          const samples = await StyleScraper.getSamples(projectPath, tool.arguments.path);
+          result = { 
+            success: true, 
+            style_samples: StyleScraper.formatForPrompt(samples),
+            message: `Learned user style from ${samples.length} examples. Please mimic this style in your next edits.`
+          };
+          break;
           
         default:
           throw new Error(`Unknown tool: ${tool.name}`);
@@ -341,6 +376,18 @@ export class ToolExecutor {
       return result;
     } catch (error: any) {
       console.error(`[ToolExecutor] Error executing tool '${tool.name}':`, error);
+      
+      // Upgrade 2: Persistence on Failure
+      // If a tool fails, we must record this in the project context so the agent knows 
+      // not to retry the same mistake blindly.
+      try {
+        const ptm = new ProjectTaskManager(projectPath);
+        const failureNote = `[FAILURE] Tool '${tool.name}' failed at ${new Date().toISOString()}. Error: ${error.message}`;
+        await this.handleWriteMemory(projectPath, 'issues', failureNote, agentId || 'system');
+      } catch (logErr) {
+        console.error('[ToolExecutor] Failed to log tool failure to memory:', logErr);
+      }
+
       broadcast('TOOL_RESULT', { 
         tool: tool.name, 
         status: 'error', 
@@ -451,9 +498,12 @@ export class ToolExecutor {
   }
 
   private async handleWriteMemory(projectPath: string, category: string, content: string, agentId: string | null, cloudFS?: CloudFSManager | null) {
-    const unlock = await memoryMutex.lock();
+    const memoryFileName = 'MEMORY.md';
+    const memoryPath = cloudFS ? memoryFileName : this.validatePath(projectPath, memoryFileName);
+
+    // Use filesystem-based write lock (cross-process safe)
+    const lock = await acquireWriteLock({ filePath: path.resolve(projectPath, memoryFileName), timeoutMs: 10_000 });
     try {
-      const memoryFileName = 'MEMORY.md';
       const sectionHeaders: Record<string, string> = {
         architecture: '# 🏗 Architecture',
         conventions: '# 📏 Conventions & patterns',
@@ -467,7 +517,6 @@ export class ToolExecutor {
           fileContent = await cloudFS.readFile(memoryFileName);
         }
       } else {
-        const memoryPath = this.validatePath(projectPath, memoryFileName);
         if (await fs.pathExists(memoryPath)) {
           fileContent = await fs.readFile(memoryPath, 'utf-8');
         }
@@ -490,13 +539,12 @@ export class ToolExecutor {
       if (cloudFS) {
         await cloudFS.writeFile(memoryFileName, fileContent);
       } else {
-        const memoryPath = this.validatePath(projectPath, memoryFileName);
         await fs.writeFile(memoryPath, fileContent);
       }
-      
+
       return { success: true, category, message: `Recorded in ${category}` };
     } finally {
-      unlock();
+      await lock.release();
     }
   }
 
@@ -545,6 +593,13 @@ export class ToolExecutor {
     cwd: string, 
     context: { projectId?: string, threadId?: string, toolCallId?: string, allowedCommands?: string[] }
   ): Promise<any> {
+    // OC-10: Security Audit Framework
+    const audit = await SecurityAuditor.auditCommand(command);
+    if (!audit.safe) {
+      console.error(`[SecurityAuditor] Command BLOCKED: ${audit.findings.join(' ')}`);
+      throw new Error(`SECURITY_BLOCK: ${audit.findings.join(' ')} ${audit.remediation}`);
+    }
+
     let isAllowed = this.validateCommand(command, context.allowedCommands);
     
     if (this.policyStore) {
@@ -563,16 +618,28 @@ export class ToolExecutor {
       console.log(`[ToolExecutor] Command '${command}' requires confirmation. ToolCallId: ${context.toolCallId}`);
       
       // Broadcast pending status to UI
-      broadcast('TOOL_EXECUTION', { 
-        tool: 'run_shell', 
-        status: 'pending', 
+      broadcast('TOOL_EXECUTION', {
+        tool: 'run_shell',
+        status: 'pending',
         args: { command },
         projectId: context.projectId,
         threadId: context.threadId,
         toolCallId: context.toolCallId
       });
 
-      // Wait for approval
+      // OP-02: Also forward to external webhook if configured
+      if (approvalBridge.isConfigured()) {
+        approvalBridge.requestApproval(context.toolCallId!, command, context.threadId).then(webhookApproved => {
+          // If the webhook responds before UI, resolve via ToolExecutor.confirm
+          if (ToolExecutor.pendingConfirmations.has(context.toolCallId!)) {
+            ToolExecutor.confirm(context.toolCallId!, webhookApproved);
+          }
+        }).catch(err => {
+          console.error(`[ToolExecutor] Webhook approval failed: ${err.message}`);
+        });
+      }
+
+      // Wait for approval (from UI or webhook — whichever comes first)
       const approved = await new Promise<boolean>((resolve) => {
         ToolExecutor.pendingConfirmations.set(context.toolCallId!, resolve);
         
@@ -602,18 +669,59 @@ export class ToolExecutor {
     this.validateCwd(cwd, cwd);
     const signal = context.threadId ? sessionManager.getSignal(context.threadId) : undefined;
 
-    return new Promise((resolve, reject) => {
-      exec(command, { cwd, timeout: 30000, signal }, (error, stdout, stderr) => {
-        if (error) {
-          if (error.name === 'AbortError') {
-            reject(new Error('Command aborted: thread deleted.'));
-          } else {
-            reject(new Error(`Command failed: ${error.message}\n${stderr}`));
-          }
-        } else {
-          resolve({ stdout, stderr });
+    // BP-20: Script-First Resilience
+    // If the command is complex (contains heredocs, multiple lines, or is very long),
+    // wrap it in a temporary script to avoid shell syntax/limit errors.
+    const isComplex = command.includes('<<') || command.includes('\n') || command.length > 1000;
+    
+    return withRetry(async () => {
+      if (isComplex) {
+        const scriptName = `agent_cmd_${Date.now()}.sh`;
+        const scriptPath = path.join(cwd, scriptName);
+        try {
+          await fs.writeFile(scriptPath, `#!/bin/bash\n${command}\n`, { mode: 0o755 });
+          const scriptResult = await new Promise((resolve, reject) => {
+            exec(`./${scriptName}`, { cwd, timeout: 60000, signal }, async (error, stdout, stderr) => {
+              await fs.remove(scriptPath).catch(() => {}); // Cleanup
+              if (error) {
+                if (error.name === 'AbortError') {
+                  reject(new Error('Command aborted: thread deleted.'));
+                } else if ((error as any).code === 'EBADF') {
+                  // OC-07: Spawn Fallback for EBADF
+                  console.warn(`[ToolExecutor] EBADF detected in script execution. Retrying with fallback...`);
+                  reject(error);
+                } else {
+                  reject(new Error(`Script execution failed: ${error.message}\n${stderr}`));
+                }
+              } else {
+                resolve({ stdout, stderr });
+              }
+            });
+          });
+          return scriptResult;
+        } catch (e: any) {
+          await fs.remove(scriptPath).catch(() => {});
+          throw e;
         }
+      }
+
+      return new Promise((resolve, reject) => {
+        exec(command, { cwd, timeout: 30000, signal }, (error, stdout, stderr) => {
+          if (error) {
+            if (error.name === 'AbortError') {
+              reject(new Error('Command aborted: thread deleted.'));
+            } else if ((error as any).code === 'EBADF') {
+              // OC-07: Spawn Fallback for EBADF
+              console.warn(`[ToolExecutor] EBADF detected in exec. Retrying with fallback...`);
+              reject(error);
+            } else {
+              reject(new Error(`Command failed: ${error.message}\n${stderr}`));
+            }
+          } else {
+            resolve({ stdout, stderr });
+          }
+        });
       });
-    });
+    }, { signal, maxRetries: 2 });
   }
 }

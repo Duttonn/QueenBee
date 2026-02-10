@@ -13,6 +13,8 @@ interface HiveState {
   lastEvent: string | null;
   socket: Socket | null;
   tasks: any[]; // GSDPhase[]
+  active_plan: string | null;
+  unreadThreads: Set<string>;
   _debouncedSaves?: Record<string, any>;
 
   // Actions
@@ -20,6 +22,7 @@ interface HiveState {
   fetchProjects: () => Promise<void>;
   fetchTasks: () => Promise<void>;
   setQueenStatus: (status: string) => void;
+  setActivePlan: (plan: string | null) => void;
   setProjects: (projects: any[]) => void;
   addProject: (project: any) => void;
   setSelectedProjectId: (id: string | null) => void;
@@ -28,6 +31,7 @@ interface HiveState {
 
   // Thread Actions
   setActiveThread: (id: string | null) => void;
+  markThreadRead: (id: string) => void;
   addThread: (projectId: string, thread: any) => Promise<string>; // Returns threadId
   updateThread: (projectId: string, threadId: string, updates: any) => void;
   deleteThread: (projectId: string, threadId: string) => Promise<void>;
@@ -50,6 +54,8 @@ export const useHiveStore = create<HiveState>()(
       lastEvent: null,
       socket: null,
       tasks: [],
+      active_plan: null,
+      unreadThreads: new Set<string>(),
 
       initSocket: async () => {
         if (get().socket) return;
@@ -141,6 +147,7 @@ export const useHiveStore = create<HiveState>()(
       },
 
       setQueenStatus: (status) => set({ queenStatus: status }),
+      setActivePlan: (plan) => set({ active_plan: plan }),
       setProjects: (projects) => set({ projects }),
       addProject: (project) => set((state) => {
         const isDuplicate = state.projects.some(p => 
@@ -173,7 +180,19 @@ export const useHiveStore = create<HiveState>()(
 
       setActiveThread: (id) => {
         console.log(`[HiveStore] Setting activeThreadId: ${id}`);
-        set({ activeThreadId: id });
+        if (id) {
+          const newUnread = new Set(get().unreadThreads);
+          newUnread.delete(id);
+          set({ activeThreadId: id, unreadThreads: newUnread });
+        } else {
+          set({ activeThreadId: id });
+        }
+      },
+
+      markThreadRead: (id) => {
+        const newUnread = new Set(get().unreadThreads);
+        newUnread.delete(id);
+        set({ unreadThreads: newUnread });
       },
 
       addThread: async (projectId, thread) => {
@@ -269,6 +288,15 @@ export const useHiveStore = create<HiveState>()(
 
               addMessage: (projectId, threadId, message) => {
                 console.log(`[HiveStore] addMessage: thread=${threadId}, role=${message.role}, id=${message.id}`);
+                
+                // Mark as unread if not active thread
+                const state = get();
+                if (state.activeThreadId !== threadId) {
+                  const newUnread = new Set(state.unreadThreads);
+                  newUnread.add(threadId);
+                  set({ unreadThreads: newUnread });
+                }
+
                 set((state) => ({
                   projects: state.projects.map(p =>
                     p.id === projectId ? {
@@ -450,8 +478,16 @@ export const useHiveStore = create<HiveState>()(
         activeThreadId: state.activeThreadId,
         selectedProjectId: state.selectedProjectId,
         isOrchestratorActive: state.isOrchestratorActive,
-        tasks: state.tasks
+        tasks: state.tasks,
+        active_plan: state.active_plan,
+        unreadThreads: Array.from(state.unreadThreads)
       }),
+      onRehydrateStorage: (state) => {
+        // Convert array back to Set
+        if (state && (state as any).unreadThreads) {
+          (state as any).unreadThreads = new Set((state as any).unreadThreads);
+        }
+      }
     }
   )
 );

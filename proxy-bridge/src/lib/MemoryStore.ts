@@ -3,7 +3,7 @@ import path from 'path';
 import { Paths } from './Paths';
 import { v4 as uuidv4 } from 'uuid';
 
-export type MemoryType = 'insight' | 'pattern' | 'lesson';
+export type MemoryType = 'insight' | 'pattern' | 'lesson' | 'preference' | 'style';
 
 export interface MemoryEntry {
   id: string;
