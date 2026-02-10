@@ -1,34 +1,156 @@
 # Queen Bee - Progress Log
 
 ## Status: 2026-02-09
-**Current Focus:** Phase 7 - VoxYZ Gap Implementation (Agent Coordination & Architecture)
+**Current Focus:** Phase 8 - OpenClaw Port (Industrial-Grade Patterns)
 
-### 1. Audit & Foundation
+### 1. Audit & Foundation (Phase 7.1) — DONE
 - [x] Audited current codebase state.
 - [x] Fixed `SessionManager.ts`: Added missing methods for thread lifecycle.
 - [x] Created Foundation: `PolicyStore.ts`, `EventLog.ts`, `MemoryStore.ts`.
 - [x] Created API endpoints for policies and events.
 - [x] Wired Foundation into `ToolExecutor.ts` and `AgentSession.ts`.
 
-### 2. Heartbeat & Recovery
+### 2. Heartbeat & Recovery (Phase 7.2) — DONE
 - [x] Implemented `HeartbeatService.ts` with periodic tick.
 - [x] Added timestamping to `claimTask` in `ProjectTaskManager.ts` and `TaskManager.ts`.
 - [x] Implemented Stale Task Recovery logic in `HeartbeatService`.
 - [x] Verified `HeartbeatService` is started in `server.ts`.
 
-### 3. Coordination & Social
+### 3. Coordination & Social (Phase 7.3) — DONE
 - [x] Implemented `ProposalService.ts` for gating risky actions.
 - [x] Implemented `TriggerEngine.ts` and `ReactionMatrix.ts` for reactive behaviors.
 - [x] Implemented `Roundtable.ts` shared team channel.
 - [x] Added `chat_with_team` tool to `ToolExecutor.ts`.
 - [x] Injected Roundtable context into `AutonomousRunner.ts` system prompts.
 
-### 4. Advanced Memory (Current)
+### 4. Advanced Memory (Phase 7.4) — DONE
 - [x] Implemented `MemoryDistillation.ts`.
 - [x] Wired `MemoryDistillation` into `AgentSession.ts` for automated session processing.
 - [x] Implemented memory-influenced system prompt in `AutonomousRunner.ts`.
 
+### 5. Trinity Upgrade (Phase 7.5) — DONE
+- [x] TU-01: Shell Resilience — script-first pattern for complex commands
+- [x] TU-02: Circuit Breaker — stop infinite tool loops after 3 failures
+- [x] TU-03: Structured Thought Protocol — <plan> blocks before tool use
+- [x] TU-04: Failure-Aware Retry — detect stuck loops via tool signatures
+- [x] TU-05: Smart Context Pruning — token pressure sensor at 80k
+- [x] TU-06: Semantic File Chunking — symbol map for large files
+
+### 6. OpenClaw Port (Phase 8) — DONE
+- [x] OC-01: Auth Profile Rotation & Cooldown System
+  - Created `proxy-bridge/src/lib/AuthProfileManager.ts`
+  - Modified `proxy-bridge/src/lib/UnifiedLLMService.ts` — integrated failover with exponential backoff
+  - Created `proxy-bridge/src/pages/api/providers/health.ts` — health/reset endpoint
+  - Features: per-provider cooldown tracking, failure classification, billing vs rate_limit distinction, exponential backoff (1min→5min→25min→1h), 24h failure window reset
+- [x] OC-02: Tool Schema Sanitization Per Provider
+  - Created `proxy-bridge/src/lib/ToolSchemaBridge.ts`
+  - Modified `proxy-bridge/src/lib/AgentSession.ts` — sanitize tools before LLM call
+  - Features: Gemini keyword stripping (20+ unsupported keywords), OpenAI type normalization, anyOf/oneOf flattening to enum
+- [x] OC-03: Lane-Based Command Queuing
+  - Created `proxy-bridge/src/lib/CommandQueue.ts`
+  - Modified `proxy-bridge/src/pages/api/chat.ts` — wrapped agentic streaming in session lane
+  - Features: per-session serialization, per-lane concurrency control, queue pressure warnings, getLaneStats() diagnostics
+- [x] OC-04: File-Lock Persistence for Session State
+  - Created `proxy-bridge/src/lib/SessionWriteLock.ts`
+  - Modified `proxy-bridge/src/lib/ToolExecutor.ts` — replaced in-process Mutex with fs-based lock
+  - Features: exclusive file creation (wx flag), re-entrant locking, stale detection (PID check + 30min timeout), auto-cleanup on SIGINT/SIGTERM/exit
+- [x] OC-05: Turn-Based History Limiting
+  - Modified `proxy-bridge/src/lib/AgentSession.ts` — replaced message-count pruning with turn-based
+  - Features: counts user turns from end, keeps last 8 turns, preserves all system messages
+
+### All changes TypeScript-clean (npx tsc --noEmit passes)
+
+## Files Created This Session
+- `proxy-bridge/src/lib/AuthProfileManager.ts` (OC-01)
+- `proxy-bridge/src/lib/ToolSchemaBridge.ts` (OC-02)
+- `proxy-bridge/src/lib/CommandQueue.ts` (OC-03)
+- `proxy-bridge/src/lib/SessionWriteLock.ts` (OC-04)
+- `proxy-bridge/src/pages/api/providers/health.ts` (OC-01 endpoint)
+
+## Files Modified This Session
+- `proxy-bridge/src/lib/UnifiedLLMService.ts` — auth profile rotation + failover
+- `proxy-bridge/src/lib/AgentSession.ts` — schema sanitization + turn-based pruning
+- `proxy-bridge/src/lib/ToolExecutor.ts` — filesystem write lock
+- `proxy-bridge/src/pages/api/chat.ts` — session lane queuing
+
+### 7. The Mirror - Personal Agent Infrastructure (Phase 8) — DONE
+- [x] PAI-01: DiffLearner — learns from user corrections to agent-written files
+  - `proxy-bridge/src/lib/learning/DiffLearner.ts` (FIXED: corrupted template literals)
+  - Wired into AgentSession.summarizeSession() — compares agent writes vs current file content
+- [x] PAI-02: StyleScraper — RAG for user coding style
+  - `proxy-bridge/src/lib/learning/StyleScraper.ts` (FIXED: removed glob dependency, used fs.readdir)
+  - Recursive file search by extension, truncates to 50 lines, formats for prompt injection
+- [x] PAI-03: teach_agent tool — explicit rule teaching
+  - Tool defined in ToolDefinitions.ts, handled in ToolExecutor.ts
+  - Stores rules in MemoryStore with type 'style'/'preference'/'lesson'
+- [x] PAI-04: System Prompt Dynamic Injection
+  - AutonomousRunner queries MemoryStore for style/preference memories (confidence >= 0.5)
+  - Injects into "USER PREFERENCES & STYLE" section of system prompt
+
+### 8. Additional OpenClaw Patterns (OC-06 to OC-10) — DONE
+- [x] OC-06: RetryUtils with exponential backoff, jitter, AbortSignal
+- [x] OC-07: EBADF spawn fallback in ToolExecutor
+- [x] OC-08: CostTracker JSONL logging per project
+- [x] OC-09: Diagnostic logging via EventLog + SecurityAuditor
+- [x] OC-10: SecurityAuditor for commands + content (secret detection, dangerous patterns)
+
+### 9. Verification Pass — DONE
+- Fixed DiffLearner.ts: corrupted template literals → rewrote with .join('\\n')
+- Fixed StyleScraper.ts: glob dependency missing → replaced with manual fs.readdir recursion
+- Fixed AgentSession.ts: added missing `import fs` and `import path`
+- All changes TypeScript-clean (tsc --noEmit passes)
+
+### Phase 10 (Operational Excellence) — OP-01 to OP-05 DONE
+- [x] OP-01: Model Fallback Chains (P1)
+  - Added `FallbackChainConfig` and `getChainForMode()` to UnifiedLLMService
+  - Default chains: code→[anthropic,openai,gemini], chat→[gemini,openai,anthropic], plan→[openai,anthropic,gemini]
+  - `composerMode` added to `LLMProviderOptions` and wired from AutonomousRunner
+  - Runtime-configurable via `setFallbackChains()`
+- [x] OP-02: Exec Approval via Webhook (P2)
+  - Created `ExternalApprovalBridge.ts` — forwards approval requests to Discord/Slack webhooks
+  - Created `/api/tools/webhook-confirm` — callback endpoint for approve/reject
+  - Formats: Discord embeds, Slack Block Kit, generic JSON
+  - Wired into ToolExecutor confirmation flow (runs alongside UI approval)
+- [x] OP-03: Diagnostic Collector with Stuck Detection (P3)
+  - Created `DiagnosticCollector.ts` — centralized health monitoring
+  - Session lifecycle tracking (start/step/end), stuck detection (>2min idle)
+  - Queue pressure monitoring, provider health aggregation
+  - Created `/api/diagnostics` — health snapshot endpoint
+  - Wired into AgentSession (session tracking) and HeartbeatService (periodic checks)
+- [x] OP-04: Enhanced Cost Dashboard (P3)
+  - Added `latencyMs` field to CostEntry
+  - New methods: `getDailySummary()`, `getToolBreakdown()`, `getLatencyStats()` (p50/p95/p99)
+  - Created `/api/costs?range=7d&groupBy=daily|tool|latency|summary`
+  - Latency tracking wired into AgentSession LLM calls
+- [x] OP-05: Deduplication Cache (P4)
+  - Created `DedupeCache.ts` — generic TTL + LRU cache
+  - Wired into `socket-instance.ts` broadcast — MD5 hash dedup with 30s TTL
+  - Prevents duplicate UI updates in multi-agent swarms
+- [ ] OP-06: Dynamic Model Discovery / Ollama Auto-Detect (P5) — FUTURE
+- [ ] OP-07: Per-Thread Configurable History Limits (P5) — FUTURE
+- [ ] OP-08: Agent-to-Agent Targeted Routing (P5) — FUTURE
+
+### All Phase 10 changes TypeScript-clean (npx tsc --noEmit passes)
+
+## Files Created (Phase 10)
+- `proxy-bridge/src/lib/ExternalApprovalBridge.ts` (OP-02)
+- `proxy-bridge/src/lib/DiagnosticCollector.ts` (OP-03)
+- `proxy-bridge/src/lib/DedupeCache.ts` (OP-05)
+- `proxy-bridge/src/pages/api/tools/webhook-confirm.ts` (OP-02 endpoint)
+- `proxy-bridge/src/pages/api/diagnostics.ts` (OP-03 endpoint)
+- `proxy-bridge/src/pages/api/costs.ts` (OP-04 endpoint)
+
+## Files Modified (Phase 10)
+- `proxy-bridge/src/lib/types/llm.ts` — added composerMode to LLMProviderOptions
+- `proxy-bridge/src/lib/UnifiedLLMService.ts` — fallback chains, chain-based ordering
+- `proxy-bridge/src/lib/AutonomousRunner.ts` — passes composerMode to session options
+- `proxy-bridge/src/lib/ToolExecutor.ts` — webhook approval bridge integration
+- `proxy-bridge/src/lib/AgentSession.ts` — diagnostic tracking, latency logging
+- `proxy-bridge/src/lib/HeartbeatService.ts` — diagnostic health checks
+- `proxy-bridge/src/lib/CostTracker.ts` — latencyMs field, new query methods
+- `proxy-bridge/src/lib/socket-instance.ts` — dedup cache on broadcast
+
 ## Next Actions
-1. Verify the end-to-end flow of a multi-agent swarm.
-2. Address any remaining Phase 6 or BP tasks.
-3. Clean up and finalize the VoxYZ architecture.
+1. Commit all Phase 10 changes
+2. Consider OP-06 to OP-08 (P5 — future/optional)
+3. Consider Phase 6 remaining tasks (CodexLayout TS errors, Electron audit items)

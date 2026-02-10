@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getGitDiff, type DiffStats, API_BASE } from '../../services/api';
 import { parseDiff } from '../../services/diffParser';
-import { File, Check, Minus, Plus, ChevronDown, ChevronRight, LayoutTemplate, Search, GitBranch, MessageSquare, Send, X } from 'lucide-react';
+import { File, Check, Minus, Plus, ChevronDown, ChevronRight, LayoutTemplate, Search, GitBranch, MessageSquare, Send, X, RotateCcw, Loader2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 const DiffLine = ({ 
@@ -66,6 +66,7 @@ const DiffViewer = ({ projectPath, filePath: initialFilePath, onStartThread, onC
   const [selectedLines, setSelectedLines] = useState<Set<string>>(new Set()); // Format: "filename:lineNo"
   const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
   const [commentText, setCommentText] = useState('');
+  const [isDiscarding, setIsDiscarding] = useState(false);
 
   const fetchDiff = async () => {
     try {
@@ -76,6 +77,28 @@ const DiffViewer = ({ projectPath, filePath: initialFilePath, onStartThread, onC
       }
     } catch (err: any) {
       setError(err.message);
+    }
+  };
+
+  const handleDiscardFile = async (path: string) => {
+    if (!window.confirm(`Are you sure you want to discard ALL changes in ${path}? This cannot be undone.`)) return;
+
+    setIsDiscarding(true);
+    try {
+        const res = await fetch(`${API_BASE}/api/git/discard`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: projectPath, file: path })
+        });
+
+        if (res.ok) {
+            setSelectedFile(null);
+            fetchDiff();
+        }
+    } catch (err) {
+        console.error("Failed to discard file", err);
+    } finally {
+        setIsDiscarding(false);
     }
   };
 
@@ -326,6 +349,14 @@ const DiffViewer = ({ projectPath, filePath: initialFilePath, onStartThread, onC
                     {activeDiff.stats.removed} deletions
                   </div>
                 </div>
+                <button
+                  onClick={() => handleDiscardFile(activeDiff.path)}
+                  disabled={isDiscarding}
+                  className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 transition-all flex items-center gap-2 disabled:opacity-50"
+                >
+                  {isDiscarding ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                  Discard Changes
+                </button>
                 <button
                   onClick={() => toggleStage(activeDiff.path)}
                   className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${stagedFiles.has(activeDiff.path) ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-zinc-900 text-white hover:bg-zinc-800'}`}

@@ -55,10 +55,8 @@ import InboxPanel from './InboxPanel';
 import SkillsManager from './SkillsManager';
 import AutomationDashboard from './AutomationDashboard';
 import XtermTerminal from './XtermTerminal';
-import DictationOverlay from './DictationOverlay';
-import { NativeService } from '../../services/NativeService';
+import RoundtablePanel from '../agents/RoundtablePanel';
 
-// Mention Dropdown Component
 const MentionDropdown = ({ files, selectedIndex, onSelect }: { files: string[], selectedIndex: number, onSelect: (f: string) => void }) => {
   if (files.length === 0) return null;
   return (
@@ -136,6 +134,16 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
     setMentionSearch(null);
     setTimeout(() => textareaRef.current?.focus(), 0);
   };
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      const scrollHeight = textareaRef.current.scrollHeight;
+      const initialHeight = 44; 
+      const maxHeight = initialHeight * 3;
+      textareaRef.current.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
+    }
+  }, [value]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
@@ -241,8 +249,7 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
             placeholder="Ask Queen Bee anything, @ to add files, / for commands..."
             disabled={isLoading}
             rows={1}
-            className="w-full bg-transparent text-sm text-zinc-900 placeholder-zinc-400 outline-none resize-none min-h-[44px] max-h-40 leading-relaxed"
-            style={{ height: 'auto' }}
+            className="w-full bg-transparent text-sm text-zinc-900 placeholder-zinc-400 outline-none resize-none min-h-[44px] max-h-40 leading-relaxed py-3"
           />
         </div>
 
@@ -499,13 +506,30 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     const content = contentOverride || inputValue;
     if (!content.trim() || isLoading || !selectedProjectId) return;
 
+    const isSwarmCommand = content.includes('@qb');
+    let swarmId = null;
+
     if (!contentOverride) setInputValue('');
     
     // Ensure the current thread ID actually belongs to the selected project
     const threadExists = activeProject?.threads?.some((t: any) => t.id === activeThreadId);
     let currentThreadId = threadExists ? activeThreadId : null;
     
-    if (!currentThreadId) {
+    if (isSwarmCommand) {
+      swarmId = `swarm-${Date.now()}`;
+      currentThreadId = `architect-${swarmId}`;
+      await addThread(selectedProjectId, {
+        id: currentThreadId,
+        title: '🐝 Hive Architect',
+        parentTaskId: swarmId, // This groups it in sidebar
+        agentId: 'architect',
+        diff: '+0 -0',
+        time: 'Just now'
+      });
+      setActiveThread(currentThreadId);
+      content = content.replace(/@qb/g, '').trim();
+      if (!content) content = "I want to start a Hive Swarm Rush. Please analyze the codebase and help me plan the swarm.";
+    } else if (!currentThreadId) {
       currentThreadId = Date.now().toString();
       await addThread(selectedProjectId, {
         id: currentThreadId,
@@ -538,6 +562,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           addMessage(selectedProjectId, currentThreadId, { id: assistantId, role: 'assistant', content: '' });
 
           setIsLoading(true);
+          useHiveStore.getState().setQueenStatus('working');
           setStreamError(null);
           setPendingFiles([]); // Clear on send
     const activeProvider = providers.find(p => p.id === activeProviderId);
@@ -545,7 +570,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     const modelToUse = selectedModel || availableModels[0]?.name || 'mock-model';
     const apiKey = activeProvider?.apiKey;
     const thread = activeProject?.threads?.find((t: any) => t.id === currentThreadId);
-    const agentId = thread?.agentId;
+    const agentId = thread?.agentId || (isSwarmCommand ? 'architect' : undefined);
     let didModify = false;
 
     // 1. Context Enhancement: Scan for @mentions and inject content
@@ -662,6 +687,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         (chunk) => updateLastMessage(selectedProjectId, currentThreadId!, chunk),
         async () => {
           setIsLoading(false);
+          useHiveStore.getState().setQueenStatus('idle');
           if (didModify) {
             try {
               const diff = await getGitDiff(activeProject?.path || '../');
@@ -676,6 +702,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         (error) => {
           setStreamError(error.message);
           setIsLoading(false);
+          useHiveStore.getState().setQueenStatus('idle');
         },
         (event) => {
           // BP-17: Let SocketHook (useSocketEvents.ts) handle technical tool states
@@ -875,32 +902,38 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           ) : activeView === 'build' ? (
             <>
               {activeProject ? (
-                <AgenticWorkbench
-                  activeProject={activeProject}
-                  messages={messages}
-                  isLoading={isLoading}
-                  streamError={streamError}
-                  onClearError={() => setStreamError(null)}
-                  onSendMessage={handleSendMessage}
-                  onClearThread={handleClearThread}
-                  onRunCommand={handleRunCommand}
-                  activeThreadId={activeThreadId}
-                  setActiveThread={setActiveThread}
-                  onToggleInspector={() => setIsInspectorOpen(prev => !prev)}
-                  onToggleTerminal={() => setIsTerminalOpen(prev => !prev)}
-                  onToggleDiff={() => setIsDiffOpen(prev => !prev)}
-                  onRun={handleRunProject}
-                  onCommit={handleCommit}
-                  onBuild={() => handleRunCommand('npm run build')}
-                  onAddThread={() => setActiveThread(null)}
-                  onOpenIn={handleOpenIn}
-                  onStop={handleStop}
-                  mode={executionMode}
-                  onModeChange={setExecutionMode}
-                  diffStats={diffStats}
-                  workbenchView={composerMode}
-                  onViewChange={setComposerMode}
-                />
+                activeThreadId?.startsWith('roundtable-') ? (
+                  <div className="flex-1 p-6 overflow-hidden">
+                    <RoundtablePanel projectPath={activeProject.path} />
+                  </div>
+                ) : (
+                  <AgenticWorkbench
+                    activeProject={activeProject}
+                    messages={messages}
+                    isLoading={isLoading}
+                    streamError={streamError}
+                    onClearError={() => setStreamError(null)}
+                    onSendMessage={handleSendMessage}
+                    onClearThread={handleClearThread}
+                    onRunCommand={handleRunCommand}
+                    activeThreadId={activeThreadId}
+                    setActiveThread={setActiveThread}
+                    onToggleInspector={() => setIsInspectorOpen(prev => !prev)}
+                    onToggleTerminal={() => setIsTerminalOpen(prev => !prev)}
+                    onToggleDiff={() => setIsDiffOpen(prev => !prev)}
+                    onRun={handleRunProject}
+                    onCommit={handleCommit}
+                    onBuild={() => handleRunCommand('npm run build')}
+                    onAddThread={() => setActiveThread(null)}
+                    onOpenIn={handleOpenIn}
+                    onStop={handleStop}
+                    mode={executionMode}
+                    onModeChange={setExecutionMode}
+                    diffStats={diffStats}
+                    workbenchView={composerMode}
+                    onViewChange={setComposerMode}
+                  />
+                )
               ) : (
                 <EmptyState
                   onOpenSettings={() => setIsCustomizationOpen(true)}

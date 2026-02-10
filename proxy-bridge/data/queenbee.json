@@ -376,6 +376,476 @@
         {
           "messages": [
             {
+              "id": "msg-user-1770729117760",
+              "role": "user",
+              "content": "hello"
+            },
+            {
+              "id": "msg-1770729119031-5j3crposv",
+              "role": "assistant",
+              "content": "Hello! How can I help you with your project today?"
+            },
+            {
+              "id": "msg-user-1770729134414",
+              "role": "user",
+              "content": "what time is it"
+            },
+            {
+              "role": "assistant",
+              "content": "Error: No AI providers configured. Please add an API key or login in Settings. Available: openai, nvidia, anthropic:work, ollama, gemini\n\nPlease check your provider configuration in Settings."
+            },
+            {
+              "id": "msg-user-1770729153485",
+              "role": "user",
+              "content": "hey"
+            },
+            {
+              "id": "msg-1770729154148-hv0zuc6dj",
+              "role": "assistant",
+              "content": "Hey there! How can I help you with your project today?"
+            },
+            {
+              "id": "msg-user-1770729158085",
+              "role": "user",
+              "content": "hey"
+            },
+            {
+              "role": "assistant",
+              "content": "Error: No AI providers configured. Please add an API key or login in Settings. Available: openai, nvidia, anthropic:work, ollama, gemini\n\nPlease check your provider configuration in Settings."
+            },
+            {
+              "id": "msg-user-1770729239242",
+              "role": "user",
+              "content": "hey"
+            },
+            {
+              "id": "msg-1770729240139-61iff38a9",
+              "role": "assistant",
+              "content": "Hey there! How can I help you with your project today?"
+            },
+            {
+              "id": "msg-user-1770729243816",
+              "role": "user",
+              "content": "hey"
+            },
+            {
+              "role": "assistant",
+              "content": "Error: No AI providers configured. Please add an API key or login in Settings. Available: openai, nvidia, anthropic:work, ollama, gemini\n\nPlease check your provider configuration in Settings."
+            },
+            {
+              "id": "msg-user-1770729271449",
+              "role": "user",
+              "content": "hey"
+            },
+            {
+              "role": "assistant",
+              "content": "Error: No AI providers configured. Please add an API key or login in Settings. Available: openai, nvidia, anthropic:work, ollama, gemini\n\nPlease check your provider configuration in Settings."
+            },
+            {
+              "id": "msg-user-1770729274340",
+              "role": "user",
+              "content": "hey"
+            },
+            {
+              "role": "assistant",
+              "content": "Error: No AI providers configured. Please add an API key or login in Settings. Available: openai, nvidia, anthropic:work, ollama, gemini\n\nPlease check your provider configuration in Settings."
+            },
+            {
+              "id": "msg-user-1770729277695",
+              "role": "user",
+              "content": "hello"
+            },
+            {
+              "id": "msg-1770729278763-w44zrxgsk",
+              "role": "assistant",
+              "content": "Hello! How can I help you with your project today?"
+            },
+            {
+              "id": "msg-user-1770729289483",
+              "role": "user",
+              "content": "hello"
+            },
+            {
+              "role": "assistant",
+              "content": "Error: No AI providers configured. Please add an API key or login in Settings. Available: openai, nvidia, anthropic:work, ollama, gemini\n\nPlease check your provider configuration in Settings."
+            },
+            {
+              "id": "msg-user-1770729293809",
+              "role": "user",
+              "content": "hey"
+            },
+            {
+              "role": "assistant",
+              "content": "Error: No AI providers configured. Please add an API key or login in Settings. Available: openai, nvidia, anthropic:work, ollama, gemini\n\nPlease check your provider configuration in Settings."
+            },
+            {
+              "id": "msg-user-1770729296363",
+              "role": "user",
+              "content": "hello"
+            },
+            {
+              "role": "assistant",
+              "content": "Error: No AI providers configured. Please add an API key or login in Settings. Available: openai, nvidia, anthropic:work, ollama, gemini\n\nPlease check your provider configuration in Settings."
+            }
+          ],
+          "id": "1770729117518",
+          "title": "hello",
+          "diff": "+0 -0",
+          "time": "Just now"
+        },
+        {
+          "messages": [
+            {
+              "id": "msg-user-1770726776320",
+              "role": "user",
+              "content": "create a new temp file\n\n"
+            },
+            {
+              "id": "msg-ans-1770726776325",
+              "role": "assistant",
+              "content": "",
+              "toolCalls": [
+                {
+                  "id": "call_nujvtd",
+                  "status": "success",
+                  "arguments": {
+                    "path": "temp_file.txt",
+                    "content": "This is a temporary file."
+                  },
+                  "result": {
+                    "success": true,
+                    "path": "/Users/ndn18/PersonalProjects/School/ProjetHPC/ProjetHPC/temp_file.txt",
+                    "stats": {
+                      "added": 1,
+                      "removed": 1
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "msg-1770726777696-afmttqxpw",
+              "role": "assistant",
+              "content": "<plan>\nGOAL: Create a new temporary file.\nSTEPS:\n1. Write a new file named `temp_file.txt` with some initial content. -> File created successfully.\nCURRENT_STEP: 1\n</plan>\n",
+              "toolCalls": [
+                {
+                  "id": "call_nujvtd",
+                  "name": "write_file",
+                  "arguments": "{\"path\":\"temp_file.txt\",\"content\":\"This is a temporary file.\"}",
+                  "status": "success"
+                }
+              ]
+            },
+            {
+              "id": "msg-1770726777703-cqp433f87",
+              "role": "tool",
+              "content": "{\"success\":true,\"path\":\"/Users/ndn18/PersonalProjects/School/ProjetHPC/ProjetHPC/temp_file.txt\",\"stats\":{\"added\":1,\"removed\":1}}",
+              "name": "write_file",
+              "tool_call_id": "call_nujvtd"
+            },
+            {
+              "id": "msg-1770726778190-m88muevqx",
+              "role": "assistant",
+              "content": "I have successfully created a new temporary file named `temp_file.txt` with the content \"This is a temporary file.\"."
+            },
+            {
+              "id": "msg-user-1770729254419",
+              "role": "user",
+              "content": "hey"
+            },
+            {
+              "id": "msg-1770729255035-3nj5x2lsp",
+              "role": "assistant",
+              "content": "Hello! How can I help with your project today?"
+            },
+            {
+              "id": "msg-user-1770729309579",
+              "role": "user",
+              "content": "hey"
+            },
+            {
+              "role": "assistant",
+              "content": "Error: No AI providers configured. Please add an API key or login in Settings. Available: openai, nvidia, anthropic:work, ollama, gemini\n\nPlease check your provider configuration in Settings."
+            }
+          ],
+          "id": "1770726776166",
+          "title": "create a new temp file\n\n",
+          "diff": "+0 -0",
+          "time": "Just now"
+        },
+        {
+          "messages": [
+            {
+              "id": "msg-user-1770726688325",
+              "role": "user",
+              "content": "create a new temp file"
+            },
+            {
+              "id": "msg-ans-1770726688329",
+              "role": "assistant",
+              "content": "",
+              "toolCalls": [
+                {
+                  "id": "call_yvyc4b",
+                  "status": "success",
+                  "arguments": {
+                    "content": "",
+                    "path": "temp_file.txt"
+                  },
+                  "result": {
+                    "success": true,
+                    "path": "/Users/ndn18/PersonalProjects/School/ProjetHPC/ProjetHPC/temp_file.txt",
+                    "stats": {
+                      "added": 1,
+                      "removed": 0
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "msg-1770726689378-lev79g4v5",
+              "role": "assistant",
+              "content": "<plan>\nGOAL: Create a new temporary file.\nSTEPS:\n1. Create a file named `temp_file.txt` with empty content. -> A new empty file `temp_file.txt` will be created in the project root.\nCURRENT_STEP: 1\n</plan>\n",
+              "toolCalls": [
+                {
+                  "id": "call_yvyc4b",
+                  "name": "write_file",
+                  "arguments": "{\"content\":\"\",\"path\":\"temp_file.txt\"}",
+                  "status": "success"
+                }
+              ]
+            },
+            {
+              "id": "msg-1770726689380-bt4r3h117",
+              "role": "tool",
+              "content": "{\"success\":true,\"path\":\"/Users/ndn18/PersonalProjects/School/ProjetHPC/ProjetHPC/temp_file.txt\",\"stats\":{\"added\":1,\"removed\":0}}",
+              "name": "write_file",
+              "tool_call_id": "call_yvyc4b"
+            },
+            {
+              "id": "msg-1770726689882-2veoj1l2x",
+              "role": "assistant",
+              "content": "I have successfully created an empty file named `temp_file.txt` in the project root."
+            },
+            {
+              "id": "msg-user-1770729263024",
+              "role": "user",
+              "content": "hey"
+            },
+            {
+              "id": "msg-1770729263550-klikv2z2m",
+              "role": "assistant",
+              "content": "Hello! How can I help you with your project today?"
+            },
+            {
+              "id": "msg-user-1770729306073",
+              "role": "user",
+              "content": "hey"
+            },
+            {
+              "role": "assistant",
+              "content": "Error: No AI providers configured. Please add an API key or login in Settings. Available: openai, nvidia, anthropic:work, ollama, gemini\n\nPlease check your provider configuration in Settings."
+            }
+          ],
+          "id": "1770726688254",
+          "title": "create a new temp file",
+          "diff": "+0 -0",
+          "time": "Just now"
+        },
+        {
+          "messages": [
+            {
+              "id": "msg-user-1770726438260",
+              "role": "user",
+              "content": "hey"
+            },
+            {
+              "id": "msg-1770726439104-1m9fu34d4",
+              "role": "assistant",
+              "content": "Hello! How can I help with your project today?"
+            },
+            {
+              "id": "msg-user-1770726445732",
+              "role": "user",
+              "content": "yo "
+            },
+            {
+              "id": "msg-1770726446616-9a3iag6g4",
+              "role": "assistant",
+              "content": "Hey there! How can I help you with your project?\n"
+            },
+            {
+              "id": "msg-user-1770726530948",
+              "role": "user",
+              "content": "run rm -rf on context.md"
+            },
+            {
+              "id": "msg-ans-1770726530961",
+              "role": "assistant",
+              "content": "",
+              "toolCalls": [
+                {
+                  "id": "call_cjapju",
+                  "status": "success",
+                  "arguments": {
+                    "command": "rm -rf contexte.md"
+                  },
+                  "result": {
+                    "stdout": "",
+                    "stderr": ""
+                  }
+                }
+              ]
+            },
+            {
+              "id": "msg-1770726532086-zq5mpstx4",
+              "role": "assistant",
+              "content": "<plan>\nGOAL: Delete the file contexte.md\nSTEPS:\n1. Execute the command `rm -rf contexte.md` -> This will delete the file.\nCURRENT_STEP: 1\n</plan>\n",
+              "toolCalls": [
+                {
+                  "id": "call_cjapju",
+                  "name": "run_shell",
+                  "arguments": "{\"command\":\"rm -rf contexte.md\"}",
+                  "status": "success"
+                }
+              ]
+            },
+            {
+              "id": "msg-1770726532142-iiamsqej0",
+              "role": "tool",
+              "content": "{\"stdout\":\"\",\"stderr\":\"\"}",
+              "name": "run_shell",
+              "tool_call_id": "call_cjapju"
+            },
+            {
+              "id": "msg-1770726532687-5of9h9esn",
+              "role": "assistant",
+              "content": "The file has been deleted.\n"
+            },
+            {
+              "id": "msg-user-1770726568710",
+              "role": "user",
+              "content": "In this project, always use the prefix 'QB-' for all new temporary files."
+            },
+            {
+              "role": "assistant",
+              "content": "Error: No AI providers configured. Please add an API key or login in Settings. Available: openai, nvidia, anthropic:work, ollama, gemini\n\nPlease check your provider configuration in Settings."
+            },
+            {
+              "id": "msg-user-1770726577541",
+              "role": "user",
+              "content": "hey$"
+            },
+            {
+              "role": "assistant",
+              "content": "Error: No AI providers configured. Please add an API key or login in Settings. Available: openai, nvidia, anthropic:work, ollama, gemini\n\nPlease check your provider configuration in Settings."
+            }
+          ],
+          "id": "1770726438165",
+          "title": "hey",
+          "diff": "+0 -0",
+          "time": "Just now"
+        },
+        {
+          "messages": [
+            {
+              "id": "msg-user-1770726114936",
+              "role": "user",
+              "content": "hey"
+            },
+            {
+              "role": "assistant",
+              "content": "Error: OpenAI Chat failed: connect ECONNREFUSED 127.0.0.1:11434\n\nPlease check your provider configuration in Settings."
+            }
+          ],
+          "id": "1770726114627",
+          "title": "hey",
+          "diff": "+0 -0",
+          "time": "Just now"
+        },
+        {
+          "messages": [
+            {
+              "id": "msg-user-1770725837843",
+              "role": "user",
+              "content": "hey"
+            },
+            {
+              "role": "assistant",
+              "content": "Error: OpenAI Chat failed: connect ECONNREFUSED 127.0.0.1:11434\n\nPlease check your provider configuration in Settings."
+            }
+          ],
+          "id": "1770725837796",
+          "title": "hey",
+          "diff": "+0 -0",
+          "time": "Just now"
+        },
+        {
+          "messages": [
+            {
+              "id": "msg-user-1770725827065",
+              "role": "user",
+              "content": "hey"
+            },
+            {
+              "role": "assistant",
+              "content": "Error: OpenAI Chat failed: connect ECONNREFUSED 127.0.0.1:11434\n\nPlease check your provider configuration in Settings."
+            }
+          ],
+          "id": "1770725826765",
+          "title": "hey",
+          "diff": "+0 -0",
+          "time": "Just now"
+        },
+        {
+          "messages": [
+            {
+              "id": "msg-user-1770722820210",
+              "role": "user",
+              "content": "hey"
+            },
+            {
+              "role": "assistant",
+              "content": "Error: OpenAI Chat failed: connect ECONNREFUSED 127.0.0.1:11434\n\nPlease check your provider configuration in Settings."
+            }
+          ],
+          "id": "1770722819919",
+          "title": "hey",
+          "diff": "+0 -0",
+          "time": "Just now"
+        },
+        {
+          "messages": [
+            {
+              "id": "msg-user-1770714252200",
+              "role": "user",
+              "content": "hello"
+            },
+            {
+              "id": "msg-1770714253257-eauvz9xgb",
+              "role": "assistant",
+              "content": "Hello! How can I help you with your project today?"
+            },
+            {
+              "id": "msg-user-1770714322372",
+              "role": "user",
+              "content": "create a python script to make graphs out of the data we collected during test runs and output them back to me"
+            },
+            {
+              "id": "msg-1770714324101-m45hnxb1j",
+              "role": "assistant",
+              "content": ""
+            }
+          ],
+          "id": "1770714252055",
+          "title": "hello",
+          "diff": "+0 -0",
+          "time": "Just now"
+        },
+        {
+          "messages": [
+            {
               "id": "msg-user-1770684119587",
               "role": "user",
               "content": "Analyze the host code in motion/src/main/motion.c to see how OpenCL buffers are\n  managed. Determine if the M, V, and O images are being kept on the GPU memory\n  between frames or re-uploaded every time. Based on this, refactor the\n  sigma_delta_erosion_fused kernel in motion/kernels/motion_kernels.cl to implement a\n  16x16 tile-based erosion using local memory (LDS), including the full halo loading\n  logic for the 3x3 neighborhood. Finally, update PLAN.md and TASKS.md to reflect\n  your progress and record your optimization logic in MEMORY.md."

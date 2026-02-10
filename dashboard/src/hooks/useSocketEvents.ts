@@ -34,6 +34,12 @@ export const useSocketEvents = () => {
           useHiveStore.getState().addMessage(projectId, activeThreadId, data.payload);
         }
       }
+      if (data.action === 'SET_ACTIVE_PLAN') {
+        useHiveStore.getState().setActivePlan(data.payload.plan);
+      }
+      if (data.action === 'NOTIFY_CONTEXT_PRUNE') {
+        console.warn(`[SocketHook] Context pruned for thread ${data.payload.threadId}: ${data.payload.prunedCount} messages removed.`);
+      }
     };
 
     const onNativeNotification = (data: any) => {

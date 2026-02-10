@@ -10,18 +10,34 @@ export class GeminiProvider extends LLMProvider {
     this.apiKey = apiKey;
   }
 
-  async chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
-    const geminiModel = options?.model || 'gemini-2.5-flash-lite';
+  hasKey(): boolean {
+    return !!this.apiKey && this.apiKey.length > 0;
+  }
 
-    // Antigravity fallback (special case for borrowed IDs if no specific model selected)
+  async chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
+    const geminiModel = options?.model || 'gemini-1.5-flash';
+
+    // Model name mapping/fallback
     let finalModel = geminiModel;
     if (finalModel === 'antigravity-1') {
       finalModel = 'gemini-1.5-pro';
     }
 
-    // Map messages to Gemini format
-    const geminiMessages = messages.map((m) => {
+    // Extract system instruction and ensure role alternation
+    const systemMessages = messages.filter(m => m.role === 'system');
+    const systemInstruction = systemMessages.length > 0 
+      ? { parts: systemMessages.map(m => ({ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) })) }
+      : undefined;
+
+    const remainingMessages = messages.filter(m => m.role !== 'system');
+    
+    // Map messages to Gemini format with strict alternation
+    const geminiMessages: any[] = [];
+    let lastRole: string | null = null;
+
+    remainingMessages.forEach((m) => {
       const parts: any[] = [];
+      const currentRole = m.role === 'assistant' ? 'model' : 'user';
 
       if (m.content) {
         if (typeof m.content === 'string') {
@@ -30,19 +46,20 @@ export class GeminiProvider extends LLMProvider {
           m.content.forEach((part: any) => {
             if (part.type === 'text') {
               parts.push({ text: part.text });
-                          } else if (part.type === 'image_url' && part.image_url?.url) {
-                            const dataUrl = part.image_url.url;
-                            const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-                            if (matches) {
-                              const mimeType = matches[1];
-                              parts.push({
-                                inlineData: {
-                                  mimeType: mimeType === 'image/svg+xml' ? 'image/png' : mimeType,
-                                  data: matches[2]
-                                }
-                              });
-                            }
-                          }          });
+            } else if (part.type === 'image_url' && part.image_url?.url) {
+              const dataUrl = part.image_url.url;
+              const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+              if (matches) {
+                const mimeType = matches[1];
+                parts.push({
+                  inlineData: {
+                    mimeType: mimeType === 'image/svg+xml' ? 'image/png' : mimeType,
+                    data: matches[2]
+                  }
+                });
+              }
+            }
+          });
         }
       }
 
@@ -66,7 +83,7 @@ export class GeminiProvider extends LLMProvider {
           contentObj = { result: contentStr };
         }
 
-        return {
+        geminiMessages.push({
           role: 'function',
           parts: [{
             functionResponse: {
@@ -74,13 +91,23 @@ export class GeminiProvider extends LLMProvider {
               response: { result: contentObj }
             }
           }]
-        };
+        });
+        lastRole = 'function';
+        return;
       }
 
-      return {
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts
-      };
+      // Handle consecutive roles by merging or injecting placeholders
+      if (currentRole === lastRole) {
+        if (geminiMessages.length > 0) {
+          const lastMsg = geminiMessages[geminiMessages.length - 1];
+          lastMsg.parts.push(...parts);
+        } else {
+          geminiMessages.push({ role: currentRole, parts });
+        }
+      } else {
+        geminiMessages.push({ role: currentRole, parts });
+      }
+      lastRole = currentRole;
     });
 
     // Map tools to Gemini format
@@ -94,21 +121,27 @@ export class GeminiProvider extends LLMProvider {
       }
     ] : undefined;
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${finalModel}:generateContent?key=${this.apiKey}`, {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${finalModel}:generateContent?key=${this.apiKey}`;
+    console.log(`[GeminiProvider] Fetching: ${url.replace(this.apiKey, 'REDACTED')}`);
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: geminiMessages,
+        system_instruction: systemInstruction,
         tools: geminiTools,
         generationConfig: {
           temperature: options?.temperature ?? 0.7,
           maxOutputTokens: options?.maxTokens ?? 4096,
+          responseMimeType: options?.response_format?.type === 'json_object' ? 'application/json' : 'text/plain'
         }
       })
     });
 
     if (!response.ok) {
       const errBody = await response.text();
+      console.error(`[GeminiProvider] API Error: ${response.status} ${errBody}`);
       throw new Error(`Gemini API error: ${response.status} ${errBody}`);
     }
 
@@ -154,7 +187,6 @@ export class GeminiProvider extends LLMProvider {
     const geminiModel = options?.model || 'gemini-1.5-flash';
     let finalModel = geminiModel;
     if (finalModel === 'antigravity-1') finalModel = 'gemini-1.5-pro';
-    if (finalModel.includes('2.5')) finalModel = 'gemini-1.5-flash';
 
     const geminiMessages = messages.map((m) => {
       const parts: any[] = [];

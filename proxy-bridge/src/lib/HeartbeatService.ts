@@ -2,6 +2,7 @@ import { setInterval, clearInterval } from 'timers';
 import { getDb } from './db';
 import { PolicyStore } from './PolicyStore';
 import { EventLog } from './EventLog';
+import { diagnosticCollector } from './DiagnosticCollector';
 import fs from 'fs-extra';
 import path from 'path';
 import { broadcast } from './socket-instance';
@@ -56,6 +57,9 @@ export class HeartbeatService {
     console.log(`[Heartbeat] Tick started at ${new Date().toISOString()}`);
 
     try {
+      // OP-03: Run diagnostic health check alongside heartbeat
+      diagnosticCollector.checkHealth();
+
       const db = getDb();
       for (const project of db.projects) {
         await this.processProject(project);
@@ -106,6 +110,27 @@ export class HeartbeatService {
         eventLog.emit('task_stale_recovered', 'heartbeat', { taskId, agentId, staleTimeMinutes: diffMinutes });
         return `- [ ] \`${taskId}\``;
       }
+
+      // OC-09: Stuck Session Detection
+      // If task is not yet stale but has no event activity in 10 minutes, log diagnostic
+      if (diffMinutes > 10) {
+        // This is a bit tricky since we don't await the emit here in a replace, 
+        // but it's consistent with existing emit usage in this file.
+        eventLog.query({ 
+          agentId, 
+          startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString() 
+        }).then(recentEvents => {
+          if (recentEvents.length === 0) {
+            eventLog.emit('diagnostic_warning', 'heartbeat', {
+              agentId,
+              taskId,
+              reason: 'STUCK_SESSION',
+              message: 'Agent has in-progress task but no event activity for >10m.'
+            });
+          }
+        }).catch(() => {});
+      }
+
       return fullMatch;
     });
 

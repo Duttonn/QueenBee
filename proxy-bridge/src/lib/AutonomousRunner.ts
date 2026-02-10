@@ -13,7 +13,7 @@ import { EventLog } from './EventLog';
 import { MemoryStore } from './MemoryStore';
 import { PolicyStore } from './PolicyStore';
 
-export type AgentRole = 'solo' | 'orchestrator' | 'worker';
+export type AgentRole = 'solo' | 'orchestrator' | 'worker' | 'architect';
 
 export class AutonomousRunner {
   private socket: Socket;
@@ -33,6 +33,7 @@ export class AutonomousRunner {
   private eventLog: EventLog;
   private memoryStore: MemoryStore;
   private policyStore: PolicyStore;
+  private lastAttemptToolSignature: string = '';
 
   private static fileTreeCache = new Map<string, { files: string[]; timestamp: number }>();
   private static CACHE_TTL = 30000; // 30 seconds
@@ -62,7 +63,9 @@ export class AutonomousRunner {
     this.memoryStore = new MemoryStore(projectPath);
     this.policyStore = new PolicyStore(projectPath);
     
-    if (agentId?.includes('orchestrator')) {
+    if (agentId?.includes('architect')) {
+      this.role = 'architect';
+    } else if (agentId?.includes('orchestrator')) {
       this.role = 'orchestrator';
     } else if (agentId?.includes('worker')) {
       this.role = 'worker';
@@ -150,11 +153,21 @@ export class AutonomousRunner {
                             threadId: this.threadId,
                             toolCallId: data.data.toolCallId
                         });
+                    } else if (data.type === 'plan_update') {
+                        this.socket.emit('UI_UPDATE', {
+                            action: 'SET_ACTIVE_PLAN',
+                            payload: { plan: data.data.plan, threadId: this.threadId }
+                        });
+                    } else if (data.type === 'context_pruned') {
+                        this.socket.emit('UI_UPDATE', {
+                            action: 'NOTIFY_CONTEXT_PRUNE',
+                            payload: { ...data.data, threadId: this.threadId }
+                        });
                     }
                 });
             }
   
-            await this.executeRecursiveLoop(userPrompt, options);
+            await this.executeRecursiveLoop(userPrompt, { ...options, composerMode: this.composerMode });
           } finally {
             if (this.threadId) {
               sessionManager.cleanup(this.threadId);
@@ -183,7 +196,7 @@ export class AutonomousRunner {
       ];
     }
 
-    return await this.executeRecursiveLoop(userPrompt, options);
+    return await this.executeRecursiveLoop(userPrompt, { ...options, composerMode: this.composerMode });
   }
 
   /**
@@ -202,8 +215,11 @@ The user wants you to: "${userPrompt}"
 STRICT RULE: Do not perform ANY technical actions (benchmarks, refactors, files edits) that are not directly required to fulfill THIS SPECIFIC intent. 
 If you finish this task, stop and wait for the next command.`;
 
-        let result = await this.session!.prompt(userPrompt + currentGoalContext, options);    
-    
+        let result = await this.session!.prompt(userPrompt + currentGoalContext, options);
+
+    // Capture tool signature for failure-aware retry
+    const currentToolSignature = this.extractToolSignature(this.session!.messages);
+
     // BP-12: Ensure we ALWAYS have a summary if tools were used, even for solo agents
     const toolsUsed = this.session!.messages.some(m => m.role === 'tool');
     if (!result.content && (result.tool_calls || toolsUsed)) {
@@ -213,12 +229,14 @@ If you finish this task, stop and wait for the next command.`;
 
     // Solo Agent: return immediately after summary
     if (this.role === 'solo') {
+      this.lastAttemptToolSignature = currentToolSignature;
       return result;
     }
 
     // Optimization: If no tool calls were made in the last turn, assume completion and skip verification
     if (!result.tool_calls || result.tool_calls.length === 0) {
       console.log('[RecursiveRunner] Turn ended with no tool calls. Skipping verification.');
+      this.lastAttemptToolSignature = currentToolSignature;
       return result;
     }
 
@@ -247,13 +265,32 @@ If you finish this task, stop and wait for the next command.`;
         } 
       });
 
-      result = await this.session!.prompt(
-        `Your previous attempt failed verification. Reason: ${verification.reason}. Please fix the issues and verify again.`,
-        options
-      );
+      // Failure-Aware Retry: Detect if agent is stuck repeating the same approach
+      const retryToolSignature = this.extractToolSignature(this.session!.messages);
+      let retryPrompt = `Your previous attempt failed verification. Reason: ${verification.reason}. Please fix the issues and verify again.`;
+
+      if (retryToolSignature === this.lastAttemptToolSignature && this.lastAttemptToolSignature !== '') {
+        console.warn('[RecursiveRunner] Detected repeated tool pattern. Injecting deep-think reset.');
+        retryPrompt = `STOP. You are repeating the same failing approach. Take a completely different approach to solving this problem.\n\nPrevious failure: ${verification.reason}`;
+      }
+      this.lastAttemptToolSignature = retryToolSignature;
+
+      result = await this.session!.prompt(retryPrompt, options);
     }
 
     return result;
+  }
+
+  /**
+   * Extract a signature of recent tool calls for duplicate detection
+   */
+  private extractToolSignature(messages: LLMMessage[]): string {
+    return messages
+      .filter(m => m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0)
+      .slice(-2)
+      .flatMap(m => m.tool_calls || [])
+      .map(tc => `${tc.function.name}:${tc.function.arguments}`)
+      .join('|');
   }
 
   /**
@@ -339,7 +376,18 @@ If you finish this task, stop and wait for the next command.`;
     }
 
     let roleDirective = '';
-    if (this.role === 'orchestrator') {
+    if (this.role === 'architect') {
+      roleDirective = `
+# ROLE: HIVE ARCHITECT (Swarm Lead)
+- Your goal is to lead a SWARM RUSH. You are the strategic lead.
+- STEP 1: DEEP ANALYSIS. You must understand the ENTIRE codebase. Use search tools extensively.
+- STEP 2: DEFINE GOALS. Discuss objectives, criteria, and KPIs with the user.
+- STEP 3: PROPOSE WORKERS. Propose the number and types of workers needed.
+- STEP 4: GENERATE PROMPTS. Create well-rendered markdown files for each agent's instructions.
+- STEP 5: VALIDATE. Present the plan and prompts to the user and wait for explicit validation.
+- STEP 6: ORCHESTRATE. Use 'spawn_worker' only AFTER user validation. 
+- You stay in the group chat (Roundtable) to guide workers. They will report to you.`;
+    } else if (this.role === 'orchestrator') {
       roleDirective = `
 # ROLE: HIVE ORCHESTRATOR (Project Manager)
 - Your goal is to PLAN and COORDINATE. Do not write complex code yourself.
@@ -369,14 +417,22 @@ If you finish this task, stop and wait for the next command.`;
     }
 
     const memories = await this.memoryStore.getAll();
+    const highPriorityMemories = memories
+      .filter(m => (m.type === 'style' || m.type === 'preference') && m.confidence >= 0.5)
+      .map(m => `[${m.type.toUpperCase()}] ${m.content}`)
+      .join('\n');
+
     const structuredMemories = memories
-      .filter(m => m.confidence >= 0.7)
+      .filter(m => m.type !== 'style' && m.type !== 'preference' && m.confidence >= 0.7)
       .map(m => `[${m.type.toUpperCase()}] ${m.content}`)
       .join('\n');
 
     return `
 ${modeDirective}
 ${roleDirective}
+
+# USER PREFERENCES & STYLE (CRITICAL)
+${highPriorityMemories || 'No personal style preferences recorded yet. I will learn from your corrections.'}
 
 # PROJECT CONTEXT
 Location: ${this.projectPath}
@@ -401,6 +457,24 @@ ${structuredMemories || 'No structured memories yet.'}
 ${isolationDirective}
 - Use 'write_memory' to share architecturally significant findings.
 - Use 'read_memory' for deep technical details from the cortex.
+
+# STRUCTURED THOUGHT PROTOCOL
+Before executing ANY tool, you MUST first output your plan in this format:
+<plan>
+GOAL: [What the user asked for]
+STEPS:
+1. [First action] -> [Expected outcome]
+2. [Second action] -> [Expected outcome]
+CURRENT_STEP: [Which step you are on now]
+</plan>
+
+If a tool fails, you MUST update your plan before retrying:
+<plan_update>
+FAILED: [What failed and why]
+NEW_APPROACH: [What you will try instead]
+</plan_update>
+
+NEVER retry the exact same command that just failed without changing something.
 
 # TEAM COORDINATION (Roundtable)
 The following is the recent history of messages from other agents in this swarm. Use this to guide your work and avoid duplication.

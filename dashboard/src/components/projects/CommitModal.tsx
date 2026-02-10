@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { GitCommit, X, Check, ArrowUp, Github, Loader2, File, CheckSquare, Square, GitBranch, ChevronDown } from 'lucide-react';
+import { GitCommit, X, Check, ArrowUp, Github, Loader2, File, CheckSquare, Square, GitBranch, ChevronDown, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_BASE, getGitDiff, type DiffStats } from '../../services/api';
 
@@ -21,45 +21,72 @@ const CommitModal = ({ isOpen, onClose, projectPath, onCommitSuccess }: CommitMo
   const [currentBranch, setCurrentBranch] = useState('main');
   const [commitStagedOnly, setCommitStagedOnly] = useState(false);
 
+  const [isDiscarding, setIsDiscarding] = useState<string | null>(null);
+
+  const fetchFiles = () => {
+    // Fetch branch info
+    fetch(`${API_BASE}/api/git/branches?projectPath=${encodeURIComponent(projectPath)}`)
+      .then(res => res.json())
+      .then(data => setCurrentBranch(data.current || 'main'))
+      .catch(console.error);
+
+    // Fetch all changes (staged + unstaged)
+    getGitDiff(projectPath)
+      .then((data: DiffStats) => {
+        if ((data as any).status === 'success' || data.files) {
+          setFiles(data.files);
+        }
+      })
+      .catch(console.error);
+
+    // Fetch ONLY staged changes
+    getGitDiff(projectPath, undefined)
+      .then((data: DiffStats) => {
+        if ((data as any).status === 'success' || data.files) {
+          setStagedFilesInfo(data.files);
+          setStats({
+            files: data.files.length,
+            added: data.added,
+            removed: data.removed
+          });
+          
+          if (data.files.length > 0) {
+              setCommitStagedOnly(true);
+          }
+
+          // Pre-select files that have staged changes
+          setSelectedFiles(new Set(data.files.map((f: any) => f.path)));
+        }
+      })
+      .catch(console.error);
+  };
+
   useEffect(() => {
     if (isOpen) {
-      // Fetch branch info
-      fetch(`${API_BASE}/api/git/branches?projectPath=${encodeURIComponent(projectPath)}`)
-        .then(res => res.json())
-        .then(data => setCurrentBranch(data.current || 'main'))
-        .catch(console.error);
-
-      // Fetch all changes (staged + unstaged)
-      getGitDiff(projectPath)
-        .then((data: DiffStats) => {
-          if ((data as any).status === 'success' || data.files) {
-            setFiles(data.files);
-          }
-        })
-        .catch(console.error);
-
-      // Fetch ONLY staged changes
-      getGitDiff(projectPath, undefined)
-        .then((data: DiffStats) => {
-          if ((data as any).status === 'success' || data.files) {
-            setStagedFilesInfo(data.files);
-            setStats({
-              files: data.files.length,
-              added: data.added,
-              removed: data.removed
-            });
-            
-            if (data.files.length > 0) {
-                setCommitStagedOnly(true);
-            }
-
-            // Pre-select files that have staged changes
-            setSelectedFiles(new Set(data.files.map((f: any) => f.path)));
-          }
-        })
-        .catch(console.error);
+      fetchFiles();
     }
   }, [isOpen, projectPath]);
+
+  const handleDiscard = async (file: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm(`Are you sure you want to discard ALL changes in ${file}? This cannot be undone.`)) return;
+
+    setIsDiscarding(file);
+    try {
+      const res = await fetch(`${API_BASE}/api/git/discard`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: projectPath, file })
+      });
+      if (res.ok) {
+        fetchFiles();
+      }
+    } catch (err) {
+      console.error('Failed to discard changes', err);
+    } finally {
+      setIsDiscarding(null);
+    }
+  };
 
   useEffect(() => {
     const dataToUse = commitStagedOnly ? stagedFilesInfo : files.filter(f => selectedFiles.has(f.path));
@@ -266,17 +293,31 @@ const CommitModal = ({ isOpen, onClose, projectPath, onCommitSuccess }: CommitMo
                                     </div>
                                     <div className="text-[9px] text-zinc-400 truncate font-medium">{file.path}</div>
                                 </div>
-                                <div className="text-[10px] font-mono font-black flex gap-2">
-                                    {(() => {
-                                        const stagedInfo = stagedFilesInfo.find(sf => sf.path === file.path);
-                                        const stats = (commitStagedOnly && stagedInfo) ? stagedInfo.stats : file.stats;
-                                        return (
-                                            <>
-                                                <span className="text-emerald-600">+{stats.added}</span>
-                                                <span className="text-rose-600">-{stats.removed}</span>
-                                            </>
-                                        );
-                                    })()}
+                                <div className="text-[10px] font-mono font-black flex items-center gap-3">
+                                    <div className="flex gap-2">
+                                        {(() => {
+                                            const stagedInfo = stagedFilesInfo.find(sf => sf.path === file.path);
+                                            const stats = (commitStagedOnly && stagedInfo) ? stagedInfo.stats : file.stats;
+                                            return (
+                                                <>
+                                                    <span className="text-emerald-600">+{stats.added}</span>
+                                                    <span className="text-rose-600">-{stats.removed}</span>
+                                                </>
+                                            );
+                                        })()}
+                                    </div>
+                                    <button
+                                        onClick={(e) => handleDiscard(file.path, e)}
+                                        disabled={isDiscarding === file.path}
+                                        className="p-1.5 hover:bg-rose-50 text-zinc-300 hover:text-rose-600 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                        title="Discard all changes"
+                                    >
+                                        {isDiscarding === file.path ? (
+                                            <Loader2 size={12} className="animate-spin" />
+                                        ) : (
+                                            <RotateCcw size={12} />
+                                        )}
+                                    </button>
                                 </div>
                             </div>
                         ))

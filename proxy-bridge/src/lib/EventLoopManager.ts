@@ -83,19 +83,17 @@ export class EventLoopManager {
       }
     });
 
-    /**
-     * Scenario: Human-in-the-loop Tool Approval
-     */
     this.socket.on('TOOL_APPROVAL', async ({ projectId, threadId, toolCallId, approved, tool, args, projectPath }) => {
-        console.log(`[EventLoop] Tool approval received for ${toolCallId}: ${approved ? 'APPROVED' : 'REJECTED'}`);
+        console.log(`[EventLoop] Tool approval received for ${toolCallId}: ${approved ? 'APPROVED' : 'REJECTED'} (Tool: ${tool})`);
         
         // Resume any suspended ToolExecutor calls
         ToolExecutor.confirm(toolCallId, approved);
 
         // Legacy/Fallback handling for non-suspended flows (if any)
-        if (approved) {
+        if (approved && tool) {
             try {
-                // We need to know which tool to execute. 
+                // If ToolExecutor already had this ID pending, confirm() above handles it.
+                // If not, we run it manually here.
                 const result = await this.toolExecutor.execute({
                     name: tool,
                     arguments: args,
@@ -106,11 +104,8 @@ export class EventLoopManager {
                     threadId,
                     toolCallId
                 });
-
-            } catch (error: any) {
-                // ToolExecutor already broadcasts error with context
-            }
-        } else {
+            } catch (error: any) {}
+        } else if (!approved) {
             broadcast('TOOL_RESULT', {
                 projectId,
                 threadId,

@@ -42,6 +42,7 @@ export interface LLMProviderOptions {
   response_format?: { type: 'json_object' | 'text' };
   apiKey?: string;
   tools?: any[];
+  composerMode?: 'code' | 'chat' | 'plan';
 }
 
 export interface ILLMProvider {

@@ -12,7 +12,7 @@ export class MemoryDistillation {
       const summaryPrompt: LLMMessage = {
         role: 'system',
         content: `Analyze the following agent session history. 
-        Extract technical changes, architectural findings, and key lessons learned.
+        Extract technical changes, architectural findings, key lessons learned, and any USER-DEFINED CONVENTIONS or PREFERENCES.
         
         Respond with a JSON object containing a "memories" array:
         {
@@ -25,8 +25,8 @@ export class MemoryDistillation {
           ]
         }
         
-        - "insight": Architectural discoveries or high-level technical facts.
-        - "pattern": Coding styles, conventions, or repeated logic observed.
+        - "insight": Architectural discoveries, high-level technical facts, or project-specific knowledge.
+        - "pattern": USER PREFERENCES, coding styles, naming conventions (e.g. "Use QB- prefix"), or repeated logic.
         - "lesson": Mistakes made and how to avoid them, or specific successes.`
       };
 
