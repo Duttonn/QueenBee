@@ -31,6 +31,7 @@ const ToolCallViewer: React.FC<ToolCallViewerProps> = ({
       case 'list_directory':
       case 'glob':
       case 'search_file_content': return 'Explored';
+      case 'run_shell':
       case 'run_shell_command': return 'Executed';
       default: return 'Called';
     }
@@ -44,6 +45,7 @@ const ToolCallViewer: React.FC<ToolCallViewerProps> = ({
       case 'list_directory':
       case 'glob':
       case 'search_file_content': return <Search size={12} className="text-amber-500" />;
+      case 'run_shell':
       case 'run_shell_command': return <Terminal size={12} className="text-emerald-500" />;
       default: return <Cpu size={12} className="text-zinc-400" />;
     }
