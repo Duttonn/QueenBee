@@ -33,29 +33,35 @@ export class AutonomousRunner {
   private eventLog: EventLog;
   private memoryStore: MemoryStore;
   private policyStore: PolicyStore;
-  private lastAttemptToolSignature: string = '';
+    private lastAttemptToolSignature: string = '';
+    private swarmId: string | undefined;
+    private mainProjectPath: string; // Always points to the main project root (not worktree)
 
-  private static fileTreeCache = new Map<string, { files: string[]; timestamp: number }>();
-  private static CACHE_TTL = 30000; // 30 seconds
+    private static fileTreeCache = new Map<string, { files: string[]; timestamp: number }>();
+    private static CACHE_TTL = 30000; // 30 seconds
 
-  constructor(
-    socket: Socket, 
-    projectPath: string, 
-    providerId: string = 'auto', 
-    threadId: string | null = null, 
-    apiKey: string | null = null, 
-    mode: 'local' | 'worktree' | 'cloud' = 'worktree', 
-    agentId: string | null = null,
-    composerMode: 'code' | 'chat' | 'plan' = 'code'
-  ) {
-    this.socket = socket;
-    this.projectPath = projectPath;
-    this.providerId = providerId;
-    this.threadId = threadId;
-    this.apiKey = apiKey;
-    this.mode = mode;
-    this.agentId = agentId;
-    this.composerMode = composerMode;
+    constructor(
+      socket: Socket, 
+      projectPath: string, 
+      providerId: string = 'auto', 
+      threadId: string | null = null, 
+      apiKey: string | null = null, 
+      mode: 'local' | 'worktree' | 'cloud' = 'worktree', 
+      agentId: string | null = null,
+      composerMode: 'code' | 'chat' | 'plan' = 'code',
+      swarmId?: string,
+      mainProjectPath?: string
+    ) {
+      this.socket = socket;
+      this.projectPath = projectPath;
+      this.providerId = providerId;
+      this.threadId = threadId;
+      this.apiKey = apiKey;
+      this.mode = mode;
+      this.agentId = agentId;
+      this.composerMode = composerMode;
+      this.swarmId = swarmId;
+      this.mainProjectPath = mainProjectPath || projectPath;
     this.tm = new ProjectTaskManager(projectPath);
     this.requestId = logContext.getStore()?.requestId || null;
 
@@ -74,9 +80,14 @@ export class AutonomousRunner {
     }
   }
 
-  setWritable(writable: Writable) {
-    this.writable = writable;
-  }
+    setWritable(writable: Writable) {
+      this.writable = writable;
+    }
+
+    /** Expose session messages for post-completion extraction */
+    getSessionMessages(): LLMMessage[] {
+      return this.session?.messages || [];
+    }
 
   private sendEvent(data: any) {
     if (this.writable) {
@@ -86,9 +97,13 @@ export class AutonomousRunner {
     }
   }
 
-      async streamIntermediateSteps(userPrompt: string, history: LLMMessage[] = [], options?: LLMProviderOptions) {
-          if (this.threadId) {
+    async streamIntermediateSteps(userPrompt: string, history: LLMMessage[] = [], options?: LLMProviderOptions) {
+    if (this.threadId) {
             sessionManager.register(this.threadId);
+            // Store provider/apiKey/model so spawned workers inherit the same model
+            sessionManager.setProvider(this.threadId, this.providerId);
+            if (this.apiKey) sessionManager.setApiKey(this.threadId, this.apiKey);
+            if (options?.model) sessionManager.setModel(this.threadId, options.model);
           }
   
           try {
@@ -101,28 +116,96 @@ export class AutonomousRunner {
                   ? "You are Queen Bee, a helpful AI assistant. The user is just saying hello. Respond briefly and naturally, and ask how you can help with their project today. Do not use any tools."
                   : await this.getEnhancedContext();
                 
+                // Architect phase management: detect approval messages and advance phase
+                let currentPhase: 'plan' | 'prompts' | 'launch' = this.threadId ? sessionManager.getArchitectPhase(this.threadId) : 'plan';
+                if (this.role === 'architect' && this.threadId) {
+                    const lowerPrompt = userPrompt.toLowerCase();
+                    console.log(`[AutonomousRunner] Phase check: stored=${currentPhase}, threadId=${this.threadId}, prompt="${userPrompt.substring(0, 60)}"`);
+                    if (currentPhase === 'plan' && lowerPrompt.includes('approved')) {
+                    // Plan approved → advance to prompts phase
+                    currentPhase = 'prompts';
+                    sessionManager.setArchitectPhase(this.threadId, 'prompts');
+                    console.log('[AutonomousRunner] Architect phase: plan → prompts');
+                  } else if (currentPhase === 'prompts' && lowerPrompt.includes('approved') && lowerPrompt.includes('launch')) {
+                    // Prompts approved → advance to launch phase
+                    currentPhase = 'launch';
+                    sessionManager.setArchitectPhase(this.threadId, 'launch');
+                    console.log('[AutonomousRunner] Architect phase: prompts → launch');
+                  }
+                }
+                
+                const shouldBlockSpawn = this.role === 'architect' && currentPhase !== 'launch';
                 this.session = new AgentSession(this.projectPath, {
                     systemPrompt,
-                    maxSteps: isGreeting ? 1 : 15,
+                    maxSteps: isGreeting ? 1 : (this.role === 'architect' ? 20 : 15),
                     providerId: this.providerId,
                     threadId: this.threadId,
                     apiKey: this.apiKey || undefined,
                     mode: this.mode,
                     eventLog: this.eventLog,
                     memoryStore: this.memoryStore,
-                    policyStore: this.policyStore
+                    policyStore: this.policyStore,
+                    blockedTools: shouldBlockSpawn ? ['spawn_worker'] : [],
+                    swarmId: this.swarmId || (this.role === 'architect' ? this.threadId || undefined : undefined),
+                    mainProjectPath: this.mainProjectPath
                 });
+                
+                // Emit current phase so frontend knows where we are
+                if (this.role === 'architect') {
+                  this.sendEvent({ type: 'swarm_phase', data: { phase: currentPhase, threadId: this.threadId } });
+                }
+                
+                // Inject phase-specific system messages for architect
+                if (this.role === 'architect' && currentPhase === 'prompts') {
+                  // After plan approval: tell architect to generate agent prompts, NOT launch
+                  history = [...history, {
+                    role: 'system' as const,
+                    content: `The user has approved your plan. DO NOT call spawn_worker — it is still blocked.
+
+Your next task: Generate a SEPARATE .md file for each worker agent using the write_file tool.
+
+IMPORTANT — file naming convention:
+- Name each file after the worker in lowercase with no underscores: e.g. uibee.md, logicbee.md, testbee.md
+- Write them into the project root directory.
+
+Each .md file should contain:
+- A top-level heading with the worker name (e.g. # UI Bee)
+- **Type**: The worker type (UI_BEE, LOGIC_BEE, TEST_BEE, etc.)
+- **Files to create/modify**: Full file paths
+- **Instructions**: Detailed step-by-step instructions — what to build, patterns to follow, acceptance criteria
+- **Dependencies**: Any other workers this one depends on (or "None")
+
+After writing all the files, ask the user to review and approve the agent prompts before launching.`
+                  }];
+                } else if (this.role === 'architect' && currentPhase === 'launch') {
+                  // After prompts approval: unblock and launch
+                  history = [...history, {
+                    role: 'system' as const,
+                    content: `The user has approved your agent prompts. spawn_worker is now UNBLOCKED.
+
+For each worker, call spawn_worker with:
+- taskId: Use the worker name as the ID (e.g. "UI_BEE", "LOGIC_BEE", "TEST_BEE"). Do NOT use REQ-XX IDs.
+- instructions: Copy the full content of the worker's .md file you wrote earlier.
+
+Call spawn_worker ONCE per worker. Do NOT re-present the plan or prompts. After spawning all workers, output a brief confirmation message listing who was launched.`
+                  }];
+                }
   
+                // Separate injected system messages from conversation history
+                const injectedSystemMsgs = history.filter(m => m.role === 'system' && m.content?.includes('approved'));
+                const conversationHistory = history.filter(m => m.role !== 'system').map(m => ({
+                    id: m.id,
+                    role: m.role,
+                    content: m.content || '',
+                    tool_calls: m.tool_calls,
+                    tool_call_id: m.tool_call_id,
+                    name: m.name
+                }));
+                
                 this.session.messages = [
                     ...this.session.messages, // System prompt is already here
-                    ...history.filter(m => m.role !== 'system').map(m => ({
-                        id: m.id, // Ensure IDs are preserved if they exist
-                        role: m.role,
-                        content: m.content || '',
-                        tool_calls: m.tool_calls,
-                        tool_call_id: m.tool_call_id,
-                        name: m.name
-                    }))
+                    ...injectedSystemMsgs,    // Phase-transition system messages
+                    ...conversationHistory     // User/assistant history
                 ];
   
                 this.session.on('event', (data) => {
@@ -179,21 +262,63 @@ export class AutonomousRunner {
     if (!this.session) {
       const systemPrompt = await this.getEnhancedContext();
       this.session = new AgentSession(this.projectPath, {
-        systemPrompt,
-        maxSteps: 15,
-        providerId: this.providerId,
-        threadId: this.threadId,
-        apiKey: this.apiKey || undefined,
-        mode: this.mode,
-        eventLog: this.eventLog,
-        memoryStore: this.memoryStore,
-        policyStore: this.policyStore
-      });
+          systemPrompt,
+          maxSteps: 15,
+          providerId: this.providerId,
+          threadId: this.threadId,
+          apiKey: this.apiKey || undefined,
+          mode: this.mode,
+          eventLog: this.eventLog,
+          memoryStore: this.memoryStore,
+          policyStore: this.policyStore,
+          blockedTools: [],
+          swarmId: this.swarmId,
+          mainProjectPath: this.mainProjectPath
+        });
       
       this.session.messages = [
         ...this.session.messages,
         ...history.filter(m => m.role !== 'system')
       ];
+
+      // Forward session events to the socket so the frontend can display worker progress
+      this.session.on('event', (data) => {
+        if (data.type === 'message') {
+          this.socket.emit('UI_UPDATE', {
+            action: 'WORKER_MESSAGE',
+            payload: { ...data.data, threadId: this.threadId }
+          });
+        } else if (data.type === 'tool_start') {
+          this.socket.emit('TOOL_EXECUTION', {
+            tool: data.data.toolName,
+            status: 'running',
+            args: data.data.args,
+            threadId: this.threadId,
+            toolCallId: data.data.toolCallId
+          });
+        } else if (data.type === 'tool_end') {
+          this.socket.emit('TOOL_RESULT', {
+            tool: data.data.toolName,
+            status: 'success',
+            result: data.data.result,
+            threadId: this.threadId,
+            toolCallId: data.data.toolCallId
+          });
+        } else if (data.type === 'tool_error') {
+          this.socket.emit('TOOL_RESULT', {
+            tool: data.data.toolName,
+            status: 'error',
+            error: data.data.error,
+            threadId: this.threadId,
+            toolCallId: data.data.toolCallId
+          });
+        } else if (data.type === 'agent_status') {
+          this.socket.emit('UI_UPDATE', {
+            action: 'WORKER_STATUS',
+            payload: { ...data.data, threadId: this.threadId }
+          });
+        }
+      });
     }
 
     return await this.executeRecursiveLoop(userPrompt, { ...options, composerMode: this.composerMode });
@@ -220,17 +345,53 @@ If you finish this task, stop and wait for the next command.`;
     // Capture tool signature for failure-aware retry
     const currentToolSignature = this.extractToolSignature(this.session!.messages);
 
-    // BP-12: Ensure we ALWAYS have a summary if tools were used, even for solo agents
-    const toolsUsed = this.session!.messages.some(m => m.role === 'tool');
-    if (!result.content && (result.tool_calls || toolsUsed)) {
-      console.log('[RecursiveRunner] Agent ended with tool calls or used tools but no text. Requesting summary...');
-      result = await this.session!.prompt("Great. Please provide a brief summary of what you just finished doing for the user.", options);
-    }
+      // BP-12: Ensure we ALWAYS have a summary if tools were used, even for solo agents
+      const toolsUsed = this.session!.messages.some(m => m.role === 'tool');
+      if (!result.content && (result.tool_calls || toolsUsed)) {
+        if (this.role === 'architect') {
+          const phase = this.threadId ? sessionManager.getArchitectPhase(this.threadId) : 'plan';
+          const spawnCalls = (result.tool_calls || []).filter(tc => tc.function?.name === 'spawn_worker');
+          if (phase === 'launch' && spawnCalls.length > 0) {
+            const workerNames = spawnCalls
+              .map(tc => {
+                try {
+                  const args = typeof tc.function?.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function?.arguments;
+                  return args?.taskId || 'Worker';
+                } catch {
+                  return 'Worker';
+                }
+              })
+              .filter(Boolean);
+            result = { ...result, content: `Launched workers: ${workerNames.join(', ')}.` };
+          } else {
+            const nudge = phase === 'plan' 
+              ? "You didn't output anything visible to the user. Present the plan with requirements now."
+              : phase === 'prompts'
+              ? "You didn't output anything visible to the user. Generate the detailed agent prompts (AGENTS.md style) for the user to review."
+              : "You didn't output anything visible to the user. Call spawn_worker for each worker now.";
+            console.log(`[RecursiveRunner] Architect ended with no text (phase=${phase}). Nudging...`);
+            result = await this.session!.prompt(nudge, options);
+          }
+        } else {
+          console.log('[RecursiveRunner] Agent ended with tool calls or used tools but no text. Requesting summary...');
+          result = await this.session!.prompt("Great. Please provide a brief summary of what you just finished doing for the user.", options);
+        }
+      }
 
     // Solo Agent: return immediately after summary
     if (this.role === 'solo') {
       this.lastAttemptToolSignature = currentToolSignature;
       return result;
+    }
+
+    // Architect in launch phase: workers are spawned, nothing to verify — return immediately
+    if (this.role === 'architect') {
+      const archPhase = this.threadId ? sessionManager.getArchitectPhase(this.threadId) : 'plan';
+      if (archPhase === 'launch') {
+        console.log('[RecursiveRunner] Architect launch phase complete. Returning without verification.');
+        this.lastAttemptToolSignature = currentToolSignature;
+        return result;
+      }
     }
 
     // Optimization: If no tool calls were made in the last turn, assume completion and skip verification
@@ -346,8 +507,9 @@ If you finish this task, stop and wait for the next command.`;
   async getEnhancedContext() {
     const files = await this.scanFiles(this.projectPath);
     const tasks = await this.tm.getPendingTasks();
-    const roundtable = new Roundtable(this.projectPath);
-    const teamContext = await roundtable.getFormattedContext(10);
+    const roundtable = new Roundtable(this.mainProjectPath);
+    const effectiveSwarmId = this.swarmId || (this.role === 'architect' ? this.threadId || undefined : undefined);
+    const teamContext = await roundtable.getFormattedContext(10, effectiveSwarmId);
     
     let sharedMemory = 'No shared memory recorded yet.';
     const memoryPath = path.join(this.projectPath, 'MEMORY.md');
@@ -375,18 +537,48 @@ If you finish this task, stop and wait for the next command.`;
 - Minimize conversational filler; prioritize correct, production-ready code.`;
     }
 
-    let roleDirective = '';
-    if (this.role === 'architect') {
-      roleDirective = `
+      let roleDirective = '';
+        if (this.role === 'architect') {
+          roleDirective = `
 # ROLE: HIVE ARCHITECT (Swarm Lead)
-- Your goal is to lead a SWARM RUSH. You are the strategic lead.
-- STEP 1: DEEP ANALYSIS. You must understand the ENTIRE codebase. Use search tools extensively.
-- STEP 2: DEFINE GOALS. Discuss objectives, criteria, and KPIs with the user.
-- STEP 3: PROPOSE WORKERS. Propose the number and types of workers needed.
-- STEP 4: GENERATE PROMPTS. Create well-rendered markdown files for each agent's instructions.
-- STEP 5: VALIDATE. Present the plan and prompts to the user and wait for explicit validation.
-- STEP 6: ORCHESTRATE. Use 'spawn_worker' only AFTER user validation. 
-- You stay in the group chat (Roundtable) to guide workers. They will report to you.`;
+You are the strategic lead of a swarm. Think like a senior tech lead briefing your team.
+
+## Your 3-phase workflow (CRITICAL — follow exactly)
+
+### Phase 1: PLAN (current phase on first message)
+1. **Scout** — silently call 'scout_project' to understand the codebase. Don't narrate this step.
+2. **Brief the user** — In ONE concise message, present:
+   - A short summary of what you'll build and your approach (2-3 sentences max)
+   - Requirements as a checklist: \`- [ ] REQ-01: Description\`  
+   - Your proposed worker split: who does what and why
+   
+   Keep it tight. No fluff, no "Let me explain my thought process". Just the plan.
+3. **STOP and wait** — End your message asking if they want to proceed or adjust. Do NOT call spawn_worker. Do NOT generate agent prompts yet.
+
+### Phase 2: AGENT PROMPTS (after user approves the plan)
+When the user approves, you will receive a system instruction to generate agent prompts.
+- For each worker, write a detailed AGENTS.md-style document with:
+  - Worker name and type (UI_BEE, LOGIC_BEE, TEST_BEE)
+  - Exact files to create/modify
+  - Patterns to follow, acceptance criteria
+  - Dependencies between workers
+- **STOP and wait** — Ask the user to approve the agent prompts. Do NOT call spawn_worker yet.
+
+### Phase 3: LAUNCH (after user approves the agent prompts)
+When the user approves, spawn_worker will be unblocked. Call spawn_worker for each worker using the prompts you generated.
+
+## IMPORTANT CONSTRAINTS
+- spawn_worker is BLOCKED until Phase 3. Do not attempt to call it before then.
+- Each phase requires explicit user approval before advancing.
+- Never re-present the plan or requirements after Phase 1 is complete.
+
+## Communication & Roundtable
+- Be direct and confident. You're a lead engineer, not a help desk.
+- Don't over-explain or ask permission for obvious decisions.
+- Use natural language, not numbered procedures.
+- Keep messages SHORT. The requirements card and worker assignments do the heavy lifting.
+- Workers report progress and blockers via the **Roundtable** (using the chat_with_team tool). Monitor it to stay aware of swarm status.
+- The **USER has ultimate authority**. If the user says something in the Roundtable or chat that contradicts your plan, defer to the user immediately.`;
     } else if (this.role === 'orchestrator') {
       roleDirective = `
 # ROLE: HIVE ORCHESTRATOR (Project Manager)
@@ -398,10 +590,38 @@ If you finish this task, stop and wait for the next command.`;
     } else if (this.role === 'worker') {
       roleDirective = `
 # ROLE: WORKER BEE (Execution Unit)
-- You are an autonomous worker focused on a SINGLE task.
-- Stay in your assigned Worktree. Do not refactor unrelated files.
-- When finished, use 'report_completion(taskId, status, prUrl)' to notify the Orchestrator.
-- You do not talk to the user. You report to the system.`;
+- You are an autonomous worker focused on a SINGLE task assigned by the Hive Architect.
+- Stay in your assigned scope. Do not refactor unrelated files.
+
+## Reporting & Communication (CRITICAL)
+Use the **chat_with_team** tool for ALL communication. You MUST post at these checkpoints:
+
+1. **On Start** — Post what you're about to implement and which files you'll touch.
+2. **On Questions/Doubts** — If ANYTHING is unclear (missing dependency, ambiguous requirement, conflicting patterns), post a question via chat_with_team IMMEDIATELY. Do NOT guess or make assumptions. Tag your message with "[QUESTION]" so the Architect sees it. Wait for a response in the roundtable before proceeding on uncertain items.
+3. **On Completion** — Post an **Integration Summary** with:
+   - Files created/modified with full paths (e.g. \`frontend/src/components/LoginForm.tsx\`)
+   - Key exports, components, functions, and their line numbers (e.g. \`LoginForm component — line 12\`)
+   - How other workers should integrate with your work (imports, props, API endpoints)
+   - Any setup steps needed (env vars, dependencies installed)
+   
+   Format example:
+   \`\`\`
+   [DONE] LoginForm implementation complete.
+   Files:
+   - frontend/src/components/LoginForm.tsx (new) — exports LoginForm component (line 8)
+   - frontend/src/components/LoginPage.module.css (modified) — added .form, .input, .button classes (lines 15-45)
+   
+   Integration: import { LoginForm } from './LoginForm'; — accepts no props, manages own state.
+   \`\`\`
+
+4. **On Blockers** — Post immediately with "[BLOCKED]" prefix explaining what you need.
+
+After posting the completion summary, call **report_completion(taskId, status)** to formally close the task.
+
+## Chain of Command
+- The **USER has ultimate authority**. If the user posts a message in the Roundtable that contradicts the Architect's instructions, follow the user's directive.
+- The Architect coordinates your work, but the user can override any decision at any time.
+- If you receive conflicting instructions, the priority order is: **User > Architect > Your own judgment**.`;
     } else {
       roleDirective = `
 # ROLE: SOLO AGENT (Freelance Mode)

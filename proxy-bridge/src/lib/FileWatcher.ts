@@ -3,6 +3,10 @@ import { EventEmitter } from 'events';
 import { broadcast } from './socket-instance';
 import path from 'path';
 
+/**
+ * FileWatcher: Monitors the filesystem for changes.
+ * Used by EventLoopManager to trigger UI updates and diff calculations.
+ */
 export class FileWatcher extends EventEmitter {
   private watcher: chokidar.FSWatcher | null = null;
   private projectPath: string | null = null;
@@ -23,12 +27,13 @@ export class FileWatcher extends EventEmitter {
       ignored: /(^|[\/\\])\..*|node_modules|dist/,
       persistent: true,
       ignoreInitial: true,
-      depth: 9, // Adjust as needed
+      depth: 9,
     });
 
     this.watcher.on('all', (eventType, filePath) => {
-      console.log(`[FileWatcher] Event '${eventType}' for file: ${filePath}`);
-      
+      // Avoid tracking temp files created by ToolExecutor
+      if (filePath.includes('agent_cmd_')) return;
+
       const relativePath = this.projectPath ? path.relative(this.projectPath, filePath) : filePath;
       const eventData = {
         eventType,
@@ -38,10 +43,7 @@ export class FileWatcher extends EventEmitter {
         timestamp: Date.now()
       };
       
-      // Emit locally for EventLoopManager
       this.emit('file-change', eventData);
-
-      // Emit globally to all clients
       broadcast('FILE_CHANGE', eventData);
     });
   }

@@ -29,9 +29,12 @@ interface HiveState {
   spawnAgent: (projectId: string, agent: any) => void;
   updateAgentStatus: (projectId: string, agentName: string, status: string) => void;
 
-  // Thread Actions
-  setActiveThread: (id: string | null) => void;
-  markThreadRead: (id: string) => void;
+    // Swarm Actions
+    resetSwarm: (projectId: string) => Promise<void>;
+
+    // Thread Actions
+    setActiveThread: (id: string | null) => void;
+    markThreadRead: (id: string) => void;
   addThread: (projectId: string, thread: any) => Promise<string>; // Returns threadId
   updateThread: (projectId: string, threadId: string, updates: any) => void;
   deleteThread: (projectId: string, threadId: string) => Promise<void>;
@@ -281,12 +284,67 @@ export const useHiveStore = create<HiveState>()(
           await fetch(`${API_BASE}/api/projects/threads?projectId=${projectId}&threadId=${threadId}`, {
             method: 'DELETE'
           });
-        } catch (e) {
-          console.error('[HiveStore] Failed to delete thread:', e);
-        }
-      },
+          } catch (e) {
+            console.error('[HiveStore] Failed to delete thread:', e);
+          }
+        },
 
-              addMessage: (projectId, threadId, message) => {
+        resetSwarm: async (projectId) => {
+          const state = get();
+          const project = state.projects.find((p: any) => p.id === projectId);
+          if (!project) return;
+
+          // Find all worker threads and the architect thread
+          const workerThreads = (project.threads || []).filter(
+            (t: any) => t.isWorker || t.id?.startsWith('architect-')
+          );
+
+          // Find the architect thread to get swarmId for roundtable cleanup
+          const architectThread = workerThreads.find((t: any) => t.id?.startsWith('architect-'));
+
+          // Remove them from state
+          set((state) => ({
+            projects: state.projects.map((p: any) =>
+              p.id === projectId ? {
+                ...p,
+                threads: (p.threads || []).filter(
+                  (t: any) => !t.isWorker && !t.id?.startsWith('architect-')
+                )
+              } : p
+            ),
+            activeThreadId: workerThreads.some((t: any) => t.id === state.activeThreadId)
+              ? null
+              : state.activeThreadId,
+            isOrchestratorActive: false,
+            active_plan: null,
+          }));
+
+          // Delete from backend
+          for (const t of workerThreads) {
+            try {
+              await fetch(`${API_BASE}/api/projects/threads?projectId=${projectId}&threadId=${t.id}`, {
+                method: 'DELETE'
+              });
+            } catch (e) {
+              console.error('[HiveStore] Failed to delete swarm thread:', t.id, e);
+            }
+          }
+
+          // Clear roundtable messages for this swarm
+          if (architectThread && project.path) {
+            try {
+              await fetch(`${API_BASE}/api/roundtable/messages?projectPath=${encodeURIComponent(project.path)}&swarmId=${encodeURIComponent(architectThread.id)}`, {
+                method: 'DELETE'
+              });
+            } catch (e) {
+              console.error('[HiveStore] Failed to clear roundtable messages:', e);
+            }
+          }
+
+          console.log('[HiveStore] Swarm reset complete. Removed', workerThreads.length, 'threads');
+        },
+
+                addMessage: (projectId, threadId, message) => {
                 console.log(`[HiveStore] addMessage: thread=${threadId}, role=${message.role}, id=${message.id}`);
                 
                 // Mark as unread if not active thread
@@ -482,12 +540,21 @@ export const useHiveStore = create<HiveState>()(
         active_plan: state.active_plan,
         unreadThreads: Array.from(state.unreadThreads)
       }),
-      onRehydrateStorage: (state) => {
-        // Convert array back to Set
-        if (state && (state as any).unreadThreads) {
-          (state as any).unreadThreads = new Set((state as any).unreadThreads);
+        onRehydrateStorage: () => {
+          return (state) => {
+            // Convert array back to Set after rehydration
+            if (state && state.unreadThreads && !(state.unreadThreads instanceof Set)) {
+              state.unreadThreads = new Set(state.unreadThreads as any);
+            }
+          };
+        },
+        merge: (persistedState: any, currentState) => {
+          const merged = { ...currentState, ...persistedState };
+          if (merged.unreadThreads && !(merged.unreadThreads instanceof Set)) {
+            merged.unreadThreads = new Set(merged.unreadThreads);
+          }
+          return merged;
         }
-      }
     }
   )
 );

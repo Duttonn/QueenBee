@@ -22,7 +22,9 @@ import {
   ListTodo,
   LayoutTemplate,
   Download,
-  Trash2
+  Trash2,
+  Bot,
+  Users
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -320,7 +322,7 @@ const RemotesSection = ({
 };
 
 const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, selectedProjectId, onProjectSelect, onAddProject }: SidebarProps) => {
-  const { projects, addProject, activeThreadId, setActiveThread, addThread, selectedProjectId: storeSelectedProjectId, unreadThreads } = useHiveStore();
+  const { projects, addProject, activeThreadId, setActiveThread, addThread, selectedProjectId: storeSelectedProjectId, unreadThreads, resetSwarm } = useHiveStore();
   const { forges, user } = useAuthStore();
   const connectedForges = forges.filter(f => f.connected);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
@@ -441,77 +443,167 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                 </div>
 
                 {activeProject.threads?.length > 0 ? (() => {
-                  // Separate solo threads from swarm threads
-                  const soloThreads: any[] = [];
-                  const swarmGroups: Record<string, any[]> = {};
+                    // Separate solo threads from swarm threads
+                    // A "swarm" = an architect thread + worker threads that reference it via swarmId
+                    const soloThreads: any[] = [];
+                    const architectThreads: any[] = [];
+                    const workersBySwarm: Record<string, any[]> = {};
 
-                  activeProject.threads.forEach((t: any) => {
-                    if (t.parentTaskId || t.id.startsWith('worker-')) {
-                      const groupId = t.parentTaskId || 'default-swarm';
-                      if (!swarmGroups[groupId]) swarmGroups[groupId] = [];
-                      swarmGroups[groupId].push(t);
-                    } else {
-                      soloThreads.push(t);
+                    activeProject.threads.forEach((t: any) => {
+                      if (t.isWorker || t.id.startsWith('worker-')) {
+                        // Worker thread: group by swarmId (architect threadId) or parentTaskId fallback
+                        const groupId = t.swarmId || t.parentTaskId || 'default-swarm';
+                        if (!workersBySwarm[groupId]) workersBySwarm[groupId] = [];
+                        workersBySwarm[groupId].push(t);
+                      } else if (t.id.startsWith('architect-') || t.title?.includes('Architect')) {
+                        architectThreads.push(t);
+                      } else {
+                        soloThreads.push(t);
+                      }
+                    });
+
+                    // Build swarm groups: each architect thread + its workers
+                    const swarmGroups: { architect: any; workers: any[]; swarmLabel: string }[] = [];
+
+                    for (const arch of architectThreads) {
+                      const workers = workersBySwarm[arch.id] || [];
+                      // Also collect workers that used parentTaskId-based grouping (legacy)
+                      delete workersBySwarm[arch.id];
+                      
+                      // Derive swarm label from first user message
+                      const firstUserMsg = arch.messages?.find((m: any) => m.role === 'user');
+                      let swarmLabel = 'Setup';
+                      if (firstUserMsg?.content) {
+                        const text = typeof firstUserMsg.content === 'string' ? firstUserMsg.content : '';
+                        const cleaned = text.replace(/^@qb\s*/i, '').trim();
+                        if (cleaned) swarmLabel = cleaned.length > 30 ? cleaned.slice(0, 30) + '\u2026' : cleaned;
+                      }
+
+                      swarmGroups.push({ architect: arch, workers, swarmLabel });
                     }
-                  });
 
-                  return (
-                    <div className="space-y-4">
-                      {/* Swarm Groups */}
-                      {Object.entries(swarmGroups).map(([groupId, groupThreads]) => (
-                        <div key={groupId} className="space-y-0.5">
-                          <div className="px-3 py-1.5 flex items-center gap-2">
-                            <div className="w-1.5 h-3 bg-amber-400 rounded-full" />
-                            <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">🐝 Swarm: {groupId.split('-').slice(0, 2).join(' ')}</span>
-                          </div>
-                          
-                          {/* Roundtable for this swarm */}
-                          <div
-                            onClick={() => { setActiveThread(`roundtable-${groupId}`); onViewChange('build'); }}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all ${activeThreadId === `roundtable-${groupId}`
-                              ? 'bg-amber-50 text-amber-900 border border-amber-100 shadow-sm'
-                              : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
-                              }`}
-                          >
-                            <Users size={14} className={activeThreadId === `roundtable-${groupId}` ? 'text-amber-600' : 'text-zinc-400'} />
-                            <span className="text-[11px] font-bold truncate uppercase tracking-tight">Roundtable</span>
-                          </div>
+                    // Orphan workers (no matching architect) — group under a generic swarm
+                    const orphanWorkers = Object.values(workersBySwarm).flat();
+                    if (orphanWorkers.length > 0) {
+                      // Try to find a label from the orphan workers
+                      let label = 'Setup';
+                      for (const w of orphanWorkers) {
+                        const parentThread = activeProject.threads?.find((t: any) => t.id === w.parentTaskId);
+                        if (parentThread) {
+                          const msg = parentThread.messages?.find((m: any) => m.role === 'user');
+                          if (msg?.content) {
+                            const text = typeof msg.content === 'string' ? msg.content : '';
+                            const cleaned = text.replace(/^@qb\s*/i, '').trim();
+                            if (cleaned) { label = cleaned.length > 30 ? cleaned.slice(0, 30) + '\u2026' : cleaned; break; }
+                          }
+                        }
+                      }
+                      swarmGroups.push({ architect: null, workers: orphanWorkers, swarmLabel: label });
+                    }
 
-                          {groupThreads.map((thread: any) => {
-                            const displayName = getThreadDisplayName(thread);
-                            const relTime = formatRelativeTime(thread.time || thread.id);
-                            const diffMatch = thread.diff ? thread.diff.match(/(\+\d+)\s+(-\d+)/) : null;
-                            const isThreadActive = (activeThreadId === thread.id && useHiveStore.getState().queenStatus !== 'idle') || 
-                                                  thread.messages?.some((m: any) => m.role === 'assistant' && !m.content && (!m.toolCalls || m.toolCalls.length === 0));
-                            const isUnread = unreadThreads.has(thread.id) && activeThreadId !== thread.id;
+                    return (
+                      <div className="space-y-4">
+                        {/* Swarm Groups */}
+                        {swarmGroups.map((group, gi) => (
+                          <div key={group.architect?.id || `orphan-${gi}`} className="space-y-0.5">
+                              <div className="px-3 py-1.5 flex items-center gap-2">
+                                <div className="w-1.5 h-3 bg-amber-400 rounded-full" />
+                                <span className="flex-1 text-[9px] font-black text-zinc-400 uppercase tracking-widest">Swarm: {group.swarmLabel}</span>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (confirm('Reset this swarm? All worker threads will be deleted.')) {
+                                      const pid = selectedProjectId || storeSelectedProjectId;
+                                      if (pid) resetSwarm(pid);
+                                    }
+                                  }}
+                                  className="p-1 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                                  title="Reset Swarm"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            
+                            {/* Roundtable for this swarm */}
+                            <div
+                              onClick={() => { setActiveThread(`roundtable-${group.architect?.id || 'default'}`); onViewChange('build'); }}
+                              className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all ${activeThreadId === `roundtable-${group.architect?.id || 'default'}`
+                                ? 'bg-amber-50 text-amber-900 border border-amber-100 shadow-sm'
+                                : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
+                                }`}
+                            >
+                              <Users size={14} className={activeThreadId === `roundtable-${group.architect?.id || 'default'}` ? 'text-amber-600' : 'text-zinc-400'} />
+                              <span className="text-[11px] font-bold truncate uppercase tracking-tight">Roundtable</span>
+                            </div>
 
-                            return (
-                              <div
-                                key={thread.id}
-                                onClick={() => { setActiveThread(thread.id); onViewChange('build'); }}
-                                className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all group/thread ml-2 border-l border-zinc-100 ${activeThreadId === thread.id
-                                  ? 'bg-white text-zinc-900 border border-zinc-200 shadow-sm'
-                                  : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
-                                  }`}
-                              >
-                                {isThreadActive ? (
-                                  <Loader2 size={14} className="flex-shrink-0 text-blue-500 animate-spin" />
-                                ) : (
-                                  <Bot size={14} className={`flex-shrink-0 ${activeThreadId === thread.id ? 'text-blue-400' : 'text-zinc-400'}`} />
-                                )}
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className={`text-[11px] font-bold truncate tracking-tight block ${isUnread ? 'text-zinc-900' : ''}`}>{displayName}</span>
-                                    {isUnread && (
-                                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-sm shadow-blue-200 flex-shrink-0" />
-                                    )}
+                            {/* Architect thread */}
+                            {group.architect && (() => {
+                              const thread = group.architect;
+                              const displayName = getThreadDisplayName(thread);
+                              const isThreadActive = (activeThreadId === thread.id && useHiveStore.getState().queenStatus !== 'idle') || 
+                                                    thread.messages?.some((m: any) => m.role === 'assistant' && !m.content && (!m.toolCalls || m.toolCalls.length === 0));
+                              const isUnread = unreadThreads.has(thread.id) && activeThreadId !== thread.id;
+
+                              return (
+                                <div
+                                  key={thread.id}
+                                  onClick={() => { setActiveThread(thread.id); onViewChange('build'); }}
+                                  className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all group/thread ml-2 border-l border-zinc-100 ${activeThreadId === thread.id
+                                    ? 'bg-white text-zinc-900 border border-zinc-200 shadow-sm'
+                                    : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
+                                    }`}
+                                >
+                                  {isThreadActive ? (
+                                    <Loader2 size={14} className="flex-shrink-0 text-blue-500 animate-spin" />
+                                  ) : (
+                                    <Bot size={14} className={`flex-shrink-0 ${activeThreadId === thread.id ? 'text-blue-400' : 'text-zinc-400'}`} />
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className={`text-[11px] font-bold truncate tracking-tight block ${isUnread ? 'text-zinc-900' : ''}`}>{displayName}</span>
+                                      {isUnread && (
+                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-sm shadow-blue-200 flex-shrink-0" />
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ))}
+                              );
+                            })()}
+
+                            {/* Worker threads nested under the architect */}
+                            {group.workers.map((thread: any) => {
+                              const displayName = getThreadDisplayName(thread);
+                              const isThreadActive = (activeThreadId === thread.id && useHiveStore.getState().queenStatus !== 'idle') || 
+                                                    thread.messages?.some((m: any) => m.role === 'assistant' && !m.content && (!m.toolCalls || m.toolCalls.length === 0));
+                              const isUnread = unreadThreads.has(thread.id) && activeThreadId !== thread.id;
+
+                              return (
+                                <div
+                                  key={thread.id}
+                                  onClick={() => { setActiveThread(thread.id); onViewChange('build'); }}
+                                  className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all group/thread ml-4 border-l border-zinc-100 ${activeThreadId === thread.id
+                                    ? 'bg-white text-zinc-900 border border-zinc-200 shadow-sm'
+                                    : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700'
+                                    }`}
+                                >
+                                  {isThreadActive ? (
+                                    <Loader2 size={14} className="flex-shrink-0 text-blue-500 animate-spin" />
+                                  ) : (
+                                    <Bot size={14} className={`flex-shrink-0 ${activeThreadId === thread.id ? 'text-blue-400' : 'text-zinc-400'}`} />
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className={`text-[11px] font-bold truncate tracking-tight block ${isUnread ? 'text-zinc-900' : ''}`}>{displayName}</span>
+                                      {isUnread && (
+                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-sm shadow-blue-200 flex-shrink-0" />
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ))}
 
                       {/* Solo Threads */}
                       {soloThreads.length > 0 && (
@@ -575,7 +667,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
                       )}
                     </div>
                   );
-                })()) : null}
+                })() : null}
               </div>
             )}
             

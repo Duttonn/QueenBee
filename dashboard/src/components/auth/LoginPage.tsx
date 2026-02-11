@@ -16,6 +16,8 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
     const [isBackendOffline, setIsBackendOffline] = useState(false);
 
     const [deviceFlowData, setDeviceFlowData] = useState<any>(null);
+    const [showTokenInput, setShowTokenInput] = useState(false);
+    const [tokenValue, setTokenValue] = useState('');
 
     // Initial mount log
     React.useEffect(() => {
@@ -421,6 +423,76 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
                                 <ArrowRight size={16} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all" />
                             </button>
 
+                            {/* Paste Token Button / Input */}
+                            {showTokenInput ? (
+                                <div className="mt-4 space-y-3">
+                                    <div className="p-4 bg-[#1E293B]/50 rounded-xl border border-white/10">
+                                        <label className="block text-xs text-slate-400 mb-2">GitHub Personal Access Token</label>
+                                        <input
+                                            type="password"
+                                            value={tokenValue}
+                                            onChange={(e) => setTokenValue(e.target.value)}
+                                            className="w-full bg-slate-950/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50 transition-colors font-mono"
+                                            placeholder="ghp_... or gho_..."
+                                            autoFocus
+                                        />
+                                        <p className="text-[10px] text-slate-500 mt-2">
+                                            Create one at github.com/settings/tokens with repo, user, workflow scopes
+                                        </p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={async () => {
+                                                if (!tokenValue.trim()) {
+                                                    setError('Please enter a token');
+                                                    return;
+                                                }
+                                                setIsLoading(true);
+                                                setError(null);
+                                                try {
+                                                    const res = await fetch('https://api.github.com/user', {
+                                                        headers: { Authorization: `Bearer ${tokenValue.trim()}` }
+                                                    });
+                                                    if (!res.ok) throw new Error('Invalid token');
+                                                    const user = await res.json();
+                                                    onLoginComplete({
+                                                        user: {
+                                                            id: String(user.id),
+                                                            name: user.name || user.login,
+                                                            email: user.email || `${user.login}@users.noreply.github.com`,
+                                                            avatarUrl: user.avatar_url,
+                                                            login: user.login
+                                                        },
+                                                        accessToken: tokenValue.trim()
+                                                    });
+                                                } catch (err: any) {
+                                                    setError(err.message || 'Failed to validate token');
+                                                    setIsLoading(false);
+                                                }
+                                            }}
+                                            disabled={isLoading}
+                                            className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 px-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                        >
+                                            {isLoading ? <Loader2 size={16} className="animate-spin" /> : 'Login with Token'}
+                                        </button>
+                                        <button
+                                            onClick={() => { setShowTokenInput(false); setTokenValue(''); setError(null); }}
+                                            className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl transition-colors"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => setShowTokenInput(true)}
+                                    className="w-full flex items-center justify-center gap-3 bg-[#1E293B] hover:bg-slate-700 text-slate-300 font-semibold py-2 px-6 rounded-xl transition-all duration-200 shadow-lg shadow-black/20 group mt-4 border border-white/5"
+                                >
+                                    <Shield size={16} />
+                                    <span>Paste Token</span>
+                                </button>
+                            )}
+
                             {/* Dev Bypass Button */}
                             <button
                                 onClick={() => onLoginComplete({
@@ -433,10 +505,9 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
                                     },
                                     accessToken: 'mock-token'
                                 })}
-                                className="w-full flex items-center justify-center gap-3 bg-[#1E293B] hover:bg-slate-700 text-slate-300 font-semibold py-2 px-6 rounded-xl transition-all duration-200 shadow-lg shadow-black/20 group mt-4 border border-white/5"
+                                className="w-full flex items-center justify-center gap-3 bg-transparent hover:bg-slate-800/50 text-slate-500 text-xs py-2 px-6 rounded-xl transition-all duration-200 group mt-2"
                             >
-                                <Shield size={16} />
-                                <span>Dev Bypass</span>
+                                <span>Dev Bypass (mock user)</span>
                             </button>
 
                             {/* Info */}

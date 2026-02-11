@@ -12,6 +12,7 @@ const DEFAULT_POLICIES: Policies = {
   heartbeat_interval: 300000,
   max_parallel_agents: 4,
   stale_task_timeout_minutes: 30,
+  max_parallel_launches: 3,
 };
 
 export class PolicyStore {

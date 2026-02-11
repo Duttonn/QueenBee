@@ -34,7 +34,8 @@ import {
   LayoutTemplate,
   Columns,
   Rows,
-  GitBranch
+  GitBranch,
+  ListChecks
 } from 'lucide-react';
 import { type Message, type ToolCall, getGitBranches, executeCommand } from '../../services/api';
 import { useHiveStore } from '../../store/useHiveStore';
@@ -42,20 +43,99 @@ import ToolCallViewer from '../agents/ToolCallViewer';
 import AgentStepsPanel from '../agents/AgentStepsPanel';
 import { ProjectOverview } from '../projects/ProjectOverview';
 
+/** Detect if a .md file looks like a worker prompt */
+function isWorkerPromptMd(content: string): boolean {
+  // Must contain at least 2 of these markers
+  const markers = [
+    /type:\s*/i,
+    /files?\s+to\s+(create|modify)/i,
+    /instructions?:/i,
+    /dependencies?:/i,
+    /acceptance\s+criteria/i,
+    /worker|bee|agent/i,
+  ];
+  const hits = markers.filter(m => m.test(content)).length;
+  return hits >= 2;
+}
+
+/** Color scheme based on filename keywords */
+function getWorkerColor(fileName: string): { border: string; badge: string; badgeText: string; icon: string } {
+  const lower = fileName.toLowerCase();
+  if (lower.includes('ui')) return { border: 'border-blue-200', badge: 'bg-blue-100', badgeText: 'text-blue-700', icon: 'text-blue-600' };
+  if (lower.includes('logic')) return { border: 'border-emerald-200', badge: 'bg-emerald-100', badgeText: 'text-emerald-700', icon: 'text-emerald-600' };
+  if (lower.includes('test')) return { border: 'border-amber-200', badge: 'bg-amber-100', badgeText: 'text-amber-700', icon: 'text-amber-600' };
+  if (lower.includes('data') || lower.includes('db')) return { border: 'border-orange-200', badge: 'bg-orange-100', badgeText: 'text-orange-700', icon: 'text-orange-600' };
+  return { border: 'border-violet-200', badge: 'bg-violet-100', badgeText: 'text-violet-700', icon: 'text-violet-600' };
+}
+
+/** Clean, generic worker .md card — renders any worker prompt file */
+const WorkerMdCard = ({ fileName, content }: { fileName: string; content: string }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const c = getWorkerColor(fileName);
+  
+  // Extract a display name from the first heading or filename
+  const headingMatch = content.match(/^#\s+(.+)/m);
+  const displayName = headingMatch?.[1] || fileName.replace(/\.md$/i, '');
+
+  // Count lines for the badge
+  const lineCount = content.split('\n').length;
+
+  return (
+    <div className={`rounded-xl border ${c.border} bg-white overflow-hidden shadow-sm`}>
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full px-3.5 py-2.5 flex items-center gap-2.5 hover:bg-zinc-50/50 transition-colors"
+      >
+        <div className={`w-6 h-6 rounded-lg ${c.badge} flex items-center justify-center flex-shrink-0`}>
+          <Bot size={12} className={c.icon} />
+        </div>
+        <span className="text-[12px] font-bold text-zinc-900 flex-1 text-left truncate">{displayName}</span>
+        <span className={`text-[9px] font-bold ${c.badgeText} ${c.badge} px-2 py-0.5 rounded-full`}>{fileName}</span>
+        <span className="text-[9px] text-zinc-400 font-mono">{lineCount}L</span>
+        <ChevronDown size={12} className={`text-zinc-300 transition-transform flex-shrink-0 ${isExpanded ? '' : '-rotate-90'}`} />
+      </button>
+
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="border-t border-zinc-100 px-4 py-3 max-h-[400px] overflow-y-auto">
+              <div className="text-[11px] text-zinc-600 leading-relaxed prose prose-xs max-w-none prose-zinc prose-p:my-1.5 prose-ul:my-1 prose-li:my-0.5 prose-headings:text-zinc-800 prose-headings:text-xs prose-headings:font-bold prose-headings:mt-3 prose-headings:mb-1 prose-code:text-[10px] prose-code:font-mono prose-code:bg-zinc-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-zinc-50 prose-pre:border prose-pre:border-zinc-100 prose-pre:rounded-lg prose-strong:text-zinc-800">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                  {content}
+                </ReactMarkdown>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 interface ToolCallSequenceProps {
   toolCalls: ToolCall[];
   socket: any;
   activeProject: any;
   activeThreadId: string | null;
+  messageIndex?: number;
+  lastWorkerPromptIndex?: Map<string, number>;
 }
 
-const ToolCallSequence = ({ toolCalls, socket, activeProject, activeThreadId }: ToolCallSequenceProps) => {
+const ToolCallSequence = ({ toolCalls, socket, activeProject, activeThreadId, messageIndex, lastWorkerPromptIndex }: ToolCallSequenceProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   
-  // 1. Filter out internal "backend" tools that don't need to be shown to the dev
-  const visibleTools = toolCalls.filter(tc => 
-    !['read_memory', 'write_memory', 'plan_tasks', 'add_task', 'claim_task', 'check_status', 'report_completion'].includes(tc.name)
-  );
+    // 1. Filter out internal "backend" tools and nameless tool calls
+    const hiddenTools = ['read_memory', 'write_memory', 'plan_tasks', 'add_task', 'claim_task', 'check_status', 'report_completion', 'scout_project'];
+    const visibleTools = toolCalls.filter(tc => {
+      if (!tc.name || tc.name.trim() === '') return false;
+      if (hiddenTools.includes(tc.name)) return false;
+      return true;
+    });
 
   if (visibleTools.length === 0) return null;
 
@@ -89,12 +169,50 @@ const ToolCallSequence = ({ toolCalls, socket, activeProject, activeThreadId }: 
     }
   });
 
+        // 4. Detect worker prompt .md files for inline card rendering
+        const workerPromptPaths = new Set<string>();
+        const workerPromptByPath = new Map<string, { name: string; content: string; path: string }>();
+
+        editTools.forEach(tc => {
+          const filePath = tc.arguments?.path || tc.arguments?.file_path || '';
+          const name = (filePath.split('/').pop() || '').toLowerCase();
+          if (!name.endsWith('.md')) return;
+          const content = tc.arguments?.content || '';
+          const isPrompt = name.endsWith('.agent.md') || isWorkerPromptMd(content) || name === 'agents.md';
+          if (!isPrompt) return;
+
+          workerPromptPaths.add(filePath);
+          workerPromptByPath.set(filePath, {
+            name: filePath.split('/').pop() || 'agent.md',
+            content,
+            path: filePath
+          });
+        });
+
+        // Render only per-worker prompt files (exclude AGENTS.md)
+        // Only show the card on the LAST message that wrote this file (final version)
+        const workerPromptFiles = Array.from(workerPromptByPath.entries())
+          .filter(([path]) => !path.toLowerCase().endsWith('/agents.md') && !path.toLowerCase().endsWith('agents.md'))
+          .map(([, value]) => value)
+          .filter(f => f.content);
+
+        const visibleWorkerPromptFiles = lastWorkerPromptIndex
+          ? workerPromptFiles.filter(f => lastWorkerPromptIndex.get(f.path) === messageIndex)
+          : workerPromptFiles;
+
+
   const anyRunning = visibleTools.some(tc => tc.status === 'running');
   const anyError = visibleTools.some(tc => tc.status === 'error');
   const anyPending = visibleTools.some(tc => tc.status === 'pending');
 
   return (
     <div className="my-2 space-y-1">
+        {/* Inline worker prompt cards */}
+          {visibleWorkerPromptFiles.map((f, idx) => (
+            <WorkerMdCard key={`${f.path}-${idx}`} fileName={f.name} content={f.content} />
+          ))}
+
+
       <div className="flex flex-col gap-1">
         {/* Explorations Summary */}
         {(explorationStats.files > 0 || explorationStats.searches > 0 || explorationStats.lists > 0) && (
@@ -122,8 +240,8 @@ const ToolCallSequence = ({ toolCalls, socket, activeProject, activeThreadId }: 
           </button>
         )}
 
-        {/* Edits Summary */}
-        {Object.entries(editsByFile).map(([path, stats]) => (
+        {/* Edits Summary (exclude worker prompt files since they render as cards) */}
+            {Object.entries(editsByFile).filter(([path]) => !workerPromptPaths.has(path)).map(([path, stats]) => (
           <button 
             key={path}
             onClick={() => setIsExpanded(!isExpanded)}
@@ -145,20 +263,39 @@ const ToolCallSequence = ({ toolCalls, socket, activeProject, activeThreadId }: 
           </button>
         ))}
 
-        {/* Other Tools (e.g. Shell) */}
-        {visibleTools.filter(tc => !explorations.includes(tc) && !editTools.includes(tc)).map(tc => (
-          <button 
-            key={tc.id}
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center gap-2 text-[11px] font-medium text-zinc-400 hover:text-zinc-600 transition-colors group/row"
-          >
-            <span>Executed</span>
-            <span className="text-zinc-600 font-mono font-bold truncate max-w-[200px]">
-              {tc.arguments?.command || tc.name}
-            </span>
-            <ChevronRight size={12} className={`text-zinc-300 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-          </button>
-        ))}
+        {/* Other Tools (e.g. Shell, spawn_worker) */}
+          {visibleTools.filter(tc => !explorations.includes(tc) && !editTools.includes(tc)).map(tc => {
+            // Hide blocked spawn_worker calls entirely (they failed with BLOCKED error)
+            const isBlocked = tc.name === 'spawn_worker' && (tc.status === 'error' || (tc.result && JSON.stringify(tc.result).includes('BLOCKED')));
+            if (isBlocked) return null;
+            
+            return tc.name === 'spawn_worker' ? (
+              <div key={tc.id} className="rounded-lg border border-amber-200 bg-amber-50/50 p-2.5 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-black text-amber-600 uppercase tracking-wider">Spawned Worker</span>
+                  {tc.arguments?.taskId && (
+                    <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{tc.arguments.taskId}</span>
+                  )}
+                  {tc.status === 'running' && <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />}
+                </div>
+                {tc.arguments?.instructions && (
+                  <p className="text-[11px] text-zinc-600 leading-relaxed line-clamp-3">{tc.arguments.instructions}</p>
+                )}
+              </div>
+            ) : (
+              <button 
+                key={tc.id}
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="flex items-center gap-2 text-[11px] font-medium text-zinc-400 hover:text-zinc-600 transition-colors group/row"
+              >
+                <span>Executed</span>
+                <span className="text-zinc-600 font-mono font-bold truncate max-w-[200px]">
+                  {tc.arguments?.command || tc.name}
+                </span>
+                <ChevronRight size={12} className={`text-zinc-300 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+              </button>
+            );
+          })}
       </div>
 
       <AnimatePresence>
@@ -238,67 +375,123 @@ interface AgenticWorkbenchProps {
   onViewChange: (view: 'code' | 'chat' | 'plan') => void;
 }
 
-  const MemoizedMarkdown = React.memo(({ content }: { content: string }) => (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      rehypePlugins={[rehypeHighlight]}
-      components={{
-        code({ node, inline, className, children, ...props }: any) {
-          const match = /language-(\w+)/.exec(className || '');
-          return !inline && match ? (
-            <div className="relative group my-4">
-              <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                <button
-                  onClick={() => navigator.clipboard.writeText(String(children).replace(/\n$/, ''))}
-                  className="p-1.5 bg-white hover:bg-zinc-50 text-zinc-400 hover:text-zinc-900 rounded-md transition-all border border-zinc-200 shadow-sm"
-                  title="Copy code"
-                >
-                  <Copy size={14} />
-                </button>
-              </div>
-              <pre className={`${className} !bg-zinc-50/50 !m-0 !rounded-2xl !p-5 border border-zinc-200 shadow-sm overflow-x-auto`}>
-                <code {...props} className={`${className} !text-zinc-800`}>
-                  {children}
-                </code>
-              </pre>
+  /** Extract REQ- checklist blocks from content and return { reqs, rest } */
+  const extractRequirements = (content: string): { reqs: { id: string; text: string; checked: boolean }[]; rest: string } => {
+    const reqPattern = /^- \[([ x])\] (REQ-\d+):\s*(.+)$/gm;
+    const reqs: { id: string; text: string; checked: boolean }[] = [];
+    let match;
+    while ((match = reqPattern.exec(content)) !== null) {
+      reqs.push({ checked: match[1] === 'x', id: match[2], text: match[3].trim() });
+    }
+    const rest = content.replace(/^- \[[ x]\] REQ-\d+:\s*.+$/gm, '').trim();
+    return { reqs, rest };
+  };
+
+  const RequirementsCard = ({ reqs }: { reqs: { id: string; text: string; checked: boolean }[] }) => (
+    <div className="my-4 rounded-2xl border border-blue-100 bg-gradient-to-b from-blue-50/40 to-white shadow-sm overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-blue-100/60 bg-blue-50/50 flex items-center gap-2">
+        <ListChecks size={13} className="text-blue-600" />
+        <span className="text-[10px] font-black text-blue-800 uppercase tracking-[0.12em]">Requirements</span>
+        <span className="ml-auto text-[9px] font-bold text-blue-500 bg-blue-100 px-1.5 py-0.5 rounded-full">{reqs.length}</span>
+      </div>
+      <div className="p-3 space-y-1">
+        {reqs.map(r => (
+          <div key={r.id} className="flex items-start gap-2.5 px-2.5 py-2 rounded-xl hover:bg-blue-50/40 transition-colors group">
+            <div className={`mt-0.5 w-4 h-4 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+              r.checked ? 'bg-emerald-500 border-emerald-500' : 'border-zinc-300 group-hover:border-blue-400'
+            }`}>
+              {r.checked && <Check size={10} className="text-white" strokeWidth={3} />}
             </div>
-          ) : (
-            <code {...props} className={`${className} px-1.5 py-0.5 bg-zinc-100 text-zinc-800 rounded-md font-mono text-[0.9em]`}>
-              {children}
-            </code>
-          );
-        },
-        p: ({ children }) => <p className="mb-4 last:mb-0 leading-relaxed">{children}</p>,
-        ul: ({ children }) => <ul className="mb-4 space-y-2 list-disc pl-5">{children}</ul>,
-        ol: ({ children }) => <ol className="mb-4 space-y-2 list-decimal pl-5">{children}</ol>,
-        li: ({ children }) => <li className="text-zinc-700">{children}</li>,
-        h1: ({ children }) => <h1 className="text-xl font-bold mb-4 text-zinc-900">{children}</h1>,
-        h2: ({ children }) => <h2 className="text-lg font-bold mb-3 text-zinc-900">{children}</h2>,
-        h3: ({ children }) => <h3 className="text-md font-bold mb-2 text-zinc-900">{children}</h3>,
-        blockquote: ({ children }) => (
-          <blockquote className="border-l-4 border-zinc-200 pl-4 italic text-zinc-600 my-4">
-            {children}
-          </blockquote>
-        ),
-      }}
-    >
-      {content}
-    </ReactMarkdown>
-  ));
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-black text-blue-600 bg-blue-100/80 px-1.5 py-0.5 rounded uppercase tracking-wider">{r.id}</span>
+              </div>
+              <p className={`text-[12px] leading-relaxed mt-0.5 ${r.checked ? 'text-zinc-400 line-through' : 'text-zinc-700'}`}>{r.text}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const MemoizedMarkdown = React.memo(({ content }: { content: string }) => {
+    const { reqs, rest } = extractRequirements(content);
+    return (
+      <>
+        {reqs.length > 0 && <RequirementsCard reqs={reqs} />}
+        {rest && (
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeHighlight]}
+            components={{
+              code({ node, inline, className, children, ...props }: any) {
+                const match = /language-(\w+)/.exec(className || '');
+                return !inline && match ? (
+                  <div className="relative group my-4">
+                    <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                      <button
+                        onClick={() => navigator.clipboard.writeText(String(children).replace(/\n$/, ''))}
+                        className="p-1.5 bg-white hover:bg-zinc-50 text-zinc-400 hover:text-zinc-900 rounded-md transition-all border border-zinc-200 shadow-sm"
+                        title="Copy code"
+                      >
+                        <Copy size={14} />
+                      </button>
+                    </div>
+                    <pre className={`${className} !bg-zinc-50/50 !m-0 !rounded-2xl !p-5 border border-zinc-200 shadow-sm overflow-x-auto`}>
+                      <code {...props} className={`${className} !text-zinc-800`}>
+                        {children}
+                      </code>
+                    </pre>
+                  </div>
+                ) : (
+                  <code {...props} className={`${className} px-1.5 py-0.5 bg-zinc-100 text-zinc-800 rounded-md font-mono text-[0.9em]`}>
+                    {children}
+                  </code>
+                );
+              },
+              p: ({ children }) => <p className="mb-4 last:mb-0 leading-relaxed">{children}</p>,
+              ul: ({ children }) => <ul className="mb-4 space-y-2 list-disc pl-5">{children}</ul>,
+              ol: ({ children }) => <ol className="mb-4 space-y-2 list-decimal pl-5">{children}</ol>,
+              li: ({ children }) => <li className="text-zinc-700">{children}</li>,
+              h1: ({ children }) => <h1 className="text-xl font-bold mb-4 text-zinc-900">{children}</h1>,
+              h2: ({ children }) => <h2 className="text-lg font-bold mb-3 text-zinc-900">{children}</h2>,
+              h3: ({ children }) => <h3 className="text-md font-bold mb-2 text-zinc-900">{children}</h3>,
+              blockquote: ({ children }) => (
+                <blockquote className="border-l-4 border-zinc-200 pl-4 italic text-zinc-600 my-4">
+                  {children}
+                </blockquote>
+              ),
+            }}
+          >
+            {rest}
+          </ReactMarkdown>
+        )}
+      </>
+    );
+  });
 
   const MessageContent = ({ content, isAssistant }: { content: string | any[], isAssistant?: boolean }) => {
     if (typeof content === 'string') {
       if (!isAssistant) return <p className="text-sm text-zinc-800 whitespace-pre-wrap leading-relaxed">{content}</p>;
-      return (
-        <div className="text-sm text-zinc-800 prose prose-sm max-w-none prose-zinc prose-pre:p-0 prose-pre:bg-transparent">
-          <MemoizedMarkdown
-            content={content
-              .replace(/```thinking[\s\S]*?```/g, '')
-              .replace(/Called \w+ → Success\n?/g, '')
-              .trim()}
-          />
-        </div>
-      );
+
+    const planRegex = /<plan>([\s\S]*?)<\/plan>/g;
+    const planUpdateRegex = /<plan_update>([\s\S]*?)<\/plan_update>/g;
+
+    // Strip plan blocks from message content (they render in the sidebar now)
+    const strippedContent = content
+      .replace(planRegex, '')
+      .replace(planUpdateRegex, '')
+      .replace(/```thinking[\s\S]*?```/g, '')
+      .replace(/Called \w+ → Success\n?/g, '')
+      .trim();
+
+    if (!strippedContent) return null;
+
+    return (
+      <div className="text-sm text-zinc-800 prose prose-sm max-w-none prose-zinc prose-pre:p-0 prose-pre:bg-transparent">
+        <MemoizedMarkdown content={strippedContent} />
+      </div>
+    );
     }
 
     if (Array.isArray(content)) {
@@ -442,14 +635,33 @@ interface AgenticWorkbenchProps {
     setExpandedThinking(prev => ({ ...prev, [index]: !prev[index] }));
   };
 
-      const handleCopyMessage = (content: string, index: number) => {
-          const cleanContent = content.replace(/```thinking[\s\S]*?```/g, '').trim();
-          navigator.clipboard.writeText(cleanContent);
-          setCopiedIndex(index);
-          setTimeout(() => setCopiedIndex(null), 2000);
-      };
-  
-      const messagesList = (
+    const handleCopyMessage = (content: string, index: number) => {
+            const cleanContent = content.replace(/```thinking[\s\S]*?```/g, '').trim();
+            navigator.clipboard.writeText(cleanContent);
+            setCopiedIndex(index);
+            setTimeout(() => setCopiedIndex(null), 2000);
+        };
+
+        // Pre-scan: find which message index holds the LAST version of each worker prompt path
+        const lastWorkerPromptIndex = new Map<string, number>();
+        const filteredMsgs = messages.filter(m => m.role !== 'tool');
+        filteredMsgs.forEach((msg, idx) => {
+          if (msg.role !== 'assistant' || !msg.toolCalls) return;
+          const editTcs = msg.toolCalls.filter(tc => ['write_file', 'replace', 'apply_patch'].includes(tc.name));
+          editTcs.forEach(tc => {
+            const filePath = tc.arguments?.path || tc.arguments?.file_path || '';
+            const name = (filePath.split('/').pop() || '').toLowerCase();
+            if (!name.endsWith('.md')) return;
+            const content = tc.arguments?.content || '';
+            const isPrompt = name.endsWith('.agent.md') || isWorkerPromptMd(content);
+            if (isPrompt && !name.endsWith('agents.md') && name !== 'agents.md') {
+              lastWorkerPromptIndex.set(filePath, idx); // last-wins
+            }
+          });
+        });
+
+        const messagesList = (
+
         <div className="flex-1 flex overflow-hidden relative h-full">      <div className="flex-1 overflow-y-auto p-4 space-y-4 relative h-full">
         <AnimatePresence>
           {hasPendingApproval && (
@@ -605,14 +817,17 @@ interface AgenticWorkbenchProps {
                     )}
                   </AnimatePresence>
 
-                  {msg.toolCalls && (
-                    <ToolCallSequence
-                      toolCalls={msg.toolCalls}
-                      socket={socket}
-                      activeProject={activeProject}
-                      activeThreadId={activeThreadId}
-                    />
-                  )}
+                    {msg.toolCalls && (
+                        <ToolCallSequence
+                          toolCalls={msg.toolCalls}
+                          socket={socket}
+                          activeProject={activeProject}
+                          activeThreadId={activeThreadId}
+                          messageIndex={index}
+                          lastWorkerPromptIndex={lastWorkerPromptIndex}
+                        />
+                      )}
+
 
                                       {msg.content ? (
                                         <div className="relative group/content">
@@ -685,7 +900,7 @@ interface AgenticWorkbenchProps {
         );
         })}
 
-        <div className="h-32 flex-shrink-0" /> {/* Spacer for floating composer bar */}
+        <div className="h-56 flex-shrink-0" /> {/* Spacer for floating composer bar + approval banner */}
         <div ref={messagesEndRef} />
 
         {/* BP-08: Stream Error Banner */}
@@ -740,7 +955,7 @@ interface AgenticWorkbenchProps {
               {/* BP-09: Agent Steps Sidebar */}
               {workbenchView !== 'plan' && (
                 <div className="relative">
-                  <AgentStepsPanel />
+                  <AgentStepsPanel messages={messages} />
                 </div>
               )}
             </div>
@@ -971,56 +1186,56 @@ interface AgenticWorkbenchProps {
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 flex flex-col min-h-0 relative">
-        {activeProject && messages.length === 0 && !isLoading && (workbenchView === 'chat' || workbenchView === 'code') && !activeThreadId ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
-              <div className="w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl flex items-center justify-center shadow-lg mb-6">
-                <Sparkles size={28} className="text-white" />
-              </div>
-              <h2 className="text-2xl font-bold text-zinc-900 mb-2">
-                Let's build <span className="text-amber-600">{activeProject.name}</span>
-              </h2>
-              <p className="text-sm text-zinc-500 max-w-md mb-6">
-                Start a conversation to plan, build, or debug your project with autonomous agents.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={onAddThread || (() => {})}
-                  className="px-5 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold uppercase rounded-xl transition-all shadow-lg active:scale-95"
-                >
-                  New Thread
-                </button>
-                <button
-                  onClick={() => onViewChange('plan')}
-                  className="px-5 py-2.5 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 text-xs font-bold uppercase rounded-xl transition-all"
-                >
-                  View Plan
-                </button>
-              </div>
-            </div>
-        ) : activeProject && messages.length === 0 && !isLoading && (workbenchView === 'chat' || workbenchView === 'code') ? (
-            <ProjectOverview
-                onNewThread={onAddThread || (() => {})}
-                onStartPlanning={() => onViewChange('plan')}
-                hasPlan={tasks.length > 0}
-            />
-        ) : workbenchView === 'plan' ? (
-            <div className={`flex-1 flex overflow-hidden ${splitDirection === 'vertical' ? 'flex-row' : 'flex-col'}`}>
-                <div className={`flex-1 overflow-hidden border-${splitDirection === 'vertical' ? 'r' : 'b'} border-zinc-200`}>
-                    <ProjectOverview 
-                        onNewThread={() => onViewChange('chat')} 
-                        onStartPlanning={() => {}} 
-                        hasPlan={tasks.length > 0}
-                    />
+        <div className="flex-1 flex flex-col min-h-0 relative">
+          {activeProject && messages.length === 0 && !isLoading && (workbenchView === 'chat' || workbenchView === 'code') && !activeThreadId ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
+                <div className="w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl flex items-center justify-center shadow-lg mb-6">
+                  <Sparkles size={28} className="text-white" />
                 </div>
-                <div className="flex-1 overflow-hidden relative bg-white border-l border-zinc-100">
-                    {messagesList}
+                <h2 className="text-2xl font-bold text-zinc-900 mb-2">
+                  Let's build <span className="text-amber-600">{activeProject.name}</span>
+                </h2>
+                <p className="text-sm text-zinc-500 max-w-md mb-6">
+                  Start a conversation to plan, build, or debug your project with autonomous agents.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={onAddThread || (() => {})}
+                    className="px-5 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold uppercase rounded-xl transition-all shadow-lg active:scale-95"
+                  >
+                    New Thread
+                  </button>
+                  <button
+                    onClick={() => onViewChange('plan')}
+                    className="px-5 py-2.5 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 text-xs font-bold uppercase rounded-xl transition-all"
+                  >
+                    View Plan
+                  </button>
                 </div>
-            </div>
-        ) : (
-            messagesList
-        )}
-      </div>
+              </div>
+          ) : activeProject && messages.length === 0 && !isLoading && (workbenchView === 'chat' || workbenchView === 'code') && !activeThreadId && tasks.length > 0 ? (
+              <ProjectOverview
+                  onNewThread={onAddThread || (() => {})}
+                  onStartPlanning={() => onViewChange('plan')}
+                  hasPlan={tasks.length > 0}
+              />
+          ) : workbenchView === 'plan' ? (
+              <div className={`flex-1 flex overflow-hidden ${splitDirection === 'vertical' ? 'flex-row' : 'flex-col'}`}>
+                  <div className={`flex-1 overflow-hidden border-${splitDirection === 'vertical' ? 'r' : 'b'} border-zinc-200`}>
+                      <ProjectOverview 
+                          onNewThread={() => onViewChange('chat')} 
+                          onStartPlanning={() => {}} 
+                          hasPlan={tasks.length > 0}
+                      />
+                  </div>
+                  <div className="flex-1 overflow-hidden relative bg-white border-l border-zinc-100">
+                      {messagesList}
+                  </div>
+              </div>
+          ) : (
+              messagesList
+          )}
+        </div>
 
       {/* Changed Files Panel */}
       {changedFiles.length > 0 && (

@@ -15,12 +15,16 @@ export class GeminiProvider extends LLMProvider {
   }
 
   async chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
-    const geminiModel = options?.model || 'gemini-1.5-flash';
+    const geminiModel = options?.model || 'gemini-2.0-flash';
 
     // Model name mapping/fallback
     let finalModel = geminiModel;
     if (finalModel === 'antigravity-1') {
-      finalModel = 'gemini-1.5-pro';
+      finalModel = 'gemini-2.0-flash';
+    }
+    // Catch the literal string "default" that some internal callers pass
+    if (finalModel === 'default') {
+      finalModel = 'gemini-2.0-flash';
     }
 
     // Extract system instruction and ensure role alternation
@@ -184,9 +188,10 @@ export class GeminiProvider extends LLMProvider {
   }
 
   async *chatStream(messages: LLMMessage[], options?: LLMProviderOptions): AsyncGenerator<LLMResponse> {
-    const geminiModel = options?.model || 'gemini-1.5-flash';
+    const geminiModel = options?.model || 'gemini-2.0-flash';
     let finalModel = geminiModel;
-    if (finalModel === 'antigravity-1') finalModel = 'gemini-1.5-pro';
+    if (finalModel === 'antigravity-1') finalModel = 'gemini-2.0-flash';
+    if (finalModel === 'default') finalModel = 'gemini-2.0-flash';
 
     const geminiMessages = messages.map((m) => {
       const parts: any[] = [];
@@ -335,7 +340,7 @@ export class GeminiProvider extends LLMProvider {
   }
 
   async transcribe(audioData: any): Promise<string> {
-    const model = 'gemini-1.5-flash';
+    const model = 'gemini-2.0-flash';
     
     // Convert audio data to base64
     let base64Audio = '';
