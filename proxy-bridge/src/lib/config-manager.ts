@@ -3,9 +3,10 @@ import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import yaml from 'js-yaml';
+import { Paths } from './Paths';
 
-const CONFIG_DIR = path.join(os.homedir(), '.queenbee');
-const CONFIG_FILE = path.join(CONFIG_DIR, 'config.yaml');
+const CONFIG_DIR = Paths.getQueenBeeConfigDir();
+const CONFIG_FILE = Paths.getQueenBeeConfigFile();
 
 export interface ModelConfig {
     name: string;

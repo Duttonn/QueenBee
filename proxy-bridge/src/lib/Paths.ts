@@ -62,16 +62,41 @@ export class Paths {
   /**
    * Resolves the GitHub Token path.
    */
-  static getGitHubTokenPath(): string {
-    return path.join(this.getCodexHome(), 'github-token.json');
-  }
+    static getGitHubTokenPath(): string {
+      return path.join(this.getQueenBeeConfigDir(), 'github-token.json');
+    }
 
-  /**
-   * Resolves the Auth Profiles path.
-   */
-  static getAuthProfilesPath(): string {
-    return path.join(this.getCodexHome(), 'auth-profiles.json');
-  }
+    /**
+     * Resolves the Auth Profiles path.
+     */
+    static getAuthProfilesPath(): string {
+      return path.join(this.getQueenBeeConfigDir(), 'auth-profiles.json');
+    }
+
+    /**
+     * Resolves the .queenbee config directory.
+     * Priority: QUEENBEE_CONFIG_DIR env var > ~/.queenbee
+     */
+    static getQueenBeeConfigDir(): string {
+      if (process.env.QUEENBEE_CONFIG_DIR) {
+        return path.resolve(process.env.QUEENBEE_CONFIG_DIR);
+      }
+      return path.join(os.homedir(), '.queenbee');
+    }
+
+    /**
+     * Resolves the config.yaml path.
+     */
+    static getQueenBeeConfigFile(): string {
+      return path.join(this.getQueenBeeConfigDir(), 'config.yaml');
+    }
+
+    /**
+     * Resolves the GitHub OAuth credentials path.
+     */
+    static getGitHubOAuthCredsPath(): string {
+      return path.join(this.getQueenBeeConfigDir(), 'github-oauth.json');
+    }
 
   /**
    * Resolves the cloud workspaces directory (~/.codex/workspaces).
