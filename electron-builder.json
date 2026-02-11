@@ -1,0 +1,27 @@
+{
+  "appId": "com.queenbee.app",
+  "productName": "QueenBee",
+  "directories": {
+    "output": "dist",
+    "app": "."
+  },
+  "files": [
+    "dist-electron/**/*",
+    "dashboard/dist/**/*",
+    "package.json"
+  ],
+  "mac": {
+    "target": ["dmg", "zip"],
+    "category": "public.app-category.developer-tools",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.plist"
+  },
+  "linux": {
+    "target": ["AppImage"]
+  },
+  "win": {
+    "target": ["nsis"]
+  }
+}

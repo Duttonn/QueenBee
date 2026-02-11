@@ -5,8 +5,8 @@
   "main": "dashboard/dist-electron/main.cjs",
   "scripts": {
     "postinstall": "npm install --prefix dashboard && npm install --prefix proxy-bridge",
-    "dev": "npm run dev --prefix dashboard",
-    "build": "npm run build --prefix dashboard && electron-builder",
+    "compile:electron": "tsc -p tsconfig.electron.json",
+    "build": "npm run build --prefix dashboard && npm run compile:electron && electron-builder",
     "electron:dev": "export VITE_ELECTRON=true && npm run dev --prefix dashboard",
     "electron:build": "export VITE_ELECTRON=true && npm run build --prefix dashboard && electron-builder",
     "build-dashboard": "npm run build --prefix dashboard"
