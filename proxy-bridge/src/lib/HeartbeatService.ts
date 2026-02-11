@@ -3,6 +3,8 @@ import { getDb } from './db';
 import { PolicyStore } from './PolicyStore';
 import { EventLog } from './EventLog';
 import { diagnosticCollector } from './DiagnosticCollector';
+import { MemoryDistillation } from './MemoryDistillation';
+import { MemoryStore } from './MemoryStore';
 import fs from 'fs-extra';
 import path from 'path';
 import { broadcast } from './socket-instance';
@@ -78,6 +80,11 @@ export class HeartbeatService {
       
       // 1. Stale Task Recovery
       await this.recoverStaleTasks(project, policyStore, eventLog);
+      
+      // NB-03: Team Chat Distillation
+      const memoryStore = new MemoryStore(project.path);
+      const distillation = new MemoryDistillation(memoryStore);
+      await distillation.distillTeamChat(project.path);
       
       // Future steps: Trigger evaluation, Reaction processing, etc.
       

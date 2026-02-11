@@ -1,0 +1,8 @@
+{
+  "projectId": "4cdc8b94-2c76-4f35-8186-dfb3a97fdf17",
+  "createdAt": 1770758148023,
+  "startupCommands": [
+    "cd proxy-bridge && npm run dev",
+    "cd dashboard && npm run dev"
+  ]
+}

@@ -386,12 +386,12 @@
   - **Description**: Resolved "Unknown tool: undefined" error during manual tool approval by correctly passing `tool` and `args` to the executor.
   - **Worker**: INTEGRATION
 
-## 🐝 PHASE 12: THE SOVEREIGN SWARM (Execution & Protocol)
+## 🐝 PHASE 12: THE SOVEREIGN SWARM (Execution & Protocol) [DONE]
 > **Goal**: Replace manual triggers with the `@qb` protocol, prevent swarm file conflicts, and implement typed worker spawning.
 > **Priority Order**: @qb alias → File Event Bus → Worker Templates → Staggered Launch → Deep-Think → Polish
 
 ### 🔴 P1 — Swarm UX Entry Point
-- [ ] `QB-01`: [Frontend] **Command Alias Engine**
+- [x] `QB-01`: [Frontend] **Command Alias Engine**
   - **Priority**: P1 — Unlocks the entire swarm UX
   - **Description**: Map `@qb` to the internal swarm orchestration workflow.
   - **Context**: Update `handleSendMessage` in `CodexLayout.tsx`. Use a regex `^@qb\s+` to intercept.
@@ -399,7 +399,7 @@
   - **Worker**: FRONTEND
 
 ### 🔴 P1 — Swarm Safety (File Conflicts)
-- [ ] `NB-01`: [Backend] **File Change Event Bus**
+- [x] `NB-01`: [Backend] **File Change Event Bus**
   - **Priority**: P1 — Prevents the #1 swarm failure mode (agents overwriting each other's files)
   - **Description**: Track which agents own which files. When `write_file` is called, check if another active agent has also written to the same file. If so, inject a system message alert into the other agent's context via Roundtable.
   - **Files**: NEW `proxy-bridge/src/lib/FileWatcher.ts`, MODIFY `proxy-bridge/src/lib/ToolExecutor.ts` (write_file handler), MODIFY `proxy-bridge/src/lib/Roundtable.ts`
@@ -411,7 +411,7 @@
   - **Worker**: BACKEND
 
 ### 🟠 P2 — Core Swarm Execution
-- [ ] `QB-05`: [Backend] **Worker Prompt Templating**
+- [x] `QB-05`: [Backend] **Worker Prompt Templating**
   - **Priority**: P2 — Specialized prompts prevent "jack-of-all-trades" LLM drift
   - **Description**: Create specialized worker personas with focused system prompts.
   - **Files**: NEW `proxy-bridge/src/lib/prompts/workers/ui-bee.ts`, NEW `proxy-bridge/src/lib/prompts/workers/logic-bee.ts`, NEW `proxy-bridge/src/lib/prompts/workers/test-bee.ts`, NEW `proxy-bridge/src/lib/prompts/workers/index.ts`
@@ -424,7 +424,7 @@
   - **Criteria**: Architect can reference `UI_BEE` in spawn_worker and the worker gets a specialized prompt.
   - **Worker**: BACKEND
 
-- [ ] `QB-06`: [Integration] **Parallel Launch Sequencer**
+- [x] `QB-06`: [Integration] **Parallel Launch Sequencer**
   - **Priority**: P2 — OOM/rate-limit protection for multi-worker launches
   - **Description**: Stagger worker launches instead of spawning all at once.
   - **Files**: MODIFY `proxy-bridge/src/lib/ToolExecutor.ts` (spawn_worker handler), MODIFY `proxy-bridge/src/lib/PolicyStore.ts`
@@ -437,7 +437,7 @@
   - **Worker**: INTEGRATION
 
 ### 🟡 P3 — Swarm Intelligence
-- [ ] `NB-03`: [Backend] **Memory Distillation from Team Chat**
+- [x] `NB-03`: [Backend] **Memory Distillation from Team Chat**
   - **Priority**: P3 — Turns team decisions into persistent rules
   - **Description**: Periodically scan `team_chat.jsonl` and extract "Agreed Standards" into MemoryStore.
   - **Files**: MODIFY `proxy-bridge/src/lib/MemoryDistillation.ts`, MODIFY `proxy-bridge/src/lib/HeartbeatService.ts`
@@ -448,7 +448,7 @@
   - **Criteria**: Architect says "Use Tailwind for all styling" → becomes a persistent preference for all workers.
   - **Worker**: BACKEND
 
-- [ ] `QB-03`: [Backend] **Architect "Lens" Mode (Tool-Based)**
+- [x] `QB-03`: [Backend] **Architect "Lens" Mode (Tool-Based)**
   - **Priority**: P3 — Refinement, not critical path
   - **Description**: Add a `scout_project` tool that the Architect calls itself to scan the codebase structure.
   - **Files**: MODIFY `proxy-bridge/src/lib/ToolDefinitions.ts`, MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`
@@ -459,7 +459,7 @@
   - **Criteria**: Architect calls scout_project → gets "Found 12 modules, 3 config files, primary language: TypeScript".
   - **Worker**: BACKEND
 
-- [ ] `QB-04`: [Backend] **Requirement Checklist (Guideline-Based)**
+- [x] `QB-04`: [Backend] **Requirement Checklist (Guideline-Based)**
   - **Priority**: P3 — Refinement
   - **Description**: Guide the Architect to output structured requirements before proposing workers.
   - **Files**: MODIFY `proxy-bridge/src/lib/AutonomousRunner.ts` (architect directive)
@@ -471,15 +471,57 @@
   - **Criteria**: Architect outputs "- [ ] REQ-01: Login page with OAuth" → UI renders as a ticked checklist.
   - **Worker**: BACKEND + FRONTEND
 
+### 🟢 DONE — Swarm UX Fixes (Architect Flow & Display)
+
+- [DONE] `QB-07`: [Backend] **Architect Approval Gate (spawn_worker Blocking)**
+  - **Files**: `proxy-bridge/src/lib/AgentSession.ts`, `proxy-bridge/src/lib/AutonomousRunner.ts`
+  - **Description**: Added `blockedTools` mechanism to AgentSession. Architect sessions start with `spawn_worker` blocked, forcing the LLM to present its worker assignment plan in message content. Unblocked on user follow-up message (approval). Prevents architects from silently spawning workers without showing prompts.
+  - **Worker**: BACKEND
+
+- [DONE] `QB-08`: [Frontend] **Execution Plan in AgentStepsPanel Sidebar**
+  - **Files**: `dashboard/src/components/agents/AgentStepsPanel.tsx`, `dashboard/src/components/layout/AgenticWorkbench.tsx`
+  - **Description**: `<plan>` and `<plan_update>` blocks are now extracted from messages and rendered as a structured card in the right-side AgentStepsPanel (goal, numbered steps with progress indicators, current step highlighting). Stripped from inline message content to avoid duplication.
+  - **Worker**: FRONTEND
+
+- [DONE] `QB-09`: [Frontend] **Requirements Styled Card in Markdown**
+  - **Files**: `dashboard/src/components/layout/AgenticWorkbench.tsx`
+  - **Description**: `- [ ] REQ-XX:` checklist lines are extracted from assistant messages and rendered as a styled Requirements card with blue gradient header, checkbox indicators, and REQ-ID badges. Remaining markdown renders normally below.
+  - **Worker**: FRONTEND
+
+- [DONE] `QB-10`: [Frontend] **Swarm Sidebar Naming Fix**
+  - **Files**: `dashboard/src/components/layout/Sidebar.tsx`
+  - **Description**: Swarm groups now show "Setup" as placeholder when no user request found. Once the user sends an `@qb` request, the swarm label updates to show the cleaned request summary (stripped of `@qb` prefix, truncated to 30 chars).
+  - **Worker**: FRONTEND
+
+- [DONE] `QB-11`: [Frontend] **Socket Tool Call Name & Arguments Fix**
+  - **Files**: `dashboard/src/hooks/useSocketEvents.ts`, `dashboard/src/components/layout/CodexLayout.tsx`
+  - **Description**: Fixed blank "Executed" rows in tool call display. Socket `TOOL_EXECUTION` updates now always include `name: data.tool`. String arguments from OpenAI API are parsed to objects. `spawn_worker` calls render as styled amber cards with task ID and instruction preview.
+  - **Worker**: FRONTEND
+
+- [DONE] `QB-12`: [Backend] **Architect Spawn Flow Fix**
+  - **Files**: `proxy-bridge/src/lib/AutonomousRunner.ts`, `proxy-bridge/src/lib/AgentSession.ts`
+  - **Description**: Fixed architect failing to spawn workers after user approval. Three issues: (1) No system nudge injected when `spawn_worker` unblocked — architect didn't know to retry. (2) Empty response fallback asked for "summary" instead of telling architect to spawn. (3) BLOCKED error message too vague — now gives explicit instructions (output REQ checklist, worker assignments, wait). Also increased architect `maxSteps` to 20.
+  - **Worker**: BACKEND
+
+- [DONE] `QB-13`: [Frontend+Backend] **Worker Thread Visibility & Dedup**
+  - **Files**: `dashboard/src/hooks/useSocketEvents.ts`, `proxy-bridge/src/lib/ToolExecutor.ts`
+  - **Description**: Fixed spawned workers not appearing in swarm sidebar. `SPAWN_THREAD` event from `UI_UPDATE` was broadcast but never handled on the frontend — added handler in `useSocketEvents` that creates a thread with `isWorker: true`. Also added dedup guard in `handleSpawnWorker` so the same taskId can't be spawned twice (prevents duplicate FEAT-01). Frontend dedup checks `parentTaskId` on existing threads.
+  - **Worker**: FULLSTACK
+
+- [DONE] `QB-14`: [Frontend] **Plan Approve/Reject UI Buttons**
+  - **Files**: `dashboard/src/components/layout/CodexLayout.tsx`
+  - **Description**: Added `PlanApprovalBar` component that appears above the composer when the architect presents a plan (detects `<plan>`, `REQ-`, or `Worker Assignment` in last assistant message). Shows "Revise" and "Approve & Launch" buttons. Clicking sends the approval/rejection message directly, removing ambiguity for the architect.
+  - **Worker**: FRONTEND
+
 ### 🟢 P4 — Token Optimization & Polish
-- [ ] `NB-02`: [Frontend] **Roundtable "Mentions"**
+- [x] `NB-02`: [Frontend] **Roundtable "Mentions"**
   - **Priority**: P4 — Token savings, not blocking
   - **Description**: User can tag a specific worker in the group chat using `@WorkerName`.
   - **Context**: Inject the user message ONLY into that worker's context to save tokens.
   - **Criteria**: Visual highlight in `RoundtablePanel.tsx`.
   - **Worker**: FRONTEND
 
-- [ ] `QB-02`: [Frontend] **Visual Command Suggester**
+- [x] `QB-02`: [Frontend] **Visual Command Suggester**
   - **Priority**: P4 — Polish, not blocking
   - **Description**: When user types `@`, show a suggestion dropdown.
   - **Context**: Similar to `MentionDropdown.tsx` but specialized for system commands.

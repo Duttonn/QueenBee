@@ -46,8 +46,10 @@ import Sidebar from './Sidebar';
 import AgenticWorkbench from './AgenticWorkbench';
 import GlobalCommandBar from './GlobalCommandBar';
 import InspectorPanel from './InspectorPanel';
+import DictationOverlay from './DictationOverlay';
 import CustomizationPanel from '../settings/CustomizationPanel';
 import UniversalAuthModal from './UniversalAuthModal';
+import { NativeService } from '../../services/NativeService';
 import CommitModal from '../projects/CommitModal';
 import DiffViewer from '../projects/DiffViewer';
 import { ProjectOverview } from '../projects/ProjectOverview';
@@ -58,24 +60,39 @@ import XtermTerminal from './XtermTerminal';
 import RoundtablePanel from '../agents/RoundtablePanel';
 
 const MentionDropdown = ({ files, selectedIndex, onSelect }: { files: string[], selectedIndex: number, onSelect: (f: string) => void }) => {
-  if (files.length === 0) return null;
+  // QB-02: Include system commands in the dropdown
+  const showQB = "qb".includes(files[0]?.toLowerCase() || "");
+  const displayItems = showQB ? ["qb", ...files.filter(f => f !== "qb")] : files;
+
+  if (displayItems.length === 0) return null;
+  
   return (
     <div className="absolute bottom-full left-0 mb-2 w-64 bg-white border border-zinc-200 shadow-2xl rounded-2xl overflow-hidden z-[70] p-1">
       <div className="px-3 py-2 text-[9px] font-black text-zinc-400 uppercase tracking-widest border-b border-zinc-50 mb-1">
-        Mention File
+        Summon & Mention
       </div>
       <div className="max-h-60 overflow-y-auto">
-        {files.map((file, idx) => (
+        {displayItems.map((item, idx) => (
           <button
-            key={file}
-            onClick={() => onSelect(file)}
-            className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition-all flex items-center gap-2 ${idx === selectedIndex
+            key={item}
+            onClick={() => onSelect(item)}
+            className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition-all flex items-center gap-3 ${idx === selectedIndex
               ? 'bg-zinc-900 text-white shadow-lg'
               : 'text-zinc-600 hover:bg-zinc-50'
               }`}
           >
-            <FileIcon size={12} className={idx === selectedIndex ? 'text-blue-400' : 'text-zinc-400'} />
-            <span className="truncate">{file}</span>
+            <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${
+              item === 'qb' 
+                ? 'bg-amber-100 text-amber-600' 
+                : idx === selectedIndex ? 'bg-zinc-800 text-blue-400' : 'bg-zinc-100 text-zinc-400'
+            }`}>
+              {item === 'qb' ? <Zap size={12} fill="currentColor" /> : <FileIcon size={12} />}
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="truncate font-bold">@{item}</span>
+              {item === 'qb' && <span className="text-[8px] opacity-50 uppercase tracking-tighter">Summon Hive Architect</span>}
+            </div>
+            {idx === selectedIndex && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />}
           </button>
         ))}
       </div>
@@ -101,9 +118,13 @@ interface ComposerBarProps {
   onAttach?: (context: string, mentions: string, fileInfo?: { name: string; type: string; data?: string }) => void;
   pendingFiles?: { name: string; type: string; data?: string }[];
   onRemoveFile?: (name: string) => void;
+  planWaiting?: boolean;
+  onApprovePlan?: () => void;
+  onRevisePlan?: () => void;
+  swarmPhase?: 'plan' | 'prompts' | 'launch' | null;
 }
 
-const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onModeChange, availableModels, selectedModel, onModelSelect, composerMode, onComposerModeChange, projectFiles, onAttach, pendingFiles = [], onRemoveFile }: ComposerBarProps) => {
+const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onModeChange, availableModels, selectedModel, onModelSelect, composerMode, onComposerModeChange, projectFiles, onAttach, pendingFiles = [], onRemoveFile, planWaiting, onApprovePlan, onRevisePlan, swarmPhase }: ComposerBarProps) => {
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [mentionSearch, setMentionSearch] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -111,9 +132,15 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
 
   const filteredFiles = React.useMemo(() => {
     if (mentionSearch === null) return [];
-    return projectFiles
+    const base = projectFiles
       .filter(f => f.toLowerCase().includes(mentionSearch.toLowerCase()))
       .slice(0, 10);
+    
+    // Always include qb in suggestions if it matches search
+    if ("qb".includes(mentionSearch.toLowerCase()) && !base.includes("qb")) {
+      return ["qb", ...base].slice(0, 10);
+    }
+    return base;
   }, [mentionSearch, projectFiles]);
 
   const { isRecording, isProcessing, toggleRecording } = useVoiceRecording(
@@ -223,7 +250,52 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
           />
         )}
 
-        {/* Top: Input Area */}
+          {/* Plan Approval Bar */}
+          {planWaiting && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="px-4 pt-3 pb-2 border-b border-amber-100 bg-amber-50/50 rounded-t-3xl"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center">
+                    <Zap size={13} className="text-amber-600" />
+                  </div>
+                <div>
+                      <div className="text-[9px] font-black text-amber-600/70 uppercase tracking-widest leading-none mb-0.5">
+                        {swarmPhase === 'prompts' ? 'Agent Prompts Ready' : 'Architect Plan Ready'}
+                      </div>
+                      <div className="text-[11px] font-semibold text-zinc-600">
+                        {swarmPhase === 'prompts' 
+                          ? 'Review the agent prompts above and approve to launch workers'
+                          : 'Review the plan above and approve to generate agent prompts'}
+                      </div>
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={onRevisePlan}
+                    className="px-3 py-1.5 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-500 text-[9px] font-black uppercase tracking-widest rounded-lg transition-all"
+                  >
+                    Revise
+                  </button>
+                  <button
+                    onClick={onApprovePlan}
+                    className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white text-[9px] font-black uppercase tracking-widest rounded-lg transition-all shadow-md active:scale-95"
+                  >
+                    <span className="flex items-center gap-1.5">
+                        <Play size={10} fill="currentColor" />
+                        {swarmPhase === 'prompts' ? 'Approve & Launch' : 'Approve Plan'}
+                      </span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Top: Input Area */}
         <div className="px-4 pt-4 pb-2">
           {pendingFiles.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-3">
@@ -389,13 +461,14 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
               >
                 <Play size={18} fill="currentColor" />
               </button>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
+
 
 const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const [activeView, setActiveView] = useState<'build' | 'automations' | 'skills' | 'triage'>('build');
@@ -416,6 +489,9 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const [projectFiles, setProjectFiles] = useState<string[]>([]);
   const [pendingContext, setPendingContext] = useState('');
   const [pendingFiles, setPendingFiles] = useState<{ name: string; type: string; data?: string }[]>([]);
+  const [swarmPhase, setSwarmPhase] = useState<'plan' | 'prompts' | 'launch' | null>(null);
+  const [showPathInput, setShowPathInput] = useState(false);
+  const [pathInputValue, setPathInputValue] = useState('');
 
   const { 
     projects, 
@@ -502,8 +578,22 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     }
   }, [availableModels, selectedModel, activeProviderId, setActiveProvider]);
 
+  const planWaiting = React.useMemo(() => {
+      if (isLoading || !messages.length) return false;
+      const last = messages[messages.length - 1];
+      if (last?.role !== 'assistant' || !last?.content) return false;
+      // Show approve bar during both plan phase and prompts phase
+      if (swarmPhase === 'prompts') return true;
+      return (
+        last.content.includes('REQ-') ||
+        last.content.includes('Worker Assignment') ||
+        last.content.includes('worker assignment') ||
+        last.content.includes('<plan>')
+      );
+    }, [messages, isLoading, swarmPhase]);
+
   const handleSendMessage = useCallback(async (contentOverride?: string, contextInjection?: string) => {
-    const content = contentOverride || inputValue;
+    let content = contentOverride || inputValue;
     if (!content.trim() || isLoading || !selectedProjectId) return;
 
     const isSwarmCommand = content.includes('@qb');
@@ -529,6 +619,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
       setActiveThread(currentThreadId);
       content = content.replace(/@qb/g, '').trim();
       if (!content) content = "I want to start a Hive Swarm Rush. Please analyze the codebase and help me plan the swarm.";
+      useHiveStore.setState({ isOrchestratorActive: true });
     } else if (!currentThreadId) {
       currentThreadId = Date.now().toString();
       await addThread(selectedProjectId, {
@@ -704,15 +795,18 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           setIsLoading(false);
           useHiveStore.getState().setQueenStatus('idle');
         },
-        (event) => {
-          // BP-17: Let SocketHook (useSocketEvents.ts) handle technical tool states
-          // This prevents state fighting between SSE and Socket.io which was causing slowness.
-          if (event.type === 'step_start' || event.type === 'agent_status') {
-            if (event.data.status) {
-              useHiveStore.getState().setQueenStatus(event.data.status);
+          (event) => {
+            // BP-17: Let SocketHook (useSocketEvents.ts) handle technical tool states
+            // This prevents state fighting between SSE and Socket.io which was causing slowness.
+            if (event.type === 'step_start' || event.type === 'agent_status') {
+              if (event.data.status) {
+                useHiveStore.getState().setQueenStatus(event.data.status);
+              }
             }
-          }
-        },
+            if (event.type === 'swarm_phase') {
+              setSwarmPhase(event.data.phase);
+            }
+          },
         (fullMessage: any) => {
           const thread = useHiveStore.getState().projects
             .find(p => p.id === selectedProjectId)
@@ -727,12 +821,11 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
             content: fullMessage.content || '',
             name: fullMessage.name,
             tool_call_id: fullMessage.tool_call_id,
-            toolCalls: fullMessage.tool_calls?.map((tc: any) => ({
-              id: tc.id,
-              name: tc.function.name,
-              arguments: tc.function.arguments,
-              status: 'success'
-            }))
+              toolCalls: fullMessage.tool_calls?.map((tc: any) => {
+                let args = tc.function.arguments;
+                if (typeof args === 'string') { try { args = JSON.parse(args); } catch {} }
+                return { id: tc.id, name: tc.function.name, arguments: args, status: 'success' };
+              })
           };
 
           const isPlaceholder = lastMsg && lastMsg.role === 'assistant' && !lastMsg.content && (!lastMsg.toolCalls || lastMsg.toolCalls.length === 0);
@@ -775,36 +868,22 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           }
         }
     } else {
-        // Web Mode: Use the bridge to trigger a native folder picker
-        try {
-            const res = await fetch(`${API_BASE}/api/utils/choose-folder`);
-            const data = await res.json();
-            
-            if (data.canceled) return;
-            
-            if (data.path) {
-                const path = data.path;
-                const name = path.replace(/\/$/, '').split('/').pop() || 'Untitled';
-                await addAppProject({ id: `proj-${Date.now()}`, name, path, threads: [], agents: [] });
-                // We don't have NativeService.notify in web mode, maybe use a toast or alert
-                alert(`Project ${name} added successfully!`);
-            } else if (data.error) {
-                throw new Error(data.error);
-            }
-        } catch (e: any) {
-            console.error('Failed to open native picker:', e);
-            // Fallback to manual prompt if the bridge fails or is not on macOS
-            const path = window.prompt("Native picker failed. Please enter the absolute path to your project folder:");
-            if (path) {
-                const name = path.replace(/\/$/, '').split('/').pop() || 'Untitled';
-                try {
-                    await addAppProject({ id: `proj-${Date.now()}`, name, path, threads: [], agents: [] });
-                    alert(`Project ${name} added successfully!`);
-                } catch (err: any) {
-                    alert(`Failed to add project: ${err.message}`);
-                }
-            }
-        }
+        // Web Mode: Show inline path input (native picker not available in sandboxed browsers)
+        setPathInputValue('');
+        setShowPathInput(true);
+    }
+  };
+
+  const handleAddProjectByPath = async (projectPath: string) => {
+    const trimmed = projectPath.trim().replace(/\/$/, '');
+    if (!trimmed) return;
+    const name = trimmed.split('/').pop() || 'Untitled';
+    try {
+      await addAppProject({ id: `proj-${Date.now()}`, name, path: trimmed, threads: [], agents: [] });
+      setShowPathInput(false);
+      setPathInputValue('');
+    } catch (err: any) {
+      console.error('Failed to add project:', err);
     }
   };
 
@@ -904,7 +983,15 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
               {activeProject ? (
                 activeThreadId?.startsWith('roundtable-') ? (
                   <div className="flex-1 p-6 overflow-hidden">
-                    <RoundtablePanel projectPath={activeProject.path} />
+                    <RoundtablePanel projectPath={activeProject.path} swarmId={
+                      // Derive active swarmId from the most recent architect thread
+                      (() => {
+                        const architectThread = (activeProject.threads || [])
+                          .filter((t: any) => t.id?.startsWith('architect-'))
+                          .pop();
+                        return architectThread?.id || undefined;
+                      })()
+                    } />
                   </div>
                 ) : (
                   <AgenticWorkbench
@@ -944,37 +1031,48 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                   onToggleInspector={() => setIsInspectorOpen(prev => !prev)}
                 />
               )}
-              <ComposerBar
-                value={inputValue}
-                onChange={setInputValue}
-                onSubmit={handleSendMessage}
-                onStop={handleStop}
-                isLoading={isLoading}
-                mode={executionMode}
-                onModeChange={setExecutionMode}
-                availableModels={availableModels}
-                selectedModel={selectedModel}
-                onModelSelect={setSelectedModel}
-                composerMode={composerMode}
-                onComposerModeChange={setComposerMode}
-                projectFiles={projectFiles}
-                pendingFiles={pendingFiles}
-                onRemoveFile={(name) => setPendingFiles(prev => prev.filter(f => f.name !== name))}
-                onAttach={(context, mentions, fileInfo) => {
-                  if (context) setPendingContext(prev => prev + context);
-                  if (mentions) {
-                    setInputValue(prev => {
-                      const existingMentions: string[] = prev.match(/@(?:[a-zA-Z0-9_\-./]+|"[^"]+")/g) || [];
-                      const newMentions = mentions.split(' ').filter(m => !existingMentions.includes(m));
-                      if (newMentions.length === 0) return prev;
-                      return prev ? `${prev} ${newMentions.join(' ')}` : newMentions.join(' ');
-                    });
-                  }
-                  if (fileInfo) setPendingFiles(prev => [...prev, fileInfo]);
-                }}
-              />
-            </>
-          ) : (
+              {!activeThreadId?.startsWith('roundtable-') && (
+                      <ComposerBar
+                    value={inputValue}
+                    onChange={setInputValue}
+                    onSubmit={handleSendMessage}
+                    onStop={handleStop}
+                    isLoading={isLoading}
+                    mode={executionMode}
+                    onModeChange={setExecutionMode}
+                    availableModels={availableModels}
+                    selectedModel={selectedModel}
+                    onModelSelect={(model, provider) => { setSelectedModel(model); setActiveProvider(provider); }}
+                    composerMode={composerMode}
+                    onComposerModeChange={setComposerMode}
+                    projectFiles={projectFiles}
+                    pendingFiles={pendingFiles}
+                    onRemoveFile={(name) => setPendingFiles(prev => prev.filter(f => f.name !== name))}
+                      planWaiting={planWaiting}
+                        swarmPhase={swarmPhase}
+                        onApprovePlan={() => {
+                          if (swarmPhase === 'prompts') {
+                            handleSendMessage("Approved. Launch all workers now.");
+                          } else {
+                            handleSendMessage("Approved. Now generate the detailed agent prompts and AGENTShn.md files.");
+                          }
+                        }}
+                        onRevisePlan={() => handleSendMessage("Rejected. Please revise the plan.")}
+                      onAttach={(context, mentions, fileInfo) => {
+                      if (context) setPendingContext(prev => prev + context);
+                      if (mentions) {
+                        setInputValue(prev => {
+                          const existingMentions: string[] = prev.match(/@(?:[a-zA-Z0-9_\-./]+|"[^"]+")/g) || [];
+                          const newMentions = mentions.split(' ').filter(m => !existingMentions.includes(m));
+                          if (newMentions.length === 0) return prev;
+                          return prev ? `${prev} ${newMentions.join(' ')}` : newMentions.join(' ');
+                        });
+                      }
+                      if (fileInfo) setPendingFiles(prev => [...prev, fileInfo]);
+                    }}
+                    />
+                  )}
+              </>) : (
             <SkillsManager />
           )}
         </div>
@@ -1039,12 +1137,45 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                 <div className="text-center p-8 text-zinc-500">No active project selected.</div>
               )}
             </div>
+            </div>
+          </div>
+        )}
+
+      {/* Path Input Dialog (web mode fallback for Open Project) */}
+      {showPathInput && (
+        <div className="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-4" onClick={() => setShowPathInput(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-zinc-900 mb-2">Open Project</h3>
+            <p className="text-sm text-zinc-500 mb-4">Enter the absolute path to your project folder</p>
+            <input
+              type="text"
+              value={pathInputValue}
+              onChange={e => setPathInputValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleAddProjectByPath(pathInputValue); }}
+              className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-sm font-mono text-zinc-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              placeholder="/Users/you/projects/my-app"
+              autoFocus
+            />
+            <div className="flex gap-2 mt-4 justify-end">
+              <button
+                onClick={() => setShowPathInput(false)}
+                className="px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleAddProjectByPath(pathInputValue)}
+                className="px-4 py-2 text-sm font-bold text-white bg-zinc-900 hover:bg-zinc-800 rounded-xl transition-colors"
+              >
+                Add Project
+              </button>
+            </div>
           </div>
         </div>
       )}
-    </div>
-  );
-};
+      </div>
+    );
+  };
 
 const EmptyState = ({ onOpenSettings, onRun, onCommit, onOpen, onToggleTerminal, onToggleInspector }: any) => (
   <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-zinc-50/30">

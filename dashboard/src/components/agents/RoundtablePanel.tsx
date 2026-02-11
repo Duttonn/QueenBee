@@ -12,7 +12,7 @@ interface TeamMessage {
   timestamp: string;
 }
 
-const RoundtablePanel = ({ projectPath }: { projectPath: string }) => {
+const RoundtablePanel = ({ projectPath, swarmId }: { projectPath: string; swarmId?: string }) => {
   const [messages, setMessages] = useState<TeamMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -21,7 +21,9 @@ const RoundtablePanel = ({ projectPath }: { projectPath: string }) => {
 
   const fetchMessages = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/roundtable/messages?projectPath=${encodeURIComponent(projectPath)}`);
+      let url = `${API_BASE}/api/roundtable/messages?projectPath=${encodeURIComponent(projectPath)}`;
+      if (swarmId) url += `&swarmId=${encodeURIComponent(swarmId)}`;
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setMessages(data);
@@ -35,7 +37,9 @@ const RoundtablePanel = ({ projectPath }: { projectPath: string }) => {
     fetchMessages();
 
     if (socket) {
-      const handleNewMessage = (msg: TeamMessage) => {
+      const handleNewMessage = (msg: TeamMessage & { swarmId?: string }) => {
+        // Only show messages for the active swarm
+        if (swarmId && msg.swarmId && msg.swarmId !== swarmId) return;
         setMessages(prev => [...prev, msg]);
       };
       socket.on('TEAM_CHAT_MESSAGE', handleNewMessage);
@@ -43,7 +47,7 @@ const RoundtablePanel = ({ projectPath }: { projectPath: string }) => {
         socket.off('TEAM_CHAT_MESSAGE', handleNewMessage);
       };
     }
-  }, [projectPath, socket]);
+  }, [projectPath, swarmId, socket]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -56,16 +60,22 @@ const RoundtablePanel = ({ projectPath }: { projectPath: string }) => {
 
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/roundtable/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectPath,
-          content: inputValue,
-          agentId: 'You',
-          role: 'user'
-        })
-      });
+      // NB-02: Roundtable "Mentions" detection
+      const mentionMatch = inputValue.match(/@([a-zA-Z0-9_\-]+)/);
+      const targetAgentId = mentionMatch ? mentionMatch[1] : undefined;
+
+        const res = await fetch(`${API_BASE}/api/roundtable/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectPath,
+            content: inputValue,
+            agentId: 'You',
+            role: 'user',
+            targetAgentId,
+            swarmId
+          })
+        });
 
       if (res.ok) {
         setInputValue('');
@@ -75,6 +85,17 @@ const RoundtablePanel = ({ projectPath }: { projectPath: string }) => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const renderContent = (content: string) => {
+    // Highlight @mentions
+    const parts = content.split(/(@[a-zA-Z0-9_\-]+)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith('@')) {
+        return <span key={i} className="text-blue-500 font-black px-1.5 py-0.5 bg-blue-50 rounded-md border border-blue-100">{part}</span>;
+      }
+      return part;
+    });
   };
 
   return (
@@ -130,7 +151,7 @@ const RoundtablePanel = ({ projectPath }: { projectPath: string }) => {
                     ? 'bg-zinc-900 text-white rounded-tr-sm shadow-xl shadow-black/10' 
                     : 'bg-white border border-zinc-200 text-zinc-800 rounded-tl-sm shadow-sm'
                 }`}>
-                  {msg.content}
+                  {renderContent(msg.content)}
                 </div>
               </div>
             </motion.div>

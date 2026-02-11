@@ -16,9 +16,15 @@ import { SecurityAuditor } from './SecurityAuditor';
 import { approvalBridge } from './ExternalApprovalBridge';
 import { MemoryStore } from './MemoryStore';
 import { StyleScraper } from './learning/StyleScraper';
+import { fileOwnershipRegistry } from './FileOwnershipRegistry';
+import { getWorkerPrompt, WorkerType } from './prompts/workers';
 
 // Registry to track workers in this process (for the prototype)
 const workerRegistry = new Map<string, { status: string; prUrl?: string }>();
+// Lock to prevent concurrent spawns for the same taskId
+const spawnLocks = new Map<string, Promise<any>>();
+// Track workers per swarm for completion detection
+const swarmWorkerTracker = new Map<string, { total: number; completed: number; failed: number; projectPath: string; summaries: Map<string, string> }>();
 
 /**
  * ToolExecutor: Parses and executes tool calls from the LLM.
@@ -84,12 +90,14 @@ export class ToolExecutor {
     tool: { name: string; arguments: any; id?: string },
     contextOrPath: string | { 
       projectPath: string; 
-      agentId?: string | null; 
-      threadId?: string; 
-      projectId?: string; 
-      toolCallId?: string; 
-      mode?: string;
-      allowedCommands?: string[]; 
+        agentId?: string | null; 
+        threadId?: string; 
+        projectId?: string; 
+        toolCallId?: string; 
+        mode?: string;
+        allowedCommands?: string[];
+        swarmId?: string;
+        mainProjectPath?: string;
     },
     legacyAgentId?: string | null
   ) {
@@ -100,6 +108,8 @@ export class ToolExecutor {
     let toolCallId: string | undefined = tool.id || `call-${Date.now()}`;
     let mode: string = 'local';
     let allowedCommands: string[] = [];
+    let swarmId: string | undefined;
+    let mainProjectPath: string | undefined;
 
     if (typeof contextOrPath === 'string') {
       projectPath = contextOrPath;
@@ -110,6 +120,8 @@ export class ToolExecutor {
       threadId = contextOrPath.threadId;
       projectId = contextOrPath.projectId;
       mode = contextOrPath.mode || 'local';
+      swarmId = contextOrPath.swarmId;
+      mainProjectPath = contextOrPath.mainProjectPath;
       if (contextOrPath.toolCallId) toolCallId = contextOrPath.toolCallId;
       if (contextOrPath.allowedCommands) allowedCommands = contextOrPath.allowedCommands;
     }
@@ -159,6 +171,17 @@ export class ToolExecutor {
             result = { success: true, path: tool.arguments.path };
           } else {
             const filePath = this.validatePath(projectPath, tool.arguments.path);
+            
+            // NB-01: File Ownership & Conflict Detection
+            const previousOwner = fileOwnershipRegistry.recordWrite(filePath, agentId || 'unknown');
+              if (previousOwner && previousOwner !== (agentId || 'unknown')) {
+                const roundtable = new Roundtable(mainProjectPath || projectPath);
+              await roundtable.postMessage('SYSTEM', 'alert', 
+                `⚠️ Agent ${agentId} modified ${tool.arguments.path} which was last edited by ${previousOwner}. Potential conflict!`,
+                { threadId, taskId: (tool.arguments as any).taskId }
+              );
+            }
+
             let stats = { added: 0, removed: 0 };
             
             try {
@@ -264,7 +287,7 @@ export class ToolExecutor {
           break;
 
         case 'spawn_worker':
-          result = await this.handleSpawnWorker(projectPath, tool.arguments.taskId, tool.arguments.instructions);
+          result = await this.handleSpawnWorker(projectPath, tool.arguments.taskId, tool.arguments.instructions, threadId);
           break;
 
         case 'report_completion':
@@ -316,12 +339,12 @@ export class ToolExecutor {
           break;
 
         case 'chat_with_team':
-          const roundtable = new Roundtable(projectPath);
+          const roundtable = new Roundtable(mainProjectPath || projectPath);
           const teamMsg = await roundtable.postMessage(
             agentId || 'unknown',
             contextOrPath && typeof contextOrPath !== 'string' ? contextOrPath.agentId || 'agent' : 'agent',
             tool.arguments.content,
-            { threadId, taskId: tool.arguments.taskId }
+            { threadId, taskId: tool.arguments.taskId, swarmId }
           );
 
           if (this.eventLog) {
@@ -348,6 +371,10 @@ export class ToolExecutor {
             style_samples: StyleScraper.formatForPrompt(samples),
             message: `Learned user style from ${samples.length} examples. Please mimic this style in your next edits.`
           };
+          break;
+
+        case 'scout_project':
+          result = await this.handleScoutProject(projectPath);
           break;
           
         default:
@@ -411,43 +438,108 @@ export class ToolExecutor {
     }
   }
 
-  private async handleSpawnWorker(projectPath: string, taskId: string, instructions: string) {
+  private async handleSpawnWorker(projectPath: string, taskId: string, instructions: string, architectThreadId?: string) {
+    // Serialize spawns for the same taskId to prevent race conditions
+    // when the LLM emits multiple spawn_worker calls in parallel
+    const existingLock = spawnLocks.get(taskId);
+    if (existingLock) {
+      await existingLock;
+      // After waiting, check if a worker was already spawned
+      const existing = workerRegistry.get(taskId);
+      if (existing && existing.status !== 'failed') {
+        console.log(`[Swarm] Worker for ${taskId} already spawned by concurrent call (status: ${existing.status}). Skipping.`);
+        return { success: true, taskId, message: `Worker for ${taskId} already running (${existing.status}). Skipped duplicate.` };
+      }
+    }
+
+    const spawnPromise = this._doSpawnWorker(projectPath, taskId, instructions, architectThreadId);
+    spawnLocks.set(taskId, spawnPromise.catch(() => {})); // Store but don't propagate errors to other waiters
+    try {
+      return await spawnPromise;
+    } finally {
+      spawnLocks.delete(taskId);
+    }
+  }
+
+  private async _doSpawnWorker(projectPath: string, taskId: string, instructions: string, architectThreadId?: string) {
+    // Prevent duplicate spawns for the same taskId
+    const existing = workerRegistry.get(taskId);
+    if (existing && existing.status !== 'failed') {
+      console.log(`[Swarm] Worker for ${taskId} already exists (status: ${existing.status}). Skipping duplicate spawn.`);
+      return { success: true, taskId, message: `Worker for ${taskId} already running (${existing.status}). Skipped duplicate.` };
+    }
     workerRegistry.set(taskId, { status: 'starting' });
     
     console.log(`[Swarm] Spawning worker for task ${taskId}...`);
     
-    // 1. Prepare worktree details
-    const wtName = `worker-${taskId.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`;
-    const worktreeDir = path.join(Paths.getWorktreesDir(), wtName);
-    const branchName = `agent/${wtName}`;
+    // QB-05: Worker Prompt Templating
+    let specializedInstructions = instructions;
+    const roleMatch = instructions.match(/ROLE:\s*(UI_BEE|LOGIC_BEE|TEST_BEE)/);
+    if (roleMatch) {
+      const type = roleMatch[1] as WorkerType;
+      const specializedPrompt = getWorkerPrompt(type);
+      specializedInstructions = `${specializedPrompt}\n\n${instructions}`;
+      console.log(`[Swarm] Injected specialized prompt for ${type}`);
+    }
 
-    try {
-      // 2. Create the worktree
-      await new Promise((resolve, reject) => {
-        const cmd = `git worktree add -b ${branchName} "${worktreeDir}" HEAD`;
-        exec(cmd, { cwd: Paths.getWorkspaceRoot() }, (error, stdout, stderr) => {
-          if (error) reject(new Error(`Failed to create worktree: ${stderr}`));
-          else resolve(stdout);
+      // 1. Prepare worktree details — use a single timestamp for consistent IDs
+      const spawnTs = Date.now();
+      const wtName = `worker-${taskId.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${spawnTs}`;
+      const workerThreadId = `worker-${taskId}-${spawnTs}`;
+      const worktreeDir = path.join(Paths.getWorktreesDir(), wtName);
+      const branchName = `agent/${wtName}`;
+
+      try {
+        // 2. Create the worktree
+        await new Promise((resolve, reject) => {
+          const cmd = `git worktree add -b ${branchName} "${worktreeDir}" HEAD`;
+          exec(cmd, { cwd: Paths.getWorkspaceRoot() }, (error, stdout, stderr) => {
+            if (error) reject(new Error(`Failed to create worktree: ${stderr}`));
+            else resolve(stdout);
+          });
         });
-      });
 
-      // 3. Start the background runner (non-blocking)
-      this.runBackgroundWorker(worktreeDir, taskId, instructions, wtName).catch(err => {
-        console.error(`[Swarm] Worker for ${taskId} failed:`, err);
-        workerRegistry.set(taskId, { status: 'failed' });
-      });
-
-      broadcast('UI_UPDATE', {
-        action: 'SPAWN_THREAD',
-        payload: {
-          id: `worker-${taskId}-${Date.now()}`,
-          title: `Worker: ${taskId}`,
-          agentId: wtName,
-          parentTaskId: taskId,
-          instructions,
-          worktreePath: worktreeDir
+        // QB-06: Parallel Launch Sequencer (Staggered launch)
+        const activeCount = Array.from(workerRegistry.values()).filter(w => w.status === 'starting' || w.status === 'running').length;
+        const staggerDelay = (activeCount - 1) * 500;
+        if (staggerDelay > 0) {
+          console.log(`[Swarm] Staggering launch for ${taskId} by ${staggerDelay}ms`);
+          await new Promise(resolve => setTimeout(resolve, staggerDelay));
         }
-      });
+
+        // Derive a clean display name from taskId (e.g. "UI_BEE" → "UI Bee", "LOGIC_BEE" → "Logic Bee")
+        const displayName = taskId.replace(/_/g, ' ').replace(/\b\w+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+
+        // 3. Broadcast the thread to the UI FIRST so it exists before messages arrive
+        broadcast('UI_UPDATE', {
+          action: 'SPAWN_THREAD',
+          payload: {
+            id: workerThreadId,
+            title: displayName,
+            agentId: wtName,
+            parentTaskId: taskId,
+            swarmId: architectThreadId || undefined,
+            instructions: specializedInstructions,
+            worktreePath: worktreeDir
+          }
+        });
+
+          // 4a. Register in swarm tracker for completion detection
+          if (architectThreadId) {
+            const tracker = swarmWorkerTracker.get(architectThreadId) || { total: 0, completed: 0, failed: 0, projectPath, summaries: new Map() };
+            tracker.total++;
+            swarmWorkerTracker.set(architectThreadId, tracker);
+          }
+
+          // 4. Start the background runner (non-blocking) — pass the SAME threadId
+          // Inherit the architect's provider/apiKey/model so workers use the same model
+        const architectProviderId = architectThreadId ? sessionManager.getProvider(architectThreadId) : undefined;
+        const architectApiKey = architectThreadId ? sessionManager.getApiKey(architectThreadId) : undefined;
+        const architectModel = architectThreadId ? sessionManager.getModel(architectThreadId) : undefined;
+        this.runBackgroundWorker(worktreeDir, taskId, specializedInstructions, wtName, workerThreadId, architectProviderId, architectApiKey, architectModel, architectThreadId, projectPath).catch(err => {
+          console.error(`[Swarm] Worker for ${taskId} failed:`, err);
+          workerRegistry.set(taskId, { status: 'failed' });
+        });
 
       return { 
         success: true, 
@@ -461,15 +553,16 @@ export class ToolExecutor {
     }
   }
 
-  private async runBackgroundWorker(worktreePath: string, taskId: string, instructions: string, agentId: string) {
+  private async runBackgroundWorker(worktreePath: string, taskId: string, instructions: string, agentId: string, threadId: string, providerId?: string, apiKey?: string, model?: string, swarmId?: string, mainProjectPath?: string) {
     const { AutonomousRunner } = await import('./AutonomousRunner');
     const { getIO } = await import('./socket-instance');
     
     const io = getIO();
     // Create a mock socket that redirects emits to the global io instance
+    // Always tag events with the worker's threadId so the frontend routes messages correctly
     const mockSocket = {
       emit: (event: string, data: any) => {
-        if (io) io.emit(event, { ...data, agentId, parentTaskId: taskId });
+        if (io) io.emit(event, { ...data, agentId, threadId, parentTaskId: taskId });
       },
       on: () => {},
       off: () => {}
@@ -478,23 +571,171 @@ export class ToolExecutor {
     const runner = new AutonomousRunner(
       mockSocket,
       worktreePath,
-      'auto',
-      `swarm-${taskId}-${Date.now()}`,
-      null,
-      'local', // Working directly inside the worktree
-      agentId
+      providerId || 'auto',   // Inherit architect's provider
+      threadId,  // Use the SAME threadId as the SPAWN_THREAD broadcast
+      apiKey || null,          // Inherit architect's API key
+      'local',
+      agentId,
+      'code',
+      swarmId,
+      mainProjectPath
     );
 
     workerRegistry.set(taskId, { status: 'running' });
     
+    // Broadcast running status to UI
+    if (io) io.emit('UI_UPDATE', { action: 'WORKER_STATUS', payload: { threadId, taskId, status: 'running' } });
+
+    // Derive project path from worktree path (go up to find the main project)
+    const resolvedMainPath = mainProjectPath || (swarmId ? (swarmWorkerTracker.get(swarmId)?.projectPath || worktreePath) : worktreePath);
+
+    let completionSummary = '';
+    let workerStatus: 'completed' | 'failed' = 'completed';
+
     try {
-      await runner.executeLoop(instructions);
+      const result = await runner.executeLoop(instructions, [], model ? { model } : undefined);
       workerRegistry.set(taskId, { status: 'completed' });
-    } catch (error) {
+      
+      // Extract completion summary from the worker's last assistant message
+      completionSummary = this.extractWorkerSummary(runner, taskId, result);
+      
+      if (io) io.emit('UI_UPDATE', { action: 'WORKER_STATUS', payload: { threadId, taskId, status: 'completed' } });
+    } catch (error: any) {
       console.error(`[Swarm] Background worker ${agentId} error:`, error);
       workerRegistry.set(taskId, { status: 'failed' });
-      throw error;
+      workerStatus = 'failed';
+      completionSummary = `[FAILED] Worker ${taskId} encountered an error: ${error.message}`;
+      if (io) io.emit('UI_UPDATE', { action: 'WORKER_STATUS', payload: { threadId, taskId, status: 'failed' } });
     }
+
+    // Auto-post completion summary to roundtable (guaranteed — even if the LLM forgot)
+      try {
+        const roundtable = new Roundtable(resolvedMainPath);
+      await roundtable.postMessage(
+        agentId,
+        'worker',
+        completionSummary,
+        { threadId, taskId, swarmId }
+      );
+      console.log(`[Swarm] Auto-posted completion summary for ${taskId} to roundtable`);
+    } catch (err: any) {
+      console.error(`[Swarm] Failed to post completion summary for ${taskId}:`, err.message);
+    }
+
+    // Track swarm-level completion
+    if (swarmId) {
+      const tracker = swarmWorkerTracker.get(swarmId);
+      if (tracker) {
+        if (workerStatus === 'completed') tracker.completed++;
+        else tracker.failed++;
+        tracker.summaries.set(taskId, completionSummary);
+
+        const allDone = (tracker.completed + tracker.failed) >= tracker.total;
+        console.log(`[Swarm] Worker ${taskId} ${workerStatus}. Progress: ${tracker.completed + tracker.failed}/${tracker.total}`);
+
+        if (allDone) {
+          console.log(`[Swarm] All workers for swarm ${swarmId} have finished. Broadcasting SWARM_COMPLETE.`);
+          
+          // Compile all summaries into one report
+          const allSummaries = Array.from(tracker.summaries.entries())
+            .map(([tid, summary]) => `### ${tid}\n${summary}`)
+            .join('\n\n');
+
+          if (io) {
+            io.emit('UI_UPDATE', {
+              action: 'SWARM_COMPLETE',
+              payload: {
+                swarmId,
+                completed: tracker.completed,
+                failed: tracker.failed,
+                total: tracker.total,
+                report: allSummaries
+              }
+            });
+          }
+
+          // Also post the aggregated report to roundtable
+            try {
+              const roundtable = new Roundtable(resolvedMainPath);
+            await roundtable.postMessage(
+              'SYSTEM',
+              'coordinator',
+              `[SWARM COMPLETE] All ${tracker.total} workers finished (${tracker.completed} succeeded, ${tracker.failed} failed).\n\n${allSummaries}`,
+              { swarmId }
+            );
+          } catch (err: any) {
+            console.error(`[Swarm] Failed to post swarm completion to roundtable:`, err.message);
+          }
+
+          // Cleanup tracker
+          swarmWorkerTracker.delete(swarmId);
+        }
+      }
+    }
+
+    if (workerStatus === 'failed') {
+      throw new Error(`Worker ${taskId} failed`);
+    }
+  }
+
+  /**
+   * Extract a useful completion summary from a worker's session.
+   * Scans tool results for file paths and the last assistant message for context.
+   */
+  private extractWorkerSummary(runner: any, taskId: string, lastResult: any): string {
+    const messages = runner.getSessionMessages?.() || [];
+    
+    // Collect files written/modified from tool calls, with stats
+    const filesInfo: { path: string; stats?: { added: number; removed: number } }[] = [];
+    for (const msg of messages) {
+      if (msg.role === 'tool' && typeof msg.content === 'string') {
+        try {
+          const parsed = JSON.parse(msg.content);
+          if (parsed?.path) {
+            filesInfo.push({ path: parsed.path, stats: parsed.stats });
+          }
+        } catch {
+          const pathMatches = msg.content.match(/(?:path|file)["']?\s*[:=]\s*["']([^"']+)["']/g);
+          if (pathMatches) {
+            for (const match of pathMatches) {
+              const pathVal = match.match(/["']([^"']+)["']\s*$/);
+              if (pathVal) filesInfo.push({ path: pathVal[1] });
+            }
+          }
+        }
+      }
+    }
+
+    // Get the last assistant message content
+    let lastAssistantMsg = '';
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant' && messages[i].content) {
+        lastAssistantMsg = typeof messages[i].content === 'string' 
+          ? messages[i].content 
+          : '';
+        break;
+      }
+    }
+
+    // Check if the worker already posted a [DONE] summary — if so, use that
+    if (lastAssistantMsg.includes('[DONE]') || lastAssistantMsg.includes('Integration:') || lastAssistantMsg.includes('Files:')) {
+      return lastAssistantMsg;
+    }
+
+    // Build the summary with file details
+    const uniqueFiles = new Map<string, { added?: number; removed?: number }>();
+    for (const f of filesInfo) {
+      uniqueFiles.set(f.path, f.stats || {});
+    }
+    
+    const filesSection = uniqueFiles.size > 0
+      ? `Files:\n${[...uniqueFiles.entries()].map(([p, s]) => {
+          const statsStr = s.added ? ` (+${s.added} lines${s.removed ? `, -${s.removed} lines` : ''})` : '';
+          return `- ${p}${statsStr}`;
+        }).join('\n')}`
+      : 'No files modified.';
+
+    return `[DONE] Worker ${taskId} completed.\n${filesSection}\n\nSummary: ${lastAssistantMsg.substring(0, 500)}`;
   }
 
   private async handleWriteMemory(projectPath: string, category: string, content: string, agentId: string | null, cloudFS?: CloudFSManager | null) {
@@ -723,5 +964,81 @@ export class ToolExecutor {
         });
       });
     }, { signal, maxRetries: 2 });
+  }
+
+  private async handleScoutProject(projectPath: string) {
+    console.log(`[Scout] Scanning project at ${projectPath}...`);
+    const results = await this.scanDirectory(projectPath, 0, 3);
+    
+    const summary = {
+      modules: results.dirs.length,
+      configFiles: results.configs,
+      fileTypes: results.extensions,
+      primaryLanguage: this.detectPrimaryLanguage(results.extensions),
+      message: `Scouting complete: Found ${results.dirs.length} modules, ${results.configs.length} config files.`
+    };
+
+    return summary;
+  }
+
+  private async scanDirectory(dir: string, depth: number, maxDepth: number) {
+    const stats = {
+      dirs: [] as string[],
+      configs: [] as string[],
+      extensions: {} as Record<string, number>
+    };
+
+    if (depth > maxDepth) return stats;
+
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'dist' || entry.name.startsWith('.')) continue;
+
+      if (entry.isDirectory()) {
+        stats.dirs.push(entry.name);
+        const subStats = await this.scanDirectory(path.join(dir, entry.name), depth + 1, maxDepth);
+        stats.dirs.push(...subStats.dirs.map(d => `${entry.name}/${d}`));
+        stats.configs.push(...subStats.configs);
+        for (const [ext, count] of Object.entries(subStats.extensions)) {
+          stats.extensions[ext] = (stats.extensions[ext] || 0) + count;
+        }
+      } else {
+        const ext = path.extname(entry.name) || 'no-ext';
+        stats.extensions[ext] = (stats.extensions[ext] || 0) + 1;
+
+        if (['package.json', 'tsconfig.json', 'requirements.txt', 'Cargo.toml', 'go.mod', 'Makefile', 'README.md'].includes(entry.name)) {
+          stats.configs.push(entry.name);
+        }
+      }
+    }
+
+    return stats;
+  }
+
+  private detectPrimaryLanguage(extensions: Record<string, number>): string {
+    const langMap: Record<string, string[]> = {
+      'TypeScript': ['.ts', '.tsx'],
+      'JavaScript': ['.js', '.jsx'],
+      'Python': ['.py'],
+      'C/C++': ['.c', '.cpp', '.h', '.hpp'],
+      'Go': ['.go'],
+      'Rust': ['.rs']
+    };
+
+    let bestLang = 'Unknown';
+    let maxCount = 0;
+
+    for (const [lang, exts] of Object.entries(langMap)) {
+      let count = 0;
+      for (const ext of exts) {
+        count += extensions[ext] || 0;
+      }
+      if (count > maxCount) {
+        maxCount = count;
+        bestLang = lang;
+      }
+    }
+
+    return bestLang;
   }
 }

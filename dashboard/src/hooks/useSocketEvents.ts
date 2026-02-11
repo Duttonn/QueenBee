@@ -37,9 +37,55 @@ export const useSocketEvents = () => {
       if (data.action === 'SET_ACTIVE_PLAN') {
         useHiveStore.getState().setActivePlan(data.payload.plan);
       }
+      if (data.action === 'SPAWN_THREAD') {
+        const state = useHiveStore.getState();
+        const projectId = state.selectedProjectId;
+        if (projectId) {
+          const project = state.projects.find(p => p.id === projectId);
+          // Prevent duplicate threads for same taskId
+          const alreadyExists = project?.threads?.some((t: any) => t.parentTaskId === data.payload.parentTaskId);
+          if (!alreadyExists) {
+            state.addThread(projectId, {
+                id: data.payload.id,
+                title: data.payload.title,
+                agentId: data.payload.agentId,
+                parentTaskId: data.payload.parentTaskId,
+                swarmId: data.payload.swarmId,
+                instructions: data.payload.instructions,
+                worktreePath: data.payload.worktreePath,
+                isWorker: true,
+                workerStatus: 'running',
+                messages: [],
+                createdAt: Date.now()
+              });
+          }
+        }
+      }
       if (data.action === 'NOTIFY_CONTEXT_PRUNE') {
         console.warn(`[SocketHook] Context pruned for thread ${data.payload.threadId}: ${data.payload.prunedCount} messages removed.`);
       }
+      if (data.action === 'WORKER_MESSAGE') {
+        // Route worker messages to the correct thread
+        const state = useHiveStore.getState();
+        const workerThreadId = data.payload.threadId;
+        if (workerThreadId) {
+          const project = state.projects.find(p => p.threads?.some((t: any) => t.id === workerThreadId));
+          if (project) {
+            state.addMessage(project.id, workerThreadId, data.payload);
+          }
+        }
+      }
+      if (data.action === 'WORKER_STATUS') {
+          console.log(`[SocketHook] Worker status: ${data.payload.status} for thread ${data.payload.threadId}`);
+          const state = useHiveStore.getState();
+          const workerThreadId = data.payload.threadId;
+          if (workerThreadId) {
+            const project = state.projects.find(p => p.threads?.some((t: any) => t.id === workerThreadId));
+            if (project) {
+              state.updateThread(project.id, workerThreadId, { workerStatus: data.payload.status });
+            }
+          }
+        }
     };
 
     const onNativeNotification = (data: any) => {
@@ -73,16 +119,18 @@ export const useSocketEvents = () => {
            // Fallback to last message if not found (brittle but backward compatible)
            if (messageIndex === -1) messageIndex = thread.messages.length - 1;
 
-           if (messageIndex !== -1) {
-             const updates: any = { status: data.status };
-             if (isResult) {
-               updates.result = data.result;
-               updates.error = data.error;
-             } else {
-               updates.arguments = data.args;
-             }
-             
-             updateToolCall(targetProjectId, targetThreadId, messageIndex, data.toolCallId || data.tool, updates);
+             if (messageIndex !== -1) {
+              const updates: any = { status: data.status };
+                // Always set name if available
+                if (data.tool) updates.name = data.tool;
+                if (isResult) {
+                  updates.result = data.result;
+                  updates.error = data.error;
+                } else {
+                  updates.arguments = typeof data.args === 'string' ? (() => { try { return JSON.parse(data.args); } catch { return data.args; } })() : data.args;
+                }
+              
+              updateToolCall(targetProjectId, targetThreadId, messageIndex, data.toolCallId || data.tool, updates);
            }
         }
       }

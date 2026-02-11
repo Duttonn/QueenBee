@@ -37,6 +37,9 @@ export class AgentSession extends EventEmitter {
   private diffLearner: DiffLearner;
   private failureTracker = new Map<string, number>();
   private sessionFiles: Set<string> = new Set(); // Track files touched in this session
+    public blockedTools: Set<string> = new Set(); // Tools that should be blocked and returned as errors
+    public swarmId: string | undefined;
+    public mainProjectPath: string | undefined; // Main project root for roundtable (not worktree)
 
   constructor(projectPath: string, options: { 
     systemPrompt?: string, 
@@ -47,8 +50,11 @@ export class AgentSession extends EventEmitter {
     mode?: string,
     eventLog?: EventLog,
     memoryStore?: MemoryStore,
-    policyStore?: PolicyStore
-  } = {}) {
+    policyStore?: PolicyStore,
+      blockedTools?: string[],
+      swarmId?: string,
+      mainProjectPath?: string
+    } = {}) {
     super();
     this.eventLog = options.eventLog;
     this.memoryStore = options.memoryStore;
@@ -67,6 +73,11 @@ export class AgentSession extends EventEmitter {
     this.threadId = options.threadId || null;
     this.apiKey = options.apiKey || null;
     this.mode = options.mode || 'local';
+    this.swarmId = options.swarmId;
+    this.mainProjectPath = options.mainProjectPath;
+    if (options.blockedTools) {
+      this.blockedTools = new Set(options.blockedTools);
+    }
 
     if (options.systemPrompt) {
       this.messages.push({ role: 'system', content: options.systemPrompt });
@@ -180,30 +191,45 @@ export class AgentSession extends EventEmitter {
           break; // End of loop
         }
 
-        // Execute all tool calls in parallel for better performance
-        const toolExecutionPromises = response.tool_calls.map(async (toolCall) => {
-          const toolName = toolCall.function.name;
-          let args = {};
-          try {
-            args = JSON.parse(toolCall.function.arguments);
-          } catch (e) {
-            console.error(`Failed to parse arguments for tool ${toolName}`, toolCall.function.arguments);
-          }
+          // Execute all tool calls in parallel for better performance
+          const toolExecutionPromises = response.tool_calls.map(async (toolCall) => {
+            const toolName = toolCall.function.name;
+            let args = {};
+            try {
+              args = JSON.parse(toolCall.function.arguments);
+            } catch (e) {
+              console.error(`Failed to parse arguments for tool ${toolName}`, toolCall.function.arguments);
+            }
 
-          this.emit('event', { type: 'tool_start', data: { toolName, args, toolCallId: toolCall.id } });
+            // Block restricted tools — return an error without executing
+            if (this.blockedTools.has(toolName)) {
+              console.log(`[AgentSession] Blocked tool '${toolName}' — returning gate error to LLM`);
+              this.emit('event', { type: 'tool_end', data: { toolName, result: { error: 'BLOCKED: You must present your plan and wait for user approval before calling this tool.' }, toolCallId: toolCall.id } });
+              return {
+                id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                role: 'tool',
+                tool_call_id: toolCall.id,
+                name: toolName,
+                content: JSON.stringify({ error: 'BLOCKED: spawn_worker is locked until the user approves your plan. You MUST output a message with: 1) Requirements checklist (- [ ] REQ-XX: ...), 2) Worker assignments (who does what). End by asking the user to validate. Do NOT try to call spawn_worker again until they respond.' })
+              } as LLMMessage;
+            }
+
+            this.emit('event', { type: 'tool_start', data: { toolName, args, toolCallId: toolCall.id } });
           
-          try {
-            const result = await this.executor.execute({
-              name: toolName,
-              arguments: args,
-              id: toolCall.id
-            }, {
-              projectPath: this.projectPath,
-              threadId: this.threadId || undefined,
-              agentId: this.threadId,
-              toolCallId: toolCall.id,
-              mode: this.mode
-            });
+            try {
+              const result = await this.executor.execute({
+                name: toolName,
+                arguments: args,
+                id: toolCall.id
+              }, {
+                projectPath: this.projectPath,
+                mainProjectPath: this.mainProjectPath,
+                threadId: this.threadId || undefined,
+                agentId: this.threadId,
+                toolCallId: toolCall.id,
+                mode: this.mode,
+                swarmId: this.swarmId
+              });
 
             if (toolName === 'write_file' && (args as any).path) {
               this.sessionFiles.add((args as any).path);

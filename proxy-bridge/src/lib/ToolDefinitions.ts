@@ -254,6 +254,17 @@ export const AGENT_TOOLS = [
           required: ['path']
         }
       }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'scout_project',
+        description: 'Get a high-level overview of the project structure, key files, and technical stack. Use this as Step 1 of a deep codebase analysis.',
+        parameters: {
+          type: 'object',
+          properties: {}
+        }
+      }
     }
   ];
   

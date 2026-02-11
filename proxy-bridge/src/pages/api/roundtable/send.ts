@@ -7,7 +7,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(405).end(`Method ${req.method} Not Allowed`);
     }
 
-    const { projectPath, content, agentId = 'user', role = 'user' } = req.body;
+    const { projectPath, content, agentId = 'user', role = 'user', targetAgentId, swarmId } = req.body;
 
     if (!projectPath || !content) {
         return res.status(400).json({ error: 'projectPath and content required' });
@@ -15,7 +15,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     try {
         const roundtable = new Roundtable(projectPath);
-        const message = await roundtable.postMessage(agentId, role, content);
+        const message = await roundtable.postMessage(agentId, role, content, { targetAgentId, swarmId });
         return res.status(200).json(message);
     } catch (error: any) {
         return res.status(500).json({ error: error.message });

@@ -143,10 +143,8 @@ export class UnifiedLLMService {
       }
     }
 
-    // 4. Defaults / Locals
-    if (!this.providers.has('ollama')) {
-      this.providers.set('ollama', new OpenAIProvider('ollama', '', 'http://127.0.0.1:11434/v1'));
-    }
+    // 4. Defaults / Locals — only register ollama if explicitly configured via env or profile
+    // (removed auto-registration of ollama with empty key)
   }
 
   private initFromEnv() {
@@ -223,171 +221,88 @@ export class UnifiedLLMService {
   async chat(providerId: string, messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
     await this.ready;
 
-    // For 'auto' mode, use autoChat which has its own failover
+    // For 'auto' mode, use autoChat which has smart routing + failover
     if (providerId === 'auto') {
-      const provider = await this.getOrLoadProvider(providerId, options);
-      if (!provider) return this.autoChat(messages, options);
-      // Auto still goes through failover below
+      return this.autoChat(messages, options);
     }
 
-    // Build ordered list of providers that actually have keys
-    const allProviderIds = Array.from(this.providers.entries())
-      .filter(([id, p]) => p.hasKey() || id.toLowerCase() === 'ollama' || id === providerId)
-      .map(([id]) => id);
-
-    // If requested providerId is 'gemini' and we have 'google:default', make sure we find it
-    if (!this.providers.has(providerId) && providerId !== 'auto') {
-      const p = await this.getOrLoadProvider(providerId, options);
-      if (p && !allProviderIds.includes(p.id)) {
-        allProviderIds.push(p.id);
-      }
+    // Specific provider requested — use ONLY that provider, no fallback
+    const provider = await this.getOrLoadProvider(providerId, options);
+    if (!provider || !provider.hasKey()) {
+      throw new Error(
+        `Provider '${providerId}' is not configured or has no API key. Please add an API key in Settings.`
+      );
     }
 
-    const effectiveId = this.authProfileManager.isInCooldown(providerId) 
-      ? (this.authProfileManager.getNextAvailable(providerId, allProviderIds) || providerId)
-      : providerId;
+    console.log(`[LLMService] Chat with provider: ${providerId}, model: ${options?.model || 'default'}`);
 
-    console.log(`[LLMService] Chat Request. Requested: ${providerId}, Effective: ${effectiveId}, Available with keys: ${allProviderIds.join(', ')}, Mode: ${options?.composerMode || 'none'}`);
-
-    if (effectiveId !== providerId) {
-      console.log(`[LLMService] Provider '${providerId}' is in cooldown. Rotating to '${effectiveId}'.`);
+    try {
+      const response = await provider.chat(messages, options);
+      this.authProfileManager.markSuccess(providerId);
+      this.recordUsage(providerId, response.model || 'unknown', response.usage);
+      return response;
+    } catch (error: any) {
+      const reason = AuthProfileManager.classifyError(error);
+      this.authProfileManager.markFailure(providerId, reason);
+      console.error(`[LLMService] Provider '${providerId}' failed (${reason}): ${error.message}`);
+      throw error;
     }
-
-    // Build ordered list: use fallback chain if composerMode is set, otherwise preferred-first
-    const chainOrder = options?.composerMode
-      ? this.getChainForMode(options.composerMode, allProviderIds)
-      : allProviderIds;
-    const tryOrder = [effectiveId, ...chainOrder.filter(id => id !== effectiveId)];
-    let lastError: Error | null = null;
-    let primaryError: Error | null = null;
-
-    for (const tryId of tryOrder) {
-      if (this.authProfileManager.isInCooldown(tryId) && tryId !== effectiveId) {
-        continue; // Skip providers in cooldown (except the one we explicitly chose)
-      }
-
-      // Safety: Don't fall back to Ollama unless it was requested or we are in auto mode
-      if (tryId === 'ollama' && providerId !== 'ollama' && providerId !== 'auto') {
-        continue;
-      }
-
-      const provider = await this.getOrLoadProvider(tryId, options);
-      if (!provider) continue;
-
-      // Safety: Only try providers that have keys (skip unconfigured placeholders)
-      // Note: Ollama is excluded from hasKey check if it doesn't use keys, but we've restricted it above
-      if (!provider.hasKey() && tryId !== 'ollama') {
-        continue;
-      }
-
-      // Safety: If the requested model is clearly for another provider, don't pass it
-      const safeOptions = { ...options };
-      const requestedModel = options?.model?.toLowerCase() || '';
-
-      if (requestedModel.includes('gemini') && provider.id !== 'gemini' && !provider.id.includes('google')) {
-        safeOptions.model = undefined;
-      } else if (requestedModel.includes('gpt') && provider.id !== 'openai') {
-        safeOptions.model = undefined;
-      } else if (requestedModel.includes('claude') && provider.id !== 'anthropic') {
-        safeOptions.model = undefined;
-      }
-
-      try {
-        console.log(`[LLMService] Attempting chat with provider: ${tryId} (${provider.constructor.name})`);
-        const response = await provider.chat(messages, safeOptions);
-        this.authProfileManager.markSuccess(tryId);
-        this.recordUsage(tryId, response.model || 'unknown', response.usage);
-        return response;
-      } catch (error: any) {
-        const reason = AuthProfileManager.classifyError(error);
-        this.authProfileManager.markFailure(tryId, reason);
-        
-        if (tryId === effectiveId) {
-          primaryError = error;
-        }
-        lastError = error;
-        
-        console.error(`[LLMService] Provider '${tryId}' failed (${reason}): ${error.message}`);
-        if (error.stack) console.error(error.stack);
-        console.warn(`[LLMService] Failover logic running... (mode: ${options?.composerMode || 'none'})`);
-
-        if (reason === 'connection_error' && tryId === 'ollama') {
-          break;
-        }
-      }
-    }
-
-    throw primaryError || lastError || new Error(
-      `No AI providers configured. Please add an API key or login in Settings. Available: ${allProviderIds.join(', ') || 'none'}`
-    );
   }
 
   async *chatStream(providerId: string, messages: LLMMessage[], options?: LLMProviderOptions): AsyncGenerator<LLMResponse> {
     await this.ready;
 
-    // Build ordered list of providers for rotation
-    const allProviderIds = Array.from(this.providers.entries())
-      .filter(([id, p]) => p.hasKey() || id.toLowerCase() === 'ollama' || id === providerId)
-      .map(([id]) => id);
+    // For 'auto', try smart routing then fallback
+    if (providerId === 'auto') {
+      // Use autoChat logic for stream — find the right provider
+      const modelName = options?.model?.toLowerCase() || '';
+      let bestId: string | null = null;
+      if (modelName.includes('gemini')) bestId = 'gemini';
+      else if (modelName.includes('gpt') || modelName.includes('o1-')) bestId = 'openai';
+      else if (modelName.includes('claude')) bestId = 'anthropic';
+      else if (modelName.includes('mistral')) bestId = 'mistral';
 
-    if (!this.providers.has(providerId) && providerId !== 'auto') {
-      const p = await this.getOrLoadProvider(providerId, options);
-      if (p && !allProviderIds.includes(p.id)) {
-        allProviderIds.push(p.id);
-      }
-    }
-
-    const effectiveId = this.authProfileManager.isInCooldown(providerId)
-      ? (this.authProfileManager.getNextAvailable(providerId, allProviderIds) || providerId)
-      : providerId;
-
-    const tryOrder = [effectiveId, ...allProviderIds.filter(id => id !== effectiveId)];
-
-    for (const tryId of tryOrder) {
-      if (this.authProfileManager.isInCooldown(tryId) && tryId !== effectiveId) continue;
-      if (tryId === 'ollama' && providerId !== 'ollama' && providerId !== 'auto') continue;
-
-      let provider = await this.getOrLoadProvider(tryId, options);
-      
-      if (!provider && providerId === 'auto') {
-        const priority = ['gemini', 'google', 'nvidia', 'openai', 'anthropic', 'ollama'];
-        for (const type of priority) {
-          provider = Array.from(this.providers.values()).find(p => 
-            (p.id.toLowerCase().includes(type) || p.constructor.name.toLowerCase().includes(type)) && 
-            (p.hasKey() || type === 'ollama')
-          );
-          if (provider) break;
+      if (bestId) {
+        const p = await this.getOrLoadProvider(bestId, options);
+        if (p && p.hasKey()) {
+          providerId = bestId;
         }
       }
 
-      if (!provider || (!provider.hasKey() && tryId !== 'ollama')) continue;
-
-      const safeOptions = { ...options };
-      const requestedModel = options?.model?.toLowerCase() || '';
-      if (requestedModel.includes('gemini') && provider.id !== 'gemini' && !provider.id.includes('google')) {
-        safeOptions.model = undefined;
-      } else if (requestedModel.includes('gpt') && provider.id !== 'openai') {
-        safeOptions.model = undefined;
+      // If still auto, pick first available
+      if (providerId === 'auto') {
+        for (const [id, p] of this.providers.entries()) {
+          if (p.hasKey()) { providerId = id; break; }
+        }
       }
 
-      try {
-        if (provider.chatStream) {
-          yield* provider.chatStream(messages, safeOptions);
-        } else {
-          const response = await provider.chat(messages, safeOptions);
-          yield response;
-        }
-        this.authProfileManager.markSuccess(tryId);
-        return; // Success
-      } catch (error: any) {
-        const reason = AuthProfileManager.classifyError(error);
-        this.authProfileManager.markFailure(tryId, reason);
-        console.error(`[LLMService] chatStream failed for ${tryId}: ${error.message}`);
-        if (reason === 'connection_error' && tryId === 'ollama') break;
+      if (providerId === 'auto') {
+        throw new Error('No AI providers configured. Please add an API key in Settings.');
       }
     }
 
-    throw new Error(`No AI providers configured or all failed.`);
+    // Specific provider — use ONLY that provider
+    const provider = await this.getOrLoadProvider(providerId, options);
+    if (!provider || !provider.hasKey()) {
+      throw new Error(`Provider '${providerId}' is not configured or has no API key.`);
+    }
+
+    console.log(`[LLMService] chatStream with provider: ${providerId}, model: ${options?.model || 'default'}`);
+
+    try {
+      if (provider.chatStream) {
+        yield* provider.chatStream(messages, options);
+      } else {
+        const response = await provider.chat(messages, options);
+        yield response;
+      }
+      this.authProfileManager.markSuccess(providerId);
+    } catch (error: any) {
+      const reason = AuthProfileManager.classifyError(error);
+      this.authProfileManager.markFailure(providerId, reason);
+      console.error(`[LLMService] chatStream failed for ${providerId}: ${error.message}`);
+      throw error;
+    }
   }
 
   async transcribe(providerId: string, audioBlob: any, options?: { apiKey?: string | null }): Promise<{ text: string }> {
@@ -427,7 +342,7 @@ export class UnifiedLLMService {
   private async getOrLoadProvider(providerId: string, options?: LLMProviderOptions): Promise<LLMProvider | undefined> {
     const checkKey = (p: LLMProvider | undefined) => {
       if (!p) return undefined;
-      if (p.hasKey() || p.id.toLowerCase() === 'ollama') return p;
+      if (p.hasKey()) return p;
       return undefined;
     };
 
@@ -533,7 +448,7 @@ export class UnifiedLLMService {
     const candidates: { id: string, provider: LLMProvider }[] = [];
 
     for (const [id, p] of this.providers.entries()) {
-      if (p.hasKey() || id === 'ollama') {
+      if (p.hasKey()) {
         candidates.push({ id, provider: p });
       }
     }
@@ -561,12 +476,8 @@ export class UnifiedLLMService {
         } catch (e: any) {
           const reason = AuthProfileManager.classifyError(e);
           this.authProfileManager.markFailure(id, reason);
-          lastError = e;
-          console.error(`[AutoChat] Fallback provider '${id}' failed (${reason}): ${e.message}`);
-          
-          if (reason === 'connection_error' && id === 'ollama') {
-            break;
-          }
+            lastError = e;
+            console.error(`[AutoChat] Fallback provider '${id}' failed (${reason}): ${e.message}`);
         }
       }
     }
