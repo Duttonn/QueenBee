@@ -1,23 +1,21 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import electron from 'vite-plugin-electron'
-import renderer from 'vite-plugin-electron-renderer'
 import { execSync } from 'child_process'
 
 const isElectron = process.env.VITE_ELECTRON === 'true'
 
 // https://vitejs.dev/config/
-export default defineConfig({
-  base: isElectron ? './' : '/',
-  plugins: [
-    react(),
-    ...(isElectron ? [
+export default defineConfig(async () => {
+  const electronPlugins: any[] = []
+
+  if (isElectron) {
+    const { default: electron } = await import('vite-plugin-electron')
+    const { default: renderer } = await import('vite-plugin-electron-renderer')
+    electronPlugins.push(
       electron([
         {
-          // Main-Process entry file of the Electron App.
           entry: '../electron/main.ts',
-          onstart(args) {
-            // Fix SyntaxError in Dev Mode: Remove 'export default' from generated .cjs
+          onstart(args: any) {
             try {
               execSync("sed -i '' 's/export default //g' dist-electron/main.cjs dist-electron/preload.cjs")
             } catch (e) {
@@ -42,7 +40,7 @@ export default defineConfig({
         },
         {
           entry: '../electron/preload.ts',
-          onstart(options) {
+          onstart(options: any) {
             try {
               execSync("sed -i '' 's/export default //g' dist-electron/preload.cjs")
             } catch (e) {}
@@ -65,6 +63,14 @@ export default defineConfig({
         },
       ]),
       renderer(),
-    ] : []),
-  ],
+    )
+  }
+
+  return {
+    base: isElectron ? './' : '/',
+    plugins: [
+      react(),
+      ...electronPlugins,
+    ],
+  }
 })
