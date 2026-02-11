@@ -28,6 +28,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore, type Automation } from '../../store/useAppStore';
 import { useHiveStore } from '../../store/useHiveStore';
+import { API_BASE } from '../../services/api';
 
 const DAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'] as const;
 const DAY_SHORT: Record<string, string> = { Mo: 'M', Tu: 'T', We: 'W', Th: 'Th', Fr: 'F', Sa: 'Sa', Su: 'Su' };

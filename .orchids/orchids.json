@@ -4,5 +4,6 @@
   "startupCommands": [
     "cd proxy-bridge && npm run dev",
     "cd dashboard && npm run dev"
-  ]
+  ],
+  "deployedWithUserToken": true
 }
