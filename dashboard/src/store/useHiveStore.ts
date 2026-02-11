@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { io, Socket } from 'socket.io-client';
-import { API_BASE } from '../services/api';
+import { API_BASE, SOCKET_BASE } from '../services/api';
 
 interface HiveState {
   projects: any[];
@@ -80,9 +80,10 @@ export const useHiveStore = create<HiveState>()(
         };
         await bootServer();
 
-        const socket = io(API_BASE, {
+          const socket = io(SOCKET_BASE, {
           path: '/api/logs/stream',
-          transports: ['websocket', 'polling'],
+          transports: ['websocket'],
+          secure: true,
           reconnection: true,
           reconnectionAttempts: 10,
           reconnectionDelay: 1000,
