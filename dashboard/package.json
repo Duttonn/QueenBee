@@ -8,7 +8,7 @@
     "dev": "vite",
     "prebuild": "rm -rf dist-electron",
     "build": "tsc && vite build",
-    "postbuild": "sed -i '' 's/export default //g' dist-electron/*.cjs",
+    "postbuild": "ls dist-electron/*.cjs >/dev/null 2>&1 && sed -i 's/export default //g' dist-electron/*.cjs || true",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },
