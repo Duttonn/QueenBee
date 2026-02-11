@@ -16,7 +16,7 @@ const GEMINI_CLI_CLIENT_ID = process.env.GEMINI_CLI_CLIENT_ID; // Usually extrac
 const GEMINI_CLI_CLIENT_SECRET = process.env.GEMINI_CLI_CLIENT_SECRET;
 
 // Redirect URI for local flow
-const REDIRECT_URI = process.env.OAUTH_REDIRECT_URI || 'http://127.0.0.1:3000/api/auth/callback';
+const REDIRECT_URI = process.env.OAUTH_REDIRECT_URI || `${process.env.API_BASE_URL || 'http://127.0.0.1:3000'}/api/auth/callback`;
 
 export class AuthManager {
 

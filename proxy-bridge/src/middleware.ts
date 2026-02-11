@@ -4,8 +4,10 @@ import type { NextRequest } from 'next/server';
 export function middleware(request: NextRequest) {
     const requestId = request.headers.get('x-request-id') || crypto.randomUUID();
     const origin = request.headers.get('origin');
-    const allowedOrigins = ['http://127.0.0.1:5173', 'http://localhost:5173'];
-    const allowOrigin = origin && allowedOrigins.includes(origin) ? origin : '*';
+    const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://127.0.0.1:5173,http://localhost:5173')
+        .split(',')
+        .map(s => s.trim());
+    const allowOrigin = origin && allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
