@@ -3,8 +3,8 @@
  * Connects the frontend UI to the proxy-bridge backend
  */
 
-// Backend base URL - defaults to localhost in dev
-export const API_BASE = (typeof window !== 'undefined' && (window as any).__API_URL__) || 'http://127.0.0.1:3000';
+// Backend base URL - uses VITE_API_URL in production, defaults to localhost in dev
+export const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
 
 export interface ToolCall {
     id: string;

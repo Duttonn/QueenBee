@@ -9,6 +9,8 @@ class SessionManager extends EventEmitter {
   private providerMap = new Map<string, string>();
   private apiKeyMap = new Map<string, string>();
   private modelMap = new Map<string, string>();
+  private pendingRoundtableMessages = new Map<string, string[]>();
+  private swarmThreads = new Map<string, Set<string>>(); // swarmId -> Set<threadId>
 
   register(threadId: string) {
     this.activeThreads.add(threadId);

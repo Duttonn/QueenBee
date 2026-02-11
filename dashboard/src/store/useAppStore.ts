@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { useHiveStore } from './useHiveStore';
+import { API_BASE } from '../services/api';
 
 // Types derived from backend structures
 export interface Automation {
@@ -43,7 +44,8 @@ export interface ExecutionResult {
     code?: number;
 }
 
-const API_BASE = 'http://127.0.0.1:3000/api';
+// Re-alias: the old local API_BASE was "http://…/api", the imported one is just the root
+const API_BASE_ROUTES = `${API_BASE}/api`;
 
 interface AppState {
     // Data
@@ -86,8 +88,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     fetchData: async () => {
         try {
             const [authRes, skillsRes] = await Promise.all([
-                fetch(`${API_BASE}/automations`),
-                fetch(`${API_BASE}/skills`)
+                fetch(`${API_BASE_ROUTES}/automations`),
+                fetch(`${API_BASE_ROUTES}/skills`)
             ]);
 
             if (authRes.ok) set({ automations: await authRes.json() });
@@ -102,7 +104,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     },
 
     addAutomation: async (auto) => {
-        const res = await fetch(`${API_BASE}/automations`, {
+        const res = await fetch(`${API_BASE_ROUTES}/automations`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(auto)
@@ -114,7 +116,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     },
 
     toggleAutomation: async (id, active) => {
-        const res = await fetch(`${API_BASE}/automations`, {
+        const res = await fetch(`${API_BASE_ROUTES}/automations`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id, active })
@@ -138,7 +140,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     },
 
     runAutomation: async (script, allowedCommands) => {
-        const res = await fetch(`${API_BASE}/execution/run`, {
+        const res = await fetch(`${API_BASE_ROUTES}/execution/run`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ command: script, allowedCommands })
@@ -147,7 +149,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     },
 
     installSkill: async (skill) => {
-        const res = await fetch(`${API_BASE}/skills`, {
+        const res = await fetch(`${API_BASE_ROUTES}/skills`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(skill)
@@ -176,7 +178,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             return;
         }
 
-        const res = await fetch(`${API_BASE}/projects`, {
+        const res = await fetch(`${API_BASE_ROUTES}/projects`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, path })
@@ -188,7 +190,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     },
 
     commit: async (repoPath, message) => {
-        await fetch(`${API_BASE}/git/commit`, {
+        await fetch(`${API_BASE_ROUTES}/git/commit`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path: repoPath, message })
@@ -196,13 +198,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     },
 
     getGitStatus: async (repoPath) => {
-        const res = await fetch(`${API_BASE}/git/status?path=${encodeURIComponent(repoPath)}`);
+        const res = await fetch(`${API_BASE_ROUTES}/git/status?path=${encodeURIComponent(repoPath)}`);
         return await res.json();
     },
 
     getAllowedCommands: async () => {
         try {
-            const res = await fetch(`${API_BASE}/config/security`);
+            const res = await fetch(`${API_BASE_ROUTES}/config/security`);
             if (res.ok) {
                 const data = await res.json();
                 return data.allowedCommands || [];

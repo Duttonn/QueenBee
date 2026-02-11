@@ -13,6 +13,7 @@ import { PolicyStore } from './PolicyStore';
 import { CostTracker } from './CostTracker';
 import { DiffLearner } from './learning/DiffLearner';
 import { diagnosticCollector } from './DiagnosticCollector';
+import { Roundtable } from './Roundtable';
 import fs from 'fs-extra';
 import path from 'path';
 
@@ -36,10 +37,11 @@ export class AgentSession extends EventEmitter {
   private distillation: MemoryDistillation | null = null;
   private diffLearner: DiffLearner;
   private failureTracker = new Map<string, number>();
-  private sessionFiles: Set<string> = new Set(); // Track files touched in this session
-    public blockedTools: Set<string> = new Set(); // Tools that should be blocked and returned as errors
-    public swarmId: string | undefined;
-    public mainProjectPath: string | undefined; // Main project root for roundtable (not worktree)
+    private sessionFiles: Set<string> = new Set(); // Track files touched in this session
+      public blockedTools: Set<string> = new Set(); // Tools that should be blocked and returned as errors
+      public swarmId: string | undefined;
+      public mainProjectPath: string | undefined; // Main project root for roundtable (not worktree)
+      private lastSeenRoundtableTs: string = ''; // Track last roundtable message we've seen
 
   constructor(projectPath: string, options: { 
     systemPrompt?: string, 
@@ -75,6 +77,8 @@ export class AgentSession extends EventEmitter {
     this.mode = options.mode || 'local';
     this.swarmId = options.swarmId;
     this.mainProjectPath = options.mainProjectPath;
+    // Initialize roundtable watermark to "now" so we only see NEW messages during execution
+    this.lastSeenRoundtableTs = new Date().toISOString();
     if (options.blockedTools) {
       this.blockedTools = new Set(options.blockedTools);
     }
@@ -119,12 +123,18 @@ export class AgentSession extends EventEmitter {
             }
 
             // Record heartbeat pulse
-            if (this.threadId) {
-              HeartbeatService.ping(this.threadId).catch(err => console.error('[AgentSession] Heartbeat failed:', err));
-              diagnosticCollector.sessionStep(this.threadId);
-            }
+              if (this.threadId) {
+                HeartbeatService.ping(this.threadId).catch(err => console.error('[AgentSession] Heartbeat failed:', err));
+                diagnosticCollector.sessionStep(this.threadId);
+              }
 
-            stepCount++;
+              // Roundtable polling: check for new messages from other agents/user
+              // Skip on first iteration (context was already injected via getEnhancedContext)
+              if (stepCount > 0) {
+                await this.injectNewRoundtableMessages();
+              }
+
+              stepCount++;
 
             // Context Pressure Check
             const estimatedTokens = this.estimateTokens();
@@ -399,14 +409,57 @@ export class AgentSession extends EventEmitter {
   }
 
   private extractPlan(content: string): string | null {
-    const planMatch = content.match(/<plan>([\s\S]*?)<\/plan>/);
-    if (planMatch) return planMatch[1].trim();
-    
-    const updateMatch = content.match(/<plan_update>([\s\S]*?)<\/plan_update>/);
-    if (updateMatch) return updateMatch[1].trim();
-    
-    return null;
-  }
+      const planMatch = content.match(/<plan>([\s\S]*?)<\/plan>/);
+      if (planMatch) return planMatch[1].trim();
+      
+      const updateMatch = content.match(/<plan_update>([\s\S]*?)<\/plan_update>/);
+      if (updateMatch) return updateMatch[1].trim();
+      
+      return null;
+    }
+
+    /**
+     * Check for new roundtable messages since last check and inject them as system context.
+     * This allows agents to react to user/team messages mid-execution.
+     */
+    private async injectNewRoundtableMessages() {
+      const roundtablePath = this.mainProjectPath || this.projectPath;
+      if (!roundtablePath) return;
+
+      try {
+        const roundtable = new Roundtable(roundtablePath);
+        const recentMessages = await roundtable.getRecentMessages(20, this.swarmId);
+        
+        if (recentMessages.length === 0) return;
+
+        // Filter to only messages we haven't seen yet
+        const newMessages = this.lastSeenRoundtableTs
+          ? recentMessages.filter(m => m.timestamp > this.lastSeenRoundtableTs)
+          : []; // On first call after init, don't inject (getEnhancedContext already did)
+
+        // Update the watermark
+        this.lastSeenRoundtableTs = recentMessages[recentMessages.length - 1].timestamp;
+
+        if (newMessages.length === 0) return;
+
+        // Don't inject our own messages back
+        const externalMessages = newMessages.filter(m => m.agentId !== this.threadId && m.threadId !== this.threadId);
+        if (externalMessages.length === 0) return;
+
+        const formatted = externalMessages
+          .map(m => `[${m.agentId}] (${m.role}): ${m.content}`)
+          .join('\n');
+
+        console.log(`[AgentSession] Injecting ${externalMessages.length} new roundtable message(s) for ${this.threadId}`);
+
+        this.messages.push({
+          role: 'system',
+          content: `[ROUNDTABLE UPDATE] New messages from your team:\n${formatted}\n\nIf someone asked you a question or gave you instructions, respond via chat_with_team. The USER has ultimate authority — follow their directives immediately.`
+        });
+      } catch (err: any) {
+        console.error(`[AgentSession] Failed to poll roundtable:`, err.message);
+      }
+    }
 
   /**
    * Turn-based history limiting (OC-05).
