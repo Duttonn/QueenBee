@@ -2,10 +2,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import fs from 'fs-extra';
 import path from 'path';
-import os from 'os';
+import { Paths } from '../../../../lib/Paths';
 
-const CONFIG_DIR = path.join(os.homedir(), '.queenbee');
-const GITHUB_CREDS_FILE = path.join(CONFIG_DIR, 'github-oauth.json');
+const CONFIG_DIR = Paths.getQueenBeeConfigDir();
+const GITHUB_CREDS_FILE = Paths.getGitHubOAuthCredsPath();
 
 function isLocalRequest(req: NextApiRequest): boolean {
     const host = req.headers.host || '';
