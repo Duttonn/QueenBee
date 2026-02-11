@@ -6,6 +6,9 @@
 // Backend base URL - uses VITE_API_URL in production, defaults to localhost in dev
 export const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
 
+// Socket server URL - separate port/tunnel for WebSocket connections
+export const SOCKET_BASE = import.meta.env.VITE_SOCKET_URL || 'http://127.0.0.1:3001';
+
 export interface ToolCall {
     id: string;
     name: string;

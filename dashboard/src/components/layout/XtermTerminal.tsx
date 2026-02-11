@@ -3,7 +3,7 @@ import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { io } from 'socket.io-client';
 import 'xterm/css/xterm.css';
-import { API_BASE } from '../../services/api';
+import { API_BASE, SOCKET_BASE } from '../../services/api';
 
 const XtermTerminal = () => {
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -70,8 +70,10 @@ const XtermTerminal = () => {
     let socket: any = null;
     
     fetch(`${API_BASE}/api/terminal/socket`).finally(() => {
-        socket = io(API_BASE, {
+          socket = io(SOCKET_BASE, {
             path: '/api/terminal/socket',
+            transports: ['websocket'],
+            secure: true,
             reconnectionAttempts: 5
         });
 
