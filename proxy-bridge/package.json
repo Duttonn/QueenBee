@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p ${PORT:-3000}",
+    "start:socket": "node --import tsx server.ts",
+    "start:prod": "pm2 start ecosystem.config.cjs",
+    "stop:prod": "pm2 stop ecosystem.config.cjs",
     "lint": "next lint",
     "test": "vitest run"
   },
@@ -26,6 +29,7 @@
     "react-dom": "^18",
     "simple-git": "^3.30.0",
     "socket.io": "^4.8.3",
+    "tsx": "^4.7.0",
     "uuid": "^13.0.0"
   },
   "devDependencies": {

@@ -8,7 +8,12 @@ import { HeartbeatService } from './src/lib/HeartbeatService';
 import { TriggerEngine } from './src/lib/TriggerEngine';
 import { Paths } from './src/lib/Paths';
 
-const PORT = 3001;
+const PORT = parseInt(process.env.SOCKET_PORT || '3001', 10);
+
+// CORS: allow Vercel frontend + local dev
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://127.0.0.1:5173,http://localhost:5173')
+  .split(',')
+  .map(s => s.trim());
 
 // Initialize Cron Jobs
 cronManager.init().catch(err => console.error('Failed to init cron manager', err));
@@ -60,7 +65,7 @@ const httpServer = createServer(async (req, res) => {
 
 const io = new Server(httpServer, {
   cors: {
-    origin: '*', // Allow all origins for local dev
+    origin: ALLOWED_ORIGINS,
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Codex-Provider'],
     credentials: true

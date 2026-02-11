@@ -16,11 +16,9 @@ export const config = {
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
   // Set CORS headers for preflight
-  const allowedOrigins = [
-    'http://127.0.0.1:5173', 
-    'http://localhost:5173', 
-    process.env.FRONTEND_URL || 'http://127.0.0.1:5173'
-  ];
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://127.0.0.1:5173,http://localhost:5173')
+    .split(',')
+    .map(s => s.trim());
   
   const origin = req.headers.origin as string;
   const allowOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
