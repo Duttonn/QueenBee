@@ -80,12 +80,23 @@ export class Paths {
     return path.join(this.getCodexHome(), 'workspaces');
   }
 
-  /**
-   * Resolves the workspace root (parent of proxy-bridge).
-   */
-  static getWorkspaceRoot(): string {
-    return path.resolve(process.cwd(), '..');
-  }
+    /**
+     * Resolves the projects root directory.
+     * Priority: PROJECTS_ROOT env var > parent of proxy-bridge (process.cwd()/..)
+     */
+    static getProjectsRoot(): string {
+      if (process.env.PROJECTS_ROOT) {
+        return path.resolve(process.env.PROJECTS_ROOT);
+      }
+      return path.resolve(process.cwd(), '..');
+    }
+
+    /**
+     * Resolves the workspace root (parent of proxy-bridge).
+     */
+    static getWorkspaceRoot(): string {
+      return this.getProjectsRoot();
+    }
 
   /**
    * Resolves the GSD_TASKS.md path.
