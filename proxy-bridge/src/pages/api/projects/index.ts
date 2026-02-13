@@ -3,12 +3,17 @@ import { getDb, saveDb, Project, getProjectsForSession } from '../../../lib/db';
 import { broadcast } from '../../../lib/socket-instance';
 import { v4 as uuidv4 } from 'uuid';
 import { getSessionId } from '../../../lib/session';
+import { Paths } from '../../../lib/Paths';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const sessionId = getSessionId(req);
 
   if (req.method === 'GET') {
     const projects = getProjectsForSession(sessionId);
+    // Ensure .queenbee/ is in every project's .gitignore
+    for (const p of projects) {
+      if (p.path) Paths.ensureGitignore(p.path);
+    }
     return res.status(200).json(projects);
   }
 
@@ -40,9 +45,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     db.projects.push(newProject);
     saveDb(db);
 
-    broadcast('PROJECT_LIST_UPDATE', { projects: getProjectsForSession(sessionId) });
+      // Ensure .queenbee/ is in the project's .gitignore from the start
+      Paths.ensureGitignore(path);
 
-    return res.status(201).json(newProject);
+      broadcast('PROJECT_LIST_UPDATE', { projects: getProjectsForSession(sessionId) });
+
+      return res.status(201).json(newProject);
   }
 
   res.setHeader('Allow', ['GET', 'POST']);

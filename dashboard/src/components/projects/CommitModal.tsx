@@ -157,22 +157,25 @@ const CommitModal = ({ isOpen, onClose, projectPath, onCommitSuccess }: CommitMo
 
     try {
       // 1. Commit
-        const commitRes = await fetch(`${API_BASE}/api/git/commit`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ 
+        const payload = { 
           path: projectPath, 
           message: message || `chore: update ${selectedFiles.size} files`,
           files: Array.from(selectedFiles),
           onlyStaged: commitStagedOnly,
           push: action === 'push' || action === 'pr'
-        })
-      });
+        };
+        console.log('[CommitModal] Sending commit request:', JSON.stringify(payload));
+        const commitRes = await fetch(`${API_BASE}/api/git/commit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload)
+        });
 
+        const resData = await commitRes.json().catch(() => ({}));
+        console.log('[CommitModal] Response:', commitRes.status, JSON.stringify(resData));
         if (!commitRes.ok) {
-          const errData = await commitRes.json().catch(() => ({}));
-          throw new Error(errData.message || errData.error || 'Commit failed');
+          throw new Error(resData.message || resData.error || 'Commit failed');
         }
 
       // 2. Create PR if requested
