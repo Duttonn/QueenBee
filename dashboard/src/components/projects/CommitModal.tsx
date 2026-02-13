@@ -170,7 +170,10 @@ const CommitModal = ({ isOpen, onClose, projectPath, onCommitSuccess }: CommitMo
         })
       });
 
-      if (!commitRes.ok) throw new Error('Commit failed');
+        if (!commitRes.ok) {
+          const errData = await commitRes.json().catch(() => ({}));
+          throw new Error(errData.message || errData.error || 'Commit failed');
+        }
 
       // 2. Create PR if requested
       if (action === 'pr') {
@@ -195,7 +198,7 @@ const CommitModal = ({ isOpen, onClose, projectPath, onCommitSuccess }: CommitMo
       console.error(error);
       setIsCommitting(false);
       setStage('draft');
-      alert('Action failed. Check console.');
+      alert(error instanceof Error ? error.message : 'Action failed. Check console.');
     }
   };
 

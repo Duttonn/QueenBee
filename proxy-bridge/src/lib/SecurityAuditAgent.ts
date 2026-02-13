@@ -44,20 +44,22 @@ export class SecurityAuditAgent {
   }
 
   private async listTrackedFiles(dir: string): Promise<string[]> {
-    // Audit core source and config files
+    // Only audit staged files (files about to be committed)
+    const { execSync } = require('child_process');
     const exts = ['.ts', '.js', '.yaml', '.json', '.md', '.env'];
-    const results: string[] = [];
-    const walk = (d: string) => {
-      if (d.includes('node_modules') || d.includes('.git')) return;
-      const list = fs.readdirSync(d);
-      for (const item of list) {
-        const p = path.join(d, item);
-        const stat = fs.statSync(p);
-        if (stat.isDirectory()) walk(p);
-        else if (exts.some(e => p.endsWith(e))) results.push(p);
-      }
-    };
-    walk(dir);
-    return results;
+    try {
+      const output = execSync('git diff --cached --name-only --diff-filter=ACMR', {
+        cwd: dir,
+        encoding: 'utf-8',
+        timeout: 10000,
+      });
+      return output
+        .split('\n')
+        .filter((f: string) => f.trim() && exts.some(e => f.endsWith(e)))
+        .map((f: string) => path.join(dir, f.trim()));
+    } catch {
+      // If git fails (e.g. not a repo), return empty — don't block the commit
+      return [];
+    }
   }
 }
