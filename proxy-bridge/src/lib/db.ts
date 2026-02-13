@@ -44,6 +44,7 @@ export interface Project {
     type: 'local' | 'cloud';
     threads: Thread[];
     agents?: any[];
+    ownerId?: string; // session ID of the user who imported this project
 }
 
 export interface Thread {
@@ -128,4 +129,19 @@ export const saveDb = (db: Database) => {
     } catch (error) {
         console.error('Error saving DB:', error);
     }
+};
+
+/** Get projects filtered by session owner */
+export const getProjectsForSession = (sessionId?: string): Project[] => {
+    const db = getDb();
+    if (!sessionId) return db.projects;
+    return db.projects.filter(p => !p.ownerId || p.ownerId === sessionId);
+};
+
+/** Add a project with owner */
+export const addProjectForSession = (project: Project, sessionId?: string) => {
+    const db = getDb();
+    if (sessionId) project.ownerId = sessionId;
+    db.projects.push(project);
+    saveDb(db);
 };

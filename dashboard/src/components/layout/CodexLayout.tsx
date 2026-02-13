@@ -889,6 +889,13 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
 
   const handleOpenIn = async (app: 'vscode' | 'finder' | 'terminal' | 'xcode') => {
     if (!activeProject?.path) return;
+
+    // On remote/VPS deployments, local IDE commands won't work
+    const isRemote = !['localhost', '127.0.0.1'].includes(window.location.hostname);
+    if (isRemote) {
+      NativeService.notify('Not Available', 'Opening local IDEs is not supported on remote deployments');
+      return;
+    }
     
     let command = '';
     switch (app) {

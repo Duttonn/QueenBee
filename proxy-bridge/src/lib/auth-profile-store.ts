@@ -4,7 +4,6 @@ import path from 'path';
 import { Paths } from './Paths';
 
 const CONFIG_DIR = Paths.getQueenBeeConfigDir();
-const PROFILES_FILE = path.join(CONFIG_DIR, 'auth-profiles.json');
 
 export type AuthMode = 'api_key' | 'oauth' | 'token';
 
@@ -28,50 +27,60 @@ export interface AuthProfileStoreData {
     profiles: Record<string, AuthProfile>;
 }
 
-export class AuthProfileStore {
-    static async getStore(): Promise<AuthProfileStoreData> {
-        try {
-            await fs.ensureDir(CONFIG_DIR);
+function getProfilesFile(sessionId?: string): string {
+    if (sessionId) {
+        const sessionDir = path.join(CONFIG_DIR, 'sessions', sessionId);
+        return path.join(sessionDir, 'auth-profiles.json');
+    }
+    return path.join(CONFIG_DIR, 'auth-profiles.json');
+}
 
-            if (!await fs.pathExists(PROFILES_FILE)) {
+export class AuthProfileStore {
+    static async getStore(sessionId?: string): Promise<AuthProfileStoreData> {
+        try {
+            const file = getProfilesFile(sessionId);
+            await fs.ensureDir(path.dirname(file));
+
+            if (!await fs.pathExists(file)) {
                 const initial: AuthProfileStoreData = { version: 1, profiles: {} };
-                await fs.writeJson(PROFILES_FILE, initial, { mode: 0o600 });
+                await fs.writeJson(file, initial, { mode: 0o600 });
                 return initial;
             }
 
-            return await fs.readJson(PROFILES_FILE);
+            return await fs.readJson(file);
         } catch (error) {
             console.error('Failed to read auth profiles:', error);
             return { version: 1, profiles: {} };
         }
     }
 
-    static async saveStore(data: AuthProfileStoreData) {
-        await fs.ensureDir(CONFIG_DIR);
-        await fs.writeJson(PROFILES_FILE, data, { mode: 0o600, spaces: 2 });
+    static async saveStore(data: AuthProfileStoreData, sessionId?: string) {
+        const file = getProfilesFile(sessionId);
+        await fs.ensureDir(path.dirname(file));
+        await fs.writeJson(file, data, { mode: 0o600, spaces: 2 });
     }
 
-    static async getProfile(profileId: string): Promise<AuthProfile | undefined> {
-        const store = await this.getStore();
+    static async getProfile(profileId: string, sessionId?: string): Promise<AuthProfile | undefined> {
+        const store = await this.getStore(sessionId);
         return store.profiles[profileId];
     }
 
-    static async saveProfile(profile: AuthProfile) {
-        const store = await this.getStore();
+    static async saveProfile(profile: AuthProfile, sessionId?: string) {
+        const store = await this.getStore(sessionId);
         store.profiles[profile.id] = profile;
-        await this.saveStore(store);
+        await this.saveStore(store, sessionId);
     }
 
-    static async listProfiles(): Promise<AuthProfile[]> {
-        const store = await this.getStore();
+    static async listProfiles(sessionId?: string): Promise<AuthProfile[]> {
+        const store = await this.getStore(sessionId);
         return Object.values(store.profiles);
     }
 
-    static async deleteProfile(profileId: string) {
-        const store = await this.getStore();
+    static async deleteProfile(profileId: string, sessionId?: string) {
+        const store = await this.getStore(sessionId);
         if (store.profiles[profileId]) {
             delete store.profiles[profileId];
-            await this.saveStore(store);
+            await this.saveStore(store, sessionId);
         }
     }
 }

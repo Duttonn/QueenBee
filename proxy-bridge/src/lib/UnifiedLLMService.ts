@@ -305,11 +305,11 @@ export class UnifiedLLMService {
     }
   }
 
-  async transcribe(providerId: string, audioBlob: any, options?: { apiKey?: string | null }): Promise<{ text: string }> {
+  async transcribe(providerId: string, audioBlob: any, options?: { apiKey?: string | null; sessionId?: string }): Promise<{ text: string }> {
     await this.ready;
     
     // 1. Try requested provider
-    let provider = await this.getOrLoadProvider(providerId, { apiKey: options?.apiKey || undefined });
+    let provider = await this.getOrLoadProvider(providerId, { apiKey: options?.apiKey || undefined, sessionId: options?.sessionId });
 
     if (provider && (provider as any).transcribe) {
       const text = await (provider as any).transcribe(audioBlob);
@@ -323,7 +323,7 @@ export class UnifiedLLMService {
     for (const id of priority) {
       if (id === providerId) continue; // Already tried
       
-      const p = await this.getOrLoadProvider(id); // Ensure it's loaded
+      const p = await this.getOrLoadProvider(id, { sessionId: options?.sessionId }); // Ensure it's loaded
       if (p && (p as any).transcribe) {
         console.log(`[Transcribe] Falling back to provider: ${id}`);
         try {
@@ -366,7 +366,7 @@ export class UnifiedLLMService {
     }
 
     // 4. Try to load from store (in case it was added after startup)
-    const profiles = await AuthProfileStore.listProfiles();
+    const profiles = await AuthProfileStore.listProfiles(options?.sessionId);
     for (const profile of profiles) {
       const pId = profile.id || profile.provider;
       if (pId === providerId || pId === alias || profile.provider === providerId || profile.provider === alias) {

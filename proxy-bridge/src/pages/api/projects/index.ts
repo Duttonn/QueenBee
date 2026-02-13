@@ -1,13 +1,15 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { getDb, saveDb, Project } from '../../../lib/db';
+import { getDb, saveDb, Project, getProjectsForSession } from '../../../lib/db';
 import { broadcast } from '../../../lib/socket-instance';
 import { v4 as uuidv4 } from 'uuid';
+import { getSessionId } from '../../../lib/session';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const db = getDb();
+  const sessionId = getSessionId(req);
 
   if (req.method === 'GET') {
-    return res.status(200).json(db.projects || []);
+    const projects = getProjectsForSession(sessionId);
+    return res.status(200).json(projects);
   }
 
   if (req.method === 'POST') {
@@ -30,13 +32,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           time: new Date().toISOString()
         }
       ],
-      agents: []
+      agents: [],
+      ownerId: sessionId
     };
 
+    const db = getDb();
     db.projects.push(newProject);
     saveDb(db);
 
-    broadcast('PROJECT_LIST_UPDATE', { projects: db.projects });
+    broadcast('PROJECT_LIST_UPDATE', { projects: getProjectsForSession(sessionId) });
 
     return res.status(201).json(newProject);
   }

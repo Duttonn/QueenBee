@@ -1,7 +1,8 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { RepoClonerService } from '../../../lib/RepoClonerService';
-import { getDb, saveDb, Project } from '../../../lib/db';
+import { getDb, saveDb, Project, getProjectsForSession } from '../../../lib/db';
 import { broadcast } from '../../../lib/socket-instance';
+import { getSessionId } from '../../../lib/session';
 
 const cloner = new RepoClonerService();
 
@@ -11,6 +12,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
+  const userSessionId = getSessionId(req);
   const { repoUrl, accessToken, projectName } = req.body;
 
   if (!repoUrl) {
@@ -18,31 +20,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { path: targetPath, id: sessionId } = await cloner.clone(repoUrl, accessToken);
+    const { path: targetPath, id: cloneSessionId } = await cloner.clone(repoUrl, accessToken);
     
     const db = getDb();
     const name = projectName || repoUrl.split('/').pop() || 'Imported Cloud Project';
 
     const newProject: Project = {
-      id: sessionId,
+      id: cloneSessionId,
       name,
       path: targetPath,
       type: 'cloud',
       threads: [
         {
-          id: `cloud-${sessionId}`,
+          id: `cloud-${cloneSessionId}`,
           title: 'Cloud Workspace Initialized',
           diff: '+0 -0',
           time: new Date().toISOString()
         }
       ],
-      agents: []
+      agents: [],
+      ownerId: userSessionId
     };
 
     db.projects.push(newProject);
     saveDb(db);
 
-    broadcast('PROJECT_LIST_UPDATE', { projects: db.projects });
+    broadcast('PROJECT_LIST_UPDATE', { projects: getProjectsForSession(userSessionId) });
 
     return res.status(201).json(newProject);
   } catch (error: any) {
