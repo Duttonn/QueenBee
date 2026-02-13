@@ -9,6 +9,11 @@ export const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
 // Socket server URL - separate port/tunnel for WebSocket connections
 export const SOCKET_BASE = import.meta.env.VITE_SOCKET_URL || 'http://127.0.0.1:3001';
 
+/** Wrapper around fetch that always sends credentials (session cookie) */
+export function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    return fetch(input, { ...init, credentials: 'include' });
+}
+
 export interface ToolCall {
     id: string;
     name: string;
@@ -62,7 +67,7 @@ export async function sendChatMessage(request: ChatRequest): Promise<any> {
         headers['Authorization'] = `Bearer ${request.apiKey}`;
     }
 
-    const response = await fetch(`${API_BASE}/api/chat`, {
+    const response = await apiFetch(`${API_BASE}/api/chat`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -110,7 +115,7 @@ export async function sendChatMessageStream(
             headers['Authorization'] = `Bearer ${request.apiKey}`;
         }
 
-        const response = await fetch(`${API_BASE}/api/chat`, {
+        const response = await apiFetch(`${API_BASE}/api/chat`, {
             method: 'POST',
             headers,
             body: JSON.stringify({
@@ -218,7 +223,7 @@ export async function getGitDiff(projectPath: string, filePath?: string, staged?
     if (filePath) params.append('filePath', filePath);
     if (staged) params.append('staged', 'true');
 
-    const response = await fetch(`${API_BASE}/api/git/diff?${params}`);
+    const response = await apiFetch(`${API_BASE}/api/git/diff?${params}`);
 
     if (!response.ok) {
         const error = await response.json();
@@ -233,7 +238,7 @@ export async function getGitDiff(projectPath: string, filePath?: string, staged?
  */
 export async function getGitBranches(projectPath: string): Promise<{ current: string, all: string[], branches: any }> {
     const params = new URLSearchParams({ projectPath });
-    const response = await fetch(`${API_BASE}/api/git/branches?${params}`);
+    const response = await apiFetch(`${API_BASE}/api/git/branches?${params}`);
 
     if (!response.ok) {
         const contentType = response.headers.get('content-type');
@@ -254,7 +259,7 @@ export async function getGitBranches(projectPath: string): Promise<{ current: st
  * Execute a shell command (one-shot)
  */
 export async function executeCommand(command: string, cwd?: string): Promise<{ stdout: string; stderr: string; error?: string }> {
-    const response = await fetch(`${API_BASE}/api/execution/run`, {
+    const response = await apiFetch(`${API_BASE}/api/execution/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command, cwd }),
@@ -275,7 +280,7 @@ export function getTerminalSocketUrl(): string {
  * Create a new worktree for feature development
  */
 export async function createWorktree(projectId: string, featureName: string, sourcePath: string): Promise<{ path: string; branch: string }> {
-    const response = await fetch(`${API_BASE}/api/git/worktree`, {
+    const response = await apiFetch(`${API_BASE}/api/git/worktree`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -299,7 +304,7 @@ export async function createWorktree(projectId: string, featureName: string, sou
  * Ship worktree to Git forge (GitHub/GitLab)
  */
 export async function shipWorktree(treePath: string, repoPath: string, prTitle: string, prBody: string): Promise<{ prUrl: string }> {
-    const response = await fetch(`${API_BASE}/api/workflow/ship`, {
+    const response = await apiFetch(`${API_BASE}/api/workflow/ship`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ treePath, repoPath, prTitle, prBody }),
@@ -316,7 +321,7 @@ export async function shipWorktree(treePath: string, repoPath: string, prTitle: 
  * Get list of active projects and their agents
  */
 export async function getProjects(): Promise<any[]> {
-    const response = await fetch(`${API_BASE}/api/projects`);
+    const response = await apiFetch(`${API_BASE}/api/projects`);
     if (!response.ok) return [];
     return response.json();
 }
@@ -326,7 +331,7 @@ export async function getProjects(): Promise<any[]> {
  */
 export async function getProjectFiles(projectPath: string): Promise<string[]> {
     const params = new URLSearchParams({ path: projectPath });
-    const response = await fetch(`${API_BASE}/api/projects/files?${params}`);
+    const response = await apiFetch(`${API_BASE}/api/projects/files?${params}`);
     if (!response.ok) return [];
     const data = await response.json();
     return data.files || [];
@@ -337,7 +342,7 @@ export async function getProjectFiles(projectPath: string): Promise<string[]> {
  */
 export async function healthCheck(): Promise<boolean> {
     try {
-        const response = await fetch(`${API_BASE}/api/health`);
+        const response = await apiFetch(`${API_BASE}/api/health`);
         return response.ok;
     } catch {
         return false;
@@ -348,7 +353,7 @@ export async function healthCheck(): Promise<boolean> {
  * Transcribe audio blob using Whisper via backend
  */
 export async function transcribeAudio(audioBlob: Blob): Promise<string> {
-    const response = await fetch(`${API_BASE}/api/voice/transcribe`, {
+    const response = await apiFetch(`${API_BASE}/api/voice/transcribe`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/octet-stream',

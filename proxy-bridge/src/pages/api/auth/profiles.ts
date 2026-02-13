@@ -3,10 +3,15 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { AuthManager } from '../../../lib/auth-manager';
 import { AuthProfileStore } from '../../../lib/auth-profile-store';
 
+function getSession(req: NextApiRequest): string | undefined {
+    return req.headers['x-session-id'] as string | undefined;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+    const sessionId = getSession(req);
+
     if (req.method === 'GET') {
-        const profiles = await AuthProfileStore.listProfiles();
-        // Remove secrets before sending to client
+        const profiles = await AuthProfileStore.listProfiles(sessionId);
         const safeProfiles = profiles.map(p => ({
             id: p.id,
             provider: p.provider,
@@ -24,7 +29,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         try {
-            await AuthManager.addStaticToken(provider, token, alias);
+            await AuthManager.addStaticToken(provider, token, alias, sessionId);
             return res.status(200).json({ success: true });
         } catch (e: any) {
             return res.status(500).json({ error: e.message });
@@ -34,7 +39,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'DELETE') {
         const { id } = req.body;
         if (!id) return res.status(400).json({ error: 'ID required' });
-        await AuthProfileStore.deleteProfile(id);
+        await AuthProfileStore.deleteProfile(id, sessionId);
         return res.json({ success: true });
     }
 

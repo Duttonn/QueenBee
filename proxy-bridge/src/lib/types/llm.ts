@@ -43,6 +43,7 @@ export interface LLMProviderOptions {
   apiKey?: string;
   tools?: any[];
   composerMode?: 'code' | 'chat' | 'plan';
+  sessionId?: string;
 }
 
 export interface ILLMProvider {

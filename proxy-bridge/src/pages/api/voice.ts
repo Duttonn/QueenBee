@@ -20,6 +20,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const providerId = (req.headers['x-codex-provider'] as string) || 'auto';
   const apiKey = req.headers['authorization']?.replace('Bearer ', '') || null;
+  const sessionId = req.headers['x-session-id'] as string | undefined;
 
   try {
     // Read raw body buffer
@@ -37,7 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Call UnifiedLLMService for transcription
     try {
-        const result = await unifiedLLMService.transcribe(providerId, audioBuffer, { apiKey });
+        const result = await unifiedLLMService.transcribe(providerId, audioBuffer, { apiKey, sessionId });
         return res.status(200).json(result);
     } catch (providerError: any) {
         logger.error(`[Voice] Provider Error: ${providerError.message}`);

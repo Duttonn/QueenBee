@@ -157,10 +157,11 @@ const CommitModal = ({ isOpen, onClose, projectPath, onCommitSuccess }: CommitMo
 
     try {
       // 1. Commit
-      const commitRes = await fetch(`${API_BASE}/api/git/commit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        const commitRes = await fetch(`${API_BASE}/api/git/commit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ 
           path: projectPath, 
           message: message || `chore: update ${selectedFiles.size} files`,
           files: Array.from(selectedFiles),

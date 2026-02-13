@@ -140,20 +140,20 @@ export class AuthManager {
     /**
      * Complete OAuth flow by exchanging code for tokens
      */
-    static async exchangeCodeForToken(provider: string, code: string, codeVerifier?: string): Promise<AuthProfile> {
+    static async exchangeCodeForToken(provider: string, code: string, codeVerifier?: string, sessionId?: string): Promise<AuthProfile> {
         if (provider === 'google') {
-            return this.exchangeGoogleCode(code, GOOGLE_CLIENT_ID!, GOOGLE_CLIENT_SECRET!, codeVerifier);
+            return this.exchangeGoogleCode(code, GOOGLE_CLIENT_ID!, GOOGLE_CLIENT_SECRET!, codeVerifier, 'google', sessionId);
         }
         if (provider === 'google-antigravity') {
-            return this.exchangeGoogleCode(code, ANTIGRAVITY_CLIENT_ID, ANTIGRAVITY_CLIENT_SECRET, codeVerifier, 'google-antigravity');
+            return this.exchangeGoogleCode(code, ANTIGRAVITY_CLIENT_ID, ANTIGRAVITY_CLIENT_SECRET, codeVerifier, 'google-antigravity', sessionId);
         }
         if (provider === 'google-gemini-cli') {
-            return this.exchangeGoogleCode(code, GEMINI_CLI_CLIENT_ID!, GEMINI_CLI_CLIENT_SECRET!, codeVerifier, 'google-gemini-cli');
+            return this.exchangeGoogleCode(code, GEMINI_CLI_CLIENT_ID!, GEMINI_CLI_CLIENT_SECRET!, codeVerifier, 'google-gemini-cli', sessionId);
         }
         throw new Error(`Provider ${provider} exchange not supported`);
     }
 
-    private static async exchangeGoogleCode(code: string, clientId: string, clientSecret: string, codeVerifier?: string, provider: string = 'google'): Promise<AuthProfile> {
+    private static async exchangeGoogleCode(code: string, clientId: string, clientSecret: string, codeVerifier?: string, provider: string = 'google', sessionId?: string): Promise<AuthProfile> {
         if (!clientId || !clientSecret) throw new Error(`${provider} credentials not set`);
 
         const params = new URLSearchParams({
@@ -194,7 +194,7 @@ export class AuthManager {
             expires: Date.now() + (data.expires_in * 1000),
         };
 
-        await AuthProfileStore.saveProfile(profile);
+        await AuthProfileStore.saveProfile(profile, sessionId);
         return profile;
     }
 
@@ -227,19 +227,19 @@ export class AuthManager {
     /**
      * Refresh Token Logic
      */
-    static async refreshProfile(profileId: string): Promise<AuthProfile> {
-        const profile = await AuthProfileStore.getProfile(profileId);
+    static async refreshProfile(profileId: string, sessionId?: string): Promise<AuthProfile> {
+        const profile = await AuthProfileStore.getProfile(profileId, sessionId);
         if (!profile) throw new Error('Profile not found');
         if (profile.mode !== 'oauth' || !profile.refresh) return profile;
 
         if (profile.provider === 'google') {
-            return this.refreshGoogleToken(profile);
+            return this.refreshGoogleToken(profile, sessionId);
         }
 
         return profile;
     }
 
-    private static async refreshGoogleToken(profile: AuthProfile): Promise<AuthProfile> {
+    private static async refreshGoogleToken(profile: AuthProfile, sessionId?: string): Promise<AuthProfile> {
         if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) return profile;
 
         const res = await fetch('https://oauth2.googleapis.com/token', {
@@ -265,21 +265,21 @@ export class AuthManager {
             refresh: data.refresh_token || profile.refresh
         };
 
-        await AuthProfileStore.saveProfile(updated);
+        await AuthProfileStore.saveProfile(updated, sessionId);
         return updated;
     }
 
     /**
      * Add Static Token (Gemini CLI / Claude Setup Token)
      */
-    static async addStaticToken(provider: string, token: string, alias: string = 'default') {
+    static async addStaticToken(provider: string, token: string, alias: string = 'default', sessionId?: string) {
         const profile: AuthProfile = {
             id: `${provider}:${alias}`,
             provider,
             mode: 'token',
             token
         };
-        await AuthProfileStore.saveProfile(profile);
+        await AuthProfileStore.saveProfile(profile, sessionId);
     }
 }
 

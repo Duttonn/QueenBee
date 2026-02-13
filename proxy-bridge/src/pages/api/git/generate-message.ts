@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import simpleGit from 'simple-git';
 import { unifiedLLMService } from '../../../lib/UnifiedLLMService';
+import { getSessionId } from '../../../lib/session';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -50,11 +51,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     Diff:
     ${truncatedDiff}`;
 
-    try {
-        const response = await unifiedLLMService.chat('auto', [{ role: 'user', content: prompt }], {
-            temperature: 0.2,
-            maxTokens: 60
-        });
+      try {
+          const sessionId = getSessionId(req);
+          const response = await unifiedLLMService.chat('auto', [{ role: 'user', content: prompt }], {
+              temperature: 0.2,
+              maxTokens: 60,
+              sessionId
+          });
 
         const message = response.content.trim().replace(/^["']|["']$/g, ''); // Remove quotes if LLM adds them
         res.status(200).json({ message });

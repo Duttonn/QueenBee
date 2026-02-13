@@ -1,6 +1,7 @@
 
 import { NextApiRequest, NextApiResponse } from 'next';
 import { AuthManager } from '../../../lib/auth-manager';
+import { getSessionId } from '../../../lib/session';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     if (req.method !== 'GET') {
@@ -35,7 +36,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
-        const profile = await AuthManager.exchangeCodeForToken(provider, code, codeVerifier);
+        const sessionId = getSessionId(req, res);
+        const profile = await AuthManager.exchangeCodeForToken(provider, code, codeVerifier, sessionId);
 
         // Clear verifier cookie
         res.setHeader('Set-Cookie', `auth_verifier=; Path=/; HttpOnly; Max-Age=0`);

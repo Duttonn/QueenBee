@@ -15,6 +15,7 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { model, messages, stream, projectPath: rawPath, threadId, mode, agentId, composerMode } = req.body;
   const providerId = (req.headers['x-codex-provider'] as string) || 'auto';
   const apiKey = req.headers['authorization']?.replace('Bearer ', '') || null;
+  const sessionId = req.headers['x-session-id'] as string | undefined;
   
   logger.info(`[Chat] Request received. Provider: ${providerId}, Model: ${model}, Stream: ${stream}, Path: ${rawPath}, Thread: ${threadId}, Mode: ${mode}, Agent: ${agentId}, Composer: ${composerMode}`);
 
@@ -106,7 +107,7 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
     });
 
     try {
-      const streamGenerator = unifiedLLMService.chatStream(providerId, messages, { model, apiKey });
+        const streamGenerator = unifiedLLMService.chatStream(providerId, messages, { model, apiKey, sessionId });
       for await (const chunk of streamGenerator) {
         res.write(`data: ${JSON.stringify(chunk)}\n\n`);
       }
@@ -126,7 +127,7 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
 
   // Fallback to standard non-streaming call
   try {
-    const response = await unifiedLLMService.chat(providerId, messages, { model, apiKey });
+      const response = await unifiedLLMService.chat(providerId, messages, { model, apiKey, sessionId });
     return res.status(200).json({
         choices: [{
             message: {

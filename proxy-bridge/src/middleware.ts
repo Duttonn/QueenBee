@@ -1,17 +1,44 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+const SESSION_COOKIE = 'qb_session';
+const SESSION_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
+
 export function middleware(request: NextRequest) {
     const requestId = request.headers.get('x-request-id') || crypto.randomUUID();
     const origin = request.headers.get('origin');
     const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://127.0.0.1:5173,http://localhost:5173')
         .split(',')
         .map(s => s.trim());
-    const allowOrigin = origin && allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+    
+    // Allow any trycloudflare.com subdomain dynamically
+    const isAllowed = origin && (
+        allowedOrigins.includes(origin) ||
+        /^https?:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(origin)
+    );
+    const allowOrigin = isAllowed ? origin! : allowedOrigins[0];
+
+    // Detect if running behind HTTPS (e.g. Cloudflare tunnel)
+    const isSecure = request.headers.get('x-forwarded-proto') === 'https'
+        || request.url.startsWith('https');
+    const cookieOpts = {
+        httpOnly: true,
+        sameSite: isSecure ? 'none' as const : 'lax' as const,
+        secure: isSecure,
+        path: '/',
+        maxAge: SESSION_MAX_AGE,
+    };
+
+    // Check/create session cookie
+    let sessionId = request.cookies.get(SESSION_COOKIE)?.value;
+    const needsSession = !sessionId;
+    if (!sessionId) {
+        sessionId = crypto.randomUUID();
+    }
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
-        return new NextResponse(null, {
+        const resp = new NextResponse(null, {
             status: 200,
             headers: {
                 'Access-Control-Allow-Origin': allowOrigin,
@@ -21,11 +48,16 @@ export function middleware(request: NextRequest) {
                 'X-Request-Id': requestId,
             },
         });
+        if (needsSession) {
+            resp.cookies.set(SESSION_COOKIE, sessionId, cookieOpts);
+        }
+        return resp;
     }
 
-    // Clone request headers and set X-Request-Id for the actual request handler to read
+    // Clone request headers and set X-Request-Id + session for the actual request handler
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set('X-Request-Id', requestId);
+    requestHeaders.set('X-Session-Id', sessionId);
 
     // For all other requests, add CORS headers
     const response = NextResponse.next({
@@ -39,6 +71,10 @@ export function middleware(request: NextRequest) {
     response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Codex-Provider, X-Request-Id');
     response.headers.set('Access-Control-Allow-Credentials', 'true');
     response.headers.set('X-Request-Id', requestId);
+
+    if (needsSession) {
+        response.cookies.set(SESSION_COOKIE, sessionId, cookieOpts);
+    }
 
     return response;
 }
