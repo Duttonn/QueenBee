@@ -13,6 +13,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const { message, path: repoPath, addAll = true, push = false, files, onlyStaged = false } = req.body;
 
+    console.log('[Git Commit] Request body:', JSON.stringify({ message, repoPath, addAll, push, files, onlyStaged }));
+
     if (!repoPath) {
         return res.status(400).json({ error: 'Repository path required' });
     }
@@ -33,13 +35,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
         } catch { /* ignore */ }
 
-        // Stage files first (so security audit can check what's actually being committed)
-        if (!onlyStaged) {
-            if (files && Array.isArray(files) && files.length > 0) {
-                await git.add(files);
-            } else if (addAll) {
-                await git.add('.');
-            }
+        // Stage files
+        if (files && Array.isArray(files) && files.length > 0) {
+            // Always stage the explicitly selected files
+            await git.add(files);
+        } else if (!onlyStaged && addAll) {
+            // Only auto-add everything if not in "staged only" mode
+            await git.add('.');
         }
 
         // Pre-commit security audit on staged files only
@@ -56,9 +58,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         const result = await git.commit(message || 'Update from Queen Bee');
+        console.log('[Git Commit] Commit result:', JSON.stringify(result));
 
         if (push) {
-            await git.push();
+            console.log('[Git Commit] Pushing...');
+            const pushResult = await git.push();
+            console.log('[Git Commit] Push result:', JSON.stringify(pushResult));
+        } else {
+            console.log('[Git Commit] Push not requested (push=' + push + ')');
         }
 
         return res.status(200).json(result);
