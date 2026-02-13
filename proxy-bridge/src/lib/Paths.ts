@@ -1,5 +1,6 @@
 import path from 'path';
 import os from 'os';
+import fs from 'fs';
 
 /**
  * Paths: Central utility for resolving system paths.
@@ -178,12 +179,33 @@ export class Paths {
 
      */
 
-    static getProjectConfigDir(projectPath: string): string {
+      static getProjectConfigDir(projectPath: string): string {
+        return path.join(projectPath, '.queenbee');
+      }
 
-      return path.join(projectPath, '.queenbee');
-
+      /**
+       * Ensures .queenbee is listed in the project's .gitignore.
+       * Safe to call multiple times — only writes if needed.
+       */
+      static ensureGitignore(projectPath: string): void {
+        try {
+          const gitignorePath = path.join(projectPath, '.gitignore');
+          let content = '';
+          if (fs.existsSync(gitignorePath)) {
+            content = fs.readFileSync(gitignorePath, 'utf-8');
+          }
+          // Check if .queenbee is already ignored (exact line match)
+          const lines = content.split('\n').map(l => l.trim());
+          if (lines.includes('.queenbee') || lines.includes('.queenbee/')) {
+            return;
+          }
+          // Append to .gitignore
+          const entry = content.length > 0 && !content.endsWith('\n')
+            ? '\n.queenbee/\n'
+            : '.queenbee/\n';
+          fs.appendFileSync(gitignorePath, entry);
+        } catch {
+          // Non-critical — don't block on gitignore failures
+        }
+      }
     }
-
-  }
-
-  
