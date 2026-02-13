@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import simpleGit from 'simple-git';
 import { SecurityAuditAgent } from '../../../lib/SecurityAuditAgent';
+import { Paths } from '../../../lib/Paths';
 import fs from 'fs';
 
 const securityAudit = new SecurityAuditAgent();
@@ -26,6 +27,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const git = simpleGit(repoPath);
 
     try {
+        // Ensure .queenbee/ is always in .gitignore before any commit
+        Paths.ensureGitignore(repoPath);
         // Ensure git identity is configured (needed on fresh VPS)
         try {
             const name = await git.getConfig('user.name');
@@ -35,13 +38,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
         } catch { /* ignore */ }
 
-        // Stage files
-        if (files && Array.isArray(files) && files.length > 0) {
-            // Always stage the explicitly selected files
-            await git.add(files);
+        // Stage files (filter out .queenbee/ files)
+        const safeFiles = (files && Array.isArray(files))
+            ? files.filter((f: string) => !f.startsWith('.queenbee/'))
+            : [];
+        if (safeFiles.length > 0) {
+            await git.add(safeFiles);
         } else if (!onlyStaged && addAll) {
             // Only auto-add everything if not in "staged only" mode
             await git.add('.');
+            // Unstage any .queenbee/ files that may have been tracked before .gitignore update
+            try {
+                await git.raw(['rm', '--cached', '-r', '--ignore-unmatch', '.queenbee']);
+            } catch { /* ignore — dir may not exist */ }
         }
 
         // Pre-commit security audit on staged files only

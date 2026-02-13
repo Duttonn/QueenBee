@@ -889,29 +889,47 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
 
   const handleOpenIn = async (app: 'vscode' | 'finder' | 'terminal' | 'xcode') => {
     if (!activeProject?.path) return;
+    const inElectron = typeof window !== 'undefined' && !!(window as any).electron;
+    const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
-    // On remote/VPS deployments, local IDE commands won't work
-    const isRemote = !['localhost', '127.0.0.1'].includes(window.location.hostname);
-    if (isRemote) {
-      NativeService.notify('Not Available', 'Opening local IDEs is not supported on remote deployments');
-      return;
-    }
-    
-    let command = '';
-    switch (app) {
-      case 'vscode': command = `code "${activeProject.path}"`; break;
-      case 'finder': command = `open "${activeProject.path}"`; break;
-      case 'terminal': command = `open -a Terminal "${activeProject.path}"`; break;
-      case 'xcode': command = `open -a Xcode "${activeProject.path}"`; break;
-    }
-
-    if (command) {
-      try {
-        await executeCommand(command);
-        NativeService.notify('Project Opened', `Opened in ${app}`);
-      } catch (e: any) {
-        console.error('Failed to open project:', e);
+    if (inElectron) {
+      // Electron app — use native shell commands via IPC
+      const { shell } = (window as any).electron;
+      switch (app) {
+        case 'vscode':
+          await shell.openExternal(`vscode://file${activeProject.path}`);
+          break;
+        case 'finder':
+          await shell.showItemInFolder(activeProject.path);
+          break;
+        case 'terminal':
+          await shell.openExternal(`x-apple.terminal:${activeProject.path}`);
+          break;
+        case 'xcode':
+          await shell.openExternal(`xcode://open?url=file://${activeProject.path}`);
+          break;
       }
+      NativeService.notify('Project Opened', `Opened in ${app}`);
+    } else if (isLocal) {
+      // Local dev (browser hitting localhost proxy-bridge) — execute commands on the server
+      let command = '';
+      switch (app) {
+        case 'vscode': command = `code "${activeProject.path}"`; break;
+        case 'finder': command = `open "${activeProject.path}"`; break;
+        case 'terminal': command = `open -a Terminal "${activeProject.path}"`; break;
+        case 'xcode': command = `open -a Xcode "${activeProject.path}"`; break;
+      }
+      if (command) {
+        try {
+          await executeCommand(command);
+          NativeService.notify('Project Opened', `Opened in ${app}`);
+        } catch (e: any) {
+          console.error('Failed to open project:', e);
+        }
+      }
+    } else {
+      // Remote deployment (Cloudflare tunnel, etc.) — server commands won't open local apps
+      NativeService.notify('Not Available', 'Opening local IDEs is not supported on remote deployments. Use the Electron desktop app for this feature.');
     }
   };
 

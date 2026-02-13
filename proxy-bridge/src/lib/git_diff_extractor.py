@@ -47,11 +47,16 @@ def get_git_diff(project_path, file_path=None, cached=False):
         result = subprocess.run(diff_cmd, cwd=project_path, capture_output=True, text=True, check=True)
         diff_output = result.stdout
 
+        # Filter out .queenbee/ from tracked diffs
+        file_stats = {k: v for k, v in file_stats.items() if not k.startswith('.queenbee/')}
+
         # --- Handle Untracked Files (Only if not cached) ---
         if not file_path and not cached:
             untracked_cmd = ["git", "ls-files", "--others", "--exclude-standard"]
             untracked_result = subprocess.run(untracked_cmd, cwd=project_path, capture_output=True, text=True, check=True)
             for untracked_file in untracked_result.stdout.splitlines():
+                if untracked_file.startswith('.queenbee/'):
+                    continue
                 if untracked_file not in file_stats:
                     abs_path = os.path.join(project_path, untracked_file)
                     if os.path.isdir(abs_path): continue
@@ -151,12 +156,15 @@ def get_git_diff(project_path, file_path=None, cached=False):
                 "hunks": current_hunks
             })
         
-        return {
-            "status": "success",
-            "added": total_added,
-            "removed": total_removed,
-            "files": files
-        }
+          # Final safety filter: remove any .queenbee/ files that slipped through
+          files = [f for f in files if not f["path"].startswith('.queenbee/')]
+
+          return {
+              "status": "success",
+              "added": total_added,
+              "removed": total_removed,
+              "files": files
+          }
     except subprocess.CalledProcessError as e:
         return {
             "status": "error",
