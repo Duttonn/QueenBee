@@ -28,11 +28,17 @@ jobs:
             git reset --hard origin/main
 
             cd proxy-bridge
+            # Installation propre des dépendances (ajoute dotenv si nécessaire)
             npm install
             npm run build
 
-            # On utilise --update-env pour être SUR que le nouveau ALLOWED_ORIGINS est lu
-            pm2 restart queenbee-api queenbee-socket --update-env
+            # On restart l'API normalement
+            pm2 restart queenbee-api --update-env || pm2 start ecosystem.config.cjs --only queenbee-api
             
-            # On ne touche SURTOUT PAS aux tunnels ici pour garder les URLs fixes
+            # Pour le SOCKET, on fait un delete/start au cas où les modules ont changé
+            # C'est plus sûr pour éviter l'erreur "Module Not Found"
+            pm2 delete queenbee-socket || true
+            pm2 start ecosystem.config.cjs --only queenbee-socket --update-env
+            
+            # On sauvegarde la liste pour le prochain reboot du VPS
             pm2 save
