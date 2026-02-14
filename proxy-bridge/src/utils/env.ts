@@ -3,17 +3,18 @@ import fs from "node:fs";
 import path from "node:path";
 
 export function loadQueenBeeEnv() {
-  // 1. Charge le .env standard du dossier (dev local)
-  dotenv.config();
+  // Chemin absolu sur le VPS pour lever toute ambiguïté
+  const vpsPath = "/home/fish/queen-bee/.env.bridge";
+  // Chemin relatif pour le dev local
+  const localPath = path.resolve(process.cwd(), "../.env.bridge");
 
-  // 2. Charge le fallback global sur le VPS sans écraser les vars existantes
-  // On remonte au dossier parent car ton .env.bridge est dans /home/fish/queen-bee/
-  const globalEnvPath = path.resolve(process.cwd(), "../.env.bridge");
-
-  if (fs.existsSync(globalEnvPath)) {
-    console.log(`[QueenBee] Loading global config from: ${globalEnvPath}`);
-    dotenv.config({ path: globalEnvPath, override: false });
+  if (fs.existsSync(vpsPath)) {
+    console.log(`[QueenBee] SUCCESS: Loading global config from VPS path: ${vpsPath}`);
+    dotenv.config({ path: vpsPath, override: true });
+  } else if (fs.existsSync(localPath)) {
+    console.log(`[QueenBee] SUCCESS: Loading config from local path: ${localPath}`);
+    dotenv.config({ path: localPath, override: true });
   } else {
-    console.warn(`[QueenBee] No global config found at ${globalEnvPath}`);
+    console.error("[QueenBee] ERROR: No .env.bridge found! CORS will fallback to '*'.");
   }
 }

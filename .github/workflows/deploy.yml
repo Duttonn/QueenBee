@@ -28,12 +28,13 @@ jobs:
             git reset --hard origin/main
 
             cd proxy-bridge
-            # ÉTAPE CRUCIALE : on crée le .env.local que Next.js lira tout seul
+            # INNOVATION : On lie le fichier de config global au .env.local de Next.js
             cp /home/fish/queen-bee/.env.bridge .env.local
             
             npm install
             npm run build
 
+            # Nettoyage et restart
             pm2 delete queenbee-api queenbee-socket || true
             pm2 start ecosystem.config.cjs --update-env
             pm2 save
