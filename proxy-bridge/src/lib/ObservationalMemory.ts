@@ -43,7 +43,7 @@ export class ObservationalMemory extends EventEmitter {
   constructor(projectPath: string, options?: { maxObservations?: number; maxReflections?: number; reflectionIntervalMs?: number }) {
     super();
     this.projectPath = projectPath;
-    this.dataDir = path.join(Paths.getProjectDataDir(projectPath), 'observational-memory');
+    this.dataDir = path.join(Paths.getProjectConfigDir(projectPath), 'observational-memory');
     this.maxObservations = options?.maxObservations || 1000;
     this.maxReflections = options?.maxReflections || 100;
     this.reflectionInterval = options?.reflectionIntervalMs || 300000;
