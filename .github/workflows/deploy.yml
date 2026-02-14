@@ -19,14 +19,11 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
           script: |
-            # Load Node/npm environment
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
             source ~/.bashrc 2>/dev/null || true
 
             cd /home/fish/queen-bee
-
-            # Force sync to match remote (avoids divergent branch errors)
             git fetch --all
             git reset --hard origin/main
 
@@ -34,6 +31,8 @@ jobs:
             npm install
             npm run build
 
-            # Restart using ecosystem.config.cjs (runs queenbee-api + queenbee-socket)
-            pm2 restart queenbee-api queenbee-socket || pm2 start ecosystem.config.cjs
+            # On utilise --update-env pour être SUR que le nouveau ALLOWED_ORIGINS est lu
+            pm2 restart queenbee-api queenbee-socket --update-env
+            
+            # On ne touche SURTOUT PAS aux tunnels ici pour garder les URLs fixes
             pm2 save
