@@ -8,12 +8,14 @@ export function middleware(request: NextRequest) {
     const requestId = request.headers.get('x-request-id') || crypto.randomUUID();
     // Force l'origine dynamique pour le développement et les previews
     const origin = request.headers.get('origin');
-    const allowedOrigins = [
-        'https://queenbee.vercel.app',
-        'https://queen-bee-nataos-projects.vercel.app',
-        'http://localhost:3000',
-        'http://localhost:5173'
-    ];
+    const allowedOrigins = process.env.ALLOWED_ORIGINS
+        ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+        : [
+            'https://queenbee.vercel.app',
+            'https://queen-bee-nataos-projects.vercel.app',
+            'http://localhost:3000',
+            'http://localhost:5173'
+        ];
 
     // Electron sends origin 'null' or 'file://' or no origin at all
     const isElectron = !origin || origin === 'null' || origin.startsWith('file://');
