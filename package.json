@@ -2,7 +2,7 @@
   "name": "queen-bee",
   "version": "0.1.0",
   "private": true,
-  "main": "dashboard/dist-electron/main.cjs",
+  "main": "dist-electron/main.js",
   "scripts": {
     "postinstall": "npm install --prefix dashboard && npm install --prefix proxy-bridge",
     "compile:electron": "tsc -p tsconfig.electron.json",
@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
+    "@types/node": "^25.2.3",
     "concurrently": "^8.2.2",
     "electron": "^29.2.0",
     "electron-builder": "^23.0.0",
@@ -29,9 +30,13 @@
       "buildResources": "build"
     },
     "files": [
-      "dashboard/dist-electron/**",
-      "dashboard/dist/**"
+      "dist-electron/**/*",
+      "dashboard/dist/**/*",
+      "package.json"
     ],
+    "extraMetadata": {
+      "main": "dist-electron/main.js"
+    },
     "asarUnpack": [
       "**/*.node"
     ]
