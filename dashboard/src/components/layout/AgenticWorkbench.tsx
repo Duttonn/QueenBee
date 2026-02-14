@@ -35,9 +35,11 @@ import {
   Columns,
   Rows,
   GitBranch,
-  ListChecks
+  ListChecks,
+  Download
 } from 'lucide-react';
-import { type Message, type ToolCall, getGitBranches, executeCommand } from '../../services/api';
+import { type Message, type ToolCall, getGitBranches, executeCommand, API_BASE } from '../../services/api';
+import { useAppMode } from '../../hooks/useAppMode';
 import { useHiveStore } from '../../store/useHiveStore';
 import ToolCallViewer from '../agents/ToolCallViewer';
 import AgentStepsPanel from '../agents/AgentStepsPanel';
@@ -547,6 +549,7 @@ interface AgenticWorkbenchProps {
   workbenchView,
   onViewChange
 }: AgenticWorkbenchProps) => {
+  const { isWeb } = useAppMode();
   const [expandedThinking, setExpandedThinking] = useState<Record<number, boolean>>({});
   const [isAgentMenuOpen, setIsAgentMenuOpen] = useState(false);
   const [isOpenMenuOpen, setIsOpenMenuOpen] = useState(false);
@@ -1114,74 +1117,93 @@ interface AgenticWorkbenchProps {
             </button>
           )}
 
-          {/* Open In Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setIsOpenMenuOpen(!isOpenMenuOpen)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-900 text-[11px] font-black uppercase rounded-xl transition-all shadow-sm"
-            >
-              <Code size={14} className="text-blue-500" />
-              <span>Open</span>
-              <ChevronDown size={12} className="opacity-50" />
-            </button>
+            {/* Open In Dropdown — desktop only */}
+            {!isWeb && (
+              <div className="relative">
+                <button
+                  onClick={() => setIsOpenMenuOpen(!isOpenMenuOpen)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-900 text-[11px] font-black uppercase rounded-xl transition-all shadow-sm"
+                >
+                  <Code size={14} className="text-blue-500" />
+                  <span>Open</span>
+                  <ChevronDown size={12} className="opacity-50" />
+                </button>
 
-            <AnimatePresence>
-              {isOpenMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setIsOpenMenuOpen(false)} />
-                  <motion.div
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="absolute top-full right-0 mt-2 w-48 bg-white border border-zinc-200 shadow-2xl rounded-2xl overflow-hidden z-20 p-1"
-                  >
-                    <div className="px-3 py-2 text-[9px] font-black text-zinc-400 uppercase tracking-widest border-b border-zinc-50 mb-1">
-                      Open in
-                    </div>
-                    <button
-                      onClick={() => { onOpenIn?.('vscode'); setIsOpenMenuOpen(false); }}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-zinc-600 hover:bg-zinc-50 transition-all text-left"
-                    >
-                      <Code size={14} className="text-blue-500" />
-                      <span>VS Code</span>
-                    </button>
-                    <button
-                      onClick={() => { onOpenIn?.('finder'); setIsOpenMenuOpen(false); }}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-zinc-600 hover:bg-zinc-50 transition-all text-left"
-                    >
-                      <FolderOpen size={14} className="text-blue-400" />
-                      <span>Finder</span>
-                    </button>
-                    <button
-                      onClick={() => { onOpenIn?.('terminal'); setIsOpenMenuOpen(false); }}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-zinc-600 hover:bg-zinc-50 transition-all text-left"
-                    >
-                      <Terminal size={14} className="text-zinc-500" />
-                      <span>Terminal</span>
-                    </button>
-                    <button
-                      onClick={() => { onOpenIn?.('xcode'); setIsOpenMenuOpen(false); }}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-zinc-600 hover:bg-zinc-50 transition-all text-left"
-                    >
-                      <Command size={14} className="text-blue-600" />
-                      <span>Xcode</span>
-                    </button>
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
-          </div>
+                <AnimatePresence>
+                  {isOpenMenuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setIsOpenMenuOpen(false)} />
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        className="absolute top-full right-0 mt-2 w-48 bg-white border border-zinc-200 shadow-2xl rounded-2xl overflow-hidden z-20 p-1"
+                      >
+                        <div className="px-3 py-2 text-[9px] font-black text-zinc-400 uppercase tracking-widest border-b border-zinc-50 mb-1">
+                          Open in
+                        </div>
+                        <button
+                          onClick={() => { onOpenIn?.('vscode'); setIsOpenMenuOpen(false); }}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-zinc-600 hover:bg-zinc-50 transition-all text-left"
+                        >
+                          <Code size={14} className="text-blue-500" />
+                          <span>VS Code</span>
+                        </button>
+                        <button
+                          onClick={() => { onOpenIn?.('finder'); setIsOpenMenuOpen(false); }}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-zinc-600 hover:bg-zinc-50 transition-all text-left"
+                        >
+                          <FolderOpen size={14} className="text-blue-400" />
+                          <span>Finder</span>
+                        </button>
+                        <button
+                          onClick={() => { onOpenIn?.('terminal'); setIsOpenMenuOpen(false); }}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-zinc-600 hover:bg-zinc-50 transition-all text-left"
+                        >
+                          <Terminal size={14} className="text-zinc-500" />
+                          <span>Terminal</span>
+                        </button>
+                        <button
+                          onClick={() => { onOpenIn?.('xcode'); setIsOpenMenuOpen(false); }}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-zinc-600 hover:bg-zinc-50 transition-all text-left"
+                        >
+                          <Command size={14} className="text-blue-600" />
+                          <span>Xcode</span>
+                        </button>
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
 
-          <button
-            onClick={onCommit}
-            className="flex items-center gap-1.5 px-4 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white text-[11px] font-black uppercase rounded-xl transition-all shadow-xl shadow-black/10 active:scale-95"
-          >
-            <GitCommit size={14} />
-            Commit
-            {diffStats.filesCount > 0 && <span className="text-zinc-400 ml-1">{diffStats.filesCount} changed</span>}
-            {diffStats.added > 0 && <span className="text-emerald-400 ml-1">+{diffStats.added}</span>}
-            {diffStats.removed > 0 && <span className="text-rose-400">-{diffStats.removed}</span>}
-          </button>
+            {/* Commit button — desktop only */}
+            {!isWeb && (
+              <button
+                onClick={onCommit}
+                className="flex items-center gap-1.5 px-4 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white text-[11px] font-black uppercase rounded-xl transition-all shadow-xl shadow-black/10 active:scale-95"
+              >
+                <GitCommit size={14} />
+                Commit
+                {diffStats.filesCount > 0 && <span className="text-zinc-400 ml-1">{diffStats.filesCount} changed</span>}
+                {diffStats.added > 0 && <span className="text-emerald-400 ml-1">+{diffStats.added}</span>}
+                {diffStats.removed > 0 && <span className="text-rose-400">-{diffStats.removed}</span>}
+              </button>
+            )}
+
+            {/* Download ZIP — web preview only */}
+            {isWeb && activeProject && (
+              <button
+                onClick={() => {
+                  const url = `${API_BASE}/api/project/download?path=${encodeURIComponent(activeProject.path)}`;
+                  window.open(url, '_blank');
+                }}
+                className="flex items-center gap-1.5 px-4 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white text-[11px] font-black uppercase rounded-xl transition-all shadow-xl shadow-black/10 active:scale-95"
+              >
+                <Download size={14} />
+                Download ZIP
+              </button>
+            )}
         </div>
       </div>
 

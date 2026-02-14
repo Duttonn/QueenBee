@@ -51,6 +51,7 @@ import CustomizationPanel from '../settings/CustomizationPanel';
 import UniversalAuthModal from './UniversalAuthModal';
 import { NativeService } from '../../services/NativeService';
 import CommitModal from '../projects/CommitModal';
+import { useAppMode } from '../../hooks/useAppMode';
 import DiffViewer from '../projects/DiffViewer';
 import { ProjectOverview } from '../projects/ProjectOverview';
 import InboxPanel from './InboxPanel';
@@ -471,6 +472,7 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
 
 
 const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
+  const { isWeb } = useAppMode();
   const [activeView, setActiveView] = useState<'build' | 'automations' | 'skills' | 'triage'>('build');
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [isDiffOpen, setIsDiffOpen] = useState(false);
@@ -1125,15 +1127,17 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         onClose={() => setIsCustomizationOpen(false)}
       />
 
-      <CommitModal
-        isOpen={isCommitModalOpen}
-        onClose={() => setIsCommitModalOpen(false)}
-        projectPath={activeProject?.path || ''}
-        onCommitSuccess={() => {
-          fetchData();
-          setIsDiffOpen(false);
-        }}
-      />
+        {!isWeb && (
+          <CommitModal
+            isOpen={isCommitModalOpen}
+            onClose={() => setIsCommitModalOpen(false)}
+            projectPath={activeProject?.path || ''}
+            onCommitSuccess={() => {
+              fetchData();
+              setIsDiffOpen(false);
+            }}
+          />
+        )}
 
       {isDiffOpen && (
         <div 
