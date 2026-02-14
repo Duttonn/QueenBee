@@ -19,21 +19,30 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
           script: |
+            # 1. Chargement de l'environnement Node/NVM
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
             source ~/.bashrc 2>/dev/null || true
 
+            # 2. Synchronisation du code
             cd /home/fish/queen-bee
             git fetch --all
             git reset --hard origin/main
 
+            # 3. Installation et Build
             cd proxy-bridge
+            # npm install garantit que 'dotenv' et les nouveaux modules sont présents
             npm install
             npm run build
 
-            # On supprime les processus pour forcer PM2 à relire l'ecosystem et le .env.bridge
+            # 4. Redémarrage "Propre"
+            # On supprime les anciens processus pour forcer PM2 à relire 
+            # le fichier ecosystem et le fichier .env.bridge externe
             pm2 delete queenbee-api queenbee-socket || true
             
-            # On relance tout proprement
+            # On relance tout via l'ecosystem avec les nouvelles variables
             pm2 start ecosystem.config.cjs --update-env
+            
+            # 5. Persistance
+            # Sauvegarde la liste pour que les serveurs reviennent après un reboot VPS
             pm2 save
