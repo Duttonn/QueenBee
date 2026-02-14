@@ -27,4 +27,7 @@ data/inbox.json
 proxy-bridge/data/
 search_index.json
 dist-electron/
-proxy-bridge/data/
+
+# Deploy keys
+deploy_key
+deploy_key.pub
