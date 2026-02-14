@@ -7,7 +7,7 @@ on:
     paths:
       - 'proxy-bridge/**'
 
-jobs: 
+jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
@@ -28,17 +28,12 @@ jobs:
             git reset --hard origin/main
 
             cd proxy-bridge
-            # Installation propre des dépendances (ajoute dotenv si nécessaire)
             npm install
             npm run build
 
-            # On restart l'API normalement
-            pm2 restart queenbee-api --update-env || pm2 start ecosystem.config.cjs --only queenbee-api
+            # On supprime les processus pour forcer PM2 à relire l'ecosystem et le .env.bridge
+            pm2 delete queenbee-api queenbee-socket || true
             
-            # Pour le SOCKET, on fait un delete/start au cas où les modules ont changé
-            # C'est plus sûr pour éviter l'erreur "Module Not Found"
-            pm2 delete queenbee-socket || true
-            pm2 start ecosystem.config.cjs --only queenbee-socket --update-env
-            
-            # On sauvegarde la liste pour le prochain reboot du VPS
+            # On relance tout proprement
+            pm2 start ecosystem.config.cjs --update-env
             pm2 save
