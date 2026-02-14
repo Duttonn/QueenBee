@@ -590,6 +590,124 @@
   - **Criteria**: Show `@qb` with a Hexagon icon and the subtitle "Summon Hive Architect."
   - **Worker**: FRONTEND
 
+## 🧠 PHASE 14: SWARM INTELLIGENCE & SELF-OPTIMIZATION
+> **Goal**: Implement advanced multi-agent coordination patterns from research for smarter, more resilient agent swarms.
+> **Based on**: notebookresearch/prompts.md deep analysis of AIOS, DSPy, Byzantine Fault Tolerance, and Swarm architectures.
+
+### 🟡 PHASE 14.1: ENHANCED BUILDER AUTONOMY
+> **Source**: Reflexion strategy, Self-Critique patterns
+
+- [x] `SI-01`: [Backend] **Builder Self-Critique Protocol**
+  - **Files**: MODIFY `proxy-bridge/src/lib/prompts/workers/logic-bee.ts`, `proxy-bridge/src/lib/prompts/workers/ui-bee.ts`, `proxy-bridge/src/lib/prompts/workers/test-bee.ts`
+  - **Description**: Add mandatory self-critique step before proposal submission. Builder must generate `<thought>` block analyzing own output for errors, security risks, and efficiency before submitting. Format: `<thought>[Self-Critique] → [Plan of Correction] → [Final Response]</thought>`
+  - **Trigger**: Before any `swarm_propose` or `swarm_complete_task` call
+  - **Worker**: BACKEND
+  - **Estimate**: 2h
+
+- [x] `SI-02`: [Backend] **Stuck Loop Detection & Recovery**
+  - **Files**: MODIFY `proxy-bridge/src/lib/AutonomousRunner.ts`
+  - **Description**: Implement Semantic Circularity Index - track tool call signatures between retries. If agent repeats exact same failing tool calls, inject "STOP. Take a completely different approach" deep-think reset. Based on Failure-Aware Retry (TU-04) enhancement.
+  - **Logic**: Calculate embedding similarity between last N tool calls. If similarity > 0.9, trigger recovery.
+  - **Worker**: BACKEND
+  - **Estimate**: 3h
+
+### 🟠 PHASE 14.2: JUDGMENT & CONSENSUS ENHANCEMENTS
+> **Source**: Free-MAD debate strategies, Byzantine Fault Tolerance
+
+- [x] `SI-03`: [Backend] **False Consensus Detection**
+  - **Files**: MODIFY `proxy-bridge/src/lib/ProposalService.ts`, NEW `proxy-bridge/src/lib/ConsensusAnalyzer.ts`
+  - **Description**: Detect when Reviewer and Devil's Advocate agree for wrong reasons (groupthink). Implement semantic similarity check between agent reasoning chains. If agreement reached with similarity > 0.95, inject "Anti-Conformity" stress test - force agents to find flaws.
+  - **Metrics**: Track confidence trajectory over debate rounds
+  - **Worker**: BACKEND
+  - **Estimate**: 4h
+
+- [x] `SI-04`: [Backend] **Confidence-Based Mutation Flow**
+  - **Files**: MODIFY `proxy-bridge/src/lib/ProposalService.ts`
+  - **Description**: Implement refined scoring: 90-100 (Ship), 80-89 (Approved), 70-79 (Mutation required with specific stressor), 60-69 (Mutation + major rethink), <60 (Reject). Ensure stressor is specific, not vague.
+  - **Validation**: If confidence < 80, extract specific STRESSOR and broadcast MUTATE command
+  - **Worker**: BACKEND
+  - **Estimate**: 2h
+
+### 🔴 PHASE 14.3: MEMORY & KNOWLEDGE EVOLUTION
+> **Source**: DSPy Meta-Prompt Optimization, Memory Decay algorithms
+
+- [x] `SI-05`: [Backend] **Confidence-Based Memory Decay**
+  - **Files**: MODIFY `proxy-bridge/src/lib/MemoryStore.ts`
+  - **Description**: Implement Feedback-Driven Confidence Decay. On task failure involving memories, reduce confidence_score by decay_rate (0.2). If confidence < prune_threshold (0.3), auto-delete memory. On success, reinforce confidence (cap at 1.0).
+  - **Logic**: `memory.confidence *= (1 - decay_rate)` on failure
+  - **Worker**: BACKEND
+  - **Estimate**: 2h
+
+- [x] `SI-06`: [Backend] **RAG-Style Context Retrieval**
+  - **Files**: NEW `proxy-bridge/src/lib/ContextRetriever.ts`, MODIFY `proxy-bridge/src/lib/AgentSession.ts`
+  - **Description**: Replace full brain load with semantic retrieval. On `swarm_recall`, perform vector search against MemoryStore. Return top-K relevant memories instead of entire brain. Implement Semantic Lookaside Buffer (SLB) for caching recent retrievals.
+  - **Implementation**: Embed query, similarity search against stored memories, inject top 5 matches
+  - **Worker**: BACKEND
+  - **Estimate**: 4h
+
+- [x] `SI-07`: [Backend] **KPI-Driven Prompt Auto-Tuning**
+  - **Files**: NEW `proxy-bridge/src/lib/PromptOptimizer.ts`, MODIFY `proxy-bridge/src/lib/CostTracker.ts`
+  - **Description**: Track rejection_rate per worker type. If rejection_rate > 0.25, analyze failed proposals and auto-generate improved instructions for that worker. Store optimized prompts in MemoryStore with 'prompt_optimization' type.
+  - **Trigger**: Daily or on 10+ rejections
+  - **Worker**: BACKEND
+  - **Estimate**: 5h
+
+### 🟢 PHASE 14.4: ESCALATION & SAFETY
+> **Source**: Human-in-the-loop protocols, Byzantine detection
+
+- [x] `SI-08`: [Backend] **Human Escalation Protocol**
+  - **Files**: NEW `proxy-bridge/src/lib/EscalationManager.ts`, MODIFY `proxy-bridge/src/lib/HeartbeatService.ts`
+  - **Description**: Define 3 confusion thresholds: (1) Consensus Instability - majority oscillates without converging (confidence < 0.75 for 3+ rounds), (2) Operational Stupection - agent repeats same action 3+ times without progress, (3) Regression Drift - mutation causes >10% success rate drop on golden tasks. Trigger @hive alert on threshold breach.
+  - **API**: `/api/escalation/status` returns current escalation state
+  - **Worker**: BACKEND
+  - **Estimate**: 3h
+
+- [x] `SI-09`: [Backend] **Toxic Agent Detection**
+  - **Files**: NEW `proxy-bridge/src/lib/AgentReputation.ts`, MODIFY `proxy-bridge/src/lib/HeartbeatService.ts`
+  - **Description**: Implement Peer-Ranked Reputation system. Track per-agent: acceptance_rate, rejection_count, challenge_survival_rate. Agents with <0.3 reputation get lower priority in task assignment. Implement Byzantine detection - if agent outputs conflict with consensus factual basis, flag and isolate.
+  - **Worker**: BACKEND
+  - **Estimate**: 4h
+
+- [x] `SI-10`: [Backend] **Medic Emergency Role**
+  - **Files**: NEW `proxy-bridge/src/lib/MedicAgent.ts`, MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`
+  - **Description**: Implement /medic role that activates after 3 task failures. Medic has super-permissions: (1) Context Injection - force correct observations into Builder, (2) Rollback Authority - restore files to pre-failure state, (3) Consensus Override - bypass stuck Reviewer. Triggered automatically or via @medic command.
+  - **Worker**: BACKEND
+  - **Estimate**: 5h
+
+### 🔵 PHASE 14.5: SCALABILITY PATTERNS
+> **Source**: Hierarchical Sub-Hives, Contract-Based Communication
+
+- [x] `SI-11`: [Backend] **Sub-Hive Specialization**
+  - **Files**: MODIFY `proxy-bridge/src/lib/HiveOrchestrator.ts`, NEW `proxy-bridge/src/lib/SubHiveRegistry.ts`
+  - **Description**: Support hierarchical hives: Root Hive → Sub-Hives (UI, Backend, Data). Each Sub-Hive has isolated memory and tools. Communication only via typed contracts (JSON schemas). Large projects spawn Sub-Hives instead of flat worker pools.
+  - **Implementation**: Contract Net Protocol - Sub-Hives propose capabilities, Root assigns tasks
+  - **Worker**: BACKEND
+  - **Estimate**: 6h
+
+- [x] `SI-12`: [Backend] **Contract-Based Worker Communication**
+  - **Files**: NEW `proxy-bridge/src/lib/ContractManager.ts`, MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`
+  - **Description**: Workers communicate via formal API contracts instead of natural language. When Worker A needs data from Worker B, it reads from contract-defined interface file. Prevents hallucinations from miscommunications.
+  - **Schema**: Define input/output contracts in `.queenbee/contracts/`
+  - **Worker**: BACKEND
+  - **Estimate**: 4h
+
+### 🟣 PHASE 14.6: VISUAL & MULTIMODAL FEEDBACK
+> **Source**: Multimodal Feedback Loops, Visual Verification
+
+- [x] `SI-13`: [Backend] **Visual UI Validation Loop**
+  - **Files**: MODIFY `proxy-bridge/src/lib/VisualVerificationEngine.ts`, NEW `proxy-bridge/src/lib/ScreenshotComparator.ts`
+  - **Description**: For UI tasks, capture screenshots at key steps. Implement Visual Planner - generate "expected visual" description, compare with actual screenshot using VLM. Calculate visual fidelity score. Reject if score < 0.7.
+  - **Integration**: Wire into Reviewer for UI task validation
+  - **Worker**: BACKEND
+  - **Estimate**: 5h
+
+- [x] `SI-14`: [Frontend] **Swarm KPI Dashboard**
+  - **Files**: NEW `dashboard/src/components/layout/SwarmMetricsPanel.tsx`, MODIFY `dashboard/src/store/useHiveStore.ts`
+  - **Description**: Real-time dashboard showing: tasks_completed, tasks_rejected, avg_task_duration_min, rejection_rate, active_agents, memories_count. Based on Streamlit dashboard concept from research. Polls `/api/diagnostics` every 10s.
+  - **Visual**: KPI cards with trend arrows, color-coded health (green/orange/red)
+  - **Worker**: FRONTEND
+  - **Estimate**: 3h
+
 ## 🎨 PHASE 13: THE QUEEN'S AESTHETIC (Apple-Grade Polish)
 > **Goal**: Transition from "Developer Tool" to "Professional OS Experience."
 > **STATUS**: DEFERRED — Phase 12 must stabilize first. UI polish on moving targets is wasted effort.

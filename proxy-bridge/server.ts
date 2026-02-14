@@ -1,15 +1,4 @@
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// On force le chargement du fichier externe situé un dossier plus haut
-dotenv.config({ path: path.resolve(__dirname, '../.env.bridge') });
-
-console.log('--- Socket Auth Check ---');
-console.log('Allowed Origins:', process.env.ALLOWED_ORIGINS);
+import 'dotenv/config';
 
 import { createServer } from 'http';
 import { Server } from 'socket.io';

@@ -155,16 +155,16 @@ def get_git_diff(project_path, file_path=None, cached=False):
                 "stats": file_stats.get(current_file, {"added": 0, "removed": 0}),
                 "hunks": current_hunks
             })
-        
-          # Final safety filter: remove any .queenbee/ files that slipped through
-          files = [f for f in files if not f["path"].startswith('.queenbee/')]
 
-          return {
-              "status": "success",
-              "added": total_added,
-              "removed": total_removed,
-              "files": files
-          }
+        # Final safety filter: remove any .queenbee/ files that slipped through
+        files = [f for f in files if not f["path"].startswith('.queenbee/')]
+
+        return {
+            "status": "success",
+            "added": total_added,
+            "removed": total_removed,
+            "files": files
+        }
     except subprocess.CalledProcessError as e:
         return {
             "status": "error",

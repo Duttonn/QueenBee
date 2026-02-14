@@ -376,6 +376,37 @@ export class ToolExecutor {
         case 'scout_project':
           result = await this.handleScoutProject(projectPath);
           break;
+
+        case 'prompt_agent':
+          result = await this.handlePromptAgent(
+            mainProjectPath || projectPath,
+            agentId || 'unknown',
+            tool.arguments.targetAgent,
+            tool.arguments.act,
+            tool.arguments.content,
+            tool.arguments.context,
+            tool.arguments.requiresResponse
+          );
+          break;
+
+        case 'respond_to_prompt':
+          result = await this.handleRespondToPrompt(
+            mainProjectPath || projectPath,
+            agentId || 'unknown',
+            tool.arguments.promptId,
+            tool.arguments.response
+          );
+          break;
+
+        case 'share_with_agent':
+          result = await this.handleShareWithAgent(
+            mainProjectPath || projectPath,
+            agentId || 'unknown',
+            tool.arguments.targetAgent,
+            tool.arguments.query,
+            tool.arguments.reason
+          );
+          break;
           
         default:
           throw new Error(`Unknown tool: ${tool.name}`);
@@ -1040,5 +1071,70 @@ export class ToolExecutor {
     }
 
     return bestLang;
+  }
+
+  // ============== Inter-Agent Communication Handlers ==============
+
+  private async handlePromptAgent(
+    projectPath: string,
+    fromAgentId: string,
+    targetAgent: string,
+    act: string,
+    content: string,
+    context?: string,
+    requiresResponse?: boolean
+  ) {
+    const { InterAgentCommunicator } = await import('./InterAgentCommunicator');
+    const communicator = new InterAgentCommunicator(projectPath);
+    
+    const prompt = await communicator.prompt(
+      fromAgentId,
+      targetAgent,
+      act as any,
+      content,
+      { context, requiresResponse }
+    );
+
+    return {
+      success: true,
+      promptId: prompt.id,
+      message: `Prompt sent to ${targetAgent}. ${requiresResponse ? 'Response expected.' : 'No response required.'}`
+    };
+  }
+
+  private async handleRespondToPrompt(
+    projectPath: string,
+    agentId: string,
+    promptId: string,
+    response: string
+  ) {
+    const { InterAgentCommunicator } = await import('./InterAgentCommunicator');
+    const communicator = new InterAgentCommunicator(projectPath);
+    
+    const prompt = await communicator.respond(agentId, promptId, response);
+
+    return {
+      success: true,
+      message: `Response sent to prompt ${promptId}`
+    };
+  }
+
+  private async handleShareWithAgent(
+    projectPath: string,
+    fromAgentId: string,
+    targetAgent: string,
+    query: string,
+    reason: string
+  ) {
+    const { InterAgentCommunicator } = await import('./InterAgentCommunicator');
+    const communicator = new InterAgentCommunicator(projectPath);
+    
+    const share = await communicator.shareMemories(fromAgentId, targetAgent, query, reason);
+
+    return {
+      success: true,
+      sharedCount: share.memories.length,
+      message: `Shared ${share.memories.length} relevant memories with ${targetAgent}: ${reason}`
+    };
   }
 }

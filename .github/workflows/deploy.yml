@@ -19,25 +19,21 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
           script: |
-            # 1. Charger Node
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
             source ~/.bashrc 2>/dev/null || true
 
-            # 2. Mise à jour du code
             cd /home/fish/queen-bee
             git fetch --all
             git reset --hard origin/main
 
-            # 3. Installation et Build
             cd proxy-bridge
+            # ÉTAPE CRUCIALE : on crée le .env.local que Next.js lira tout seul
+            cp /home/fish/queen-bee/.env.bridge .env.local
+            
             npm install
             npm run build
 
-            # 4. Relance "Propre" (Anti-Cache PM2)
-            # On supprime pour forcer PM2 à relire l'ecosystem et le .env.bridge
             pm2 delete queenbee-api queenbee-socket || true
-            
-            # On relance via l'ecosystem
             pm2 start ecosystem.config.cjs --update-env
             pm2 save

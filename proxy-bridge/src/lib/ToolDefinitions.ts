@@ -265,6 +265,55 @@ export const AGENT_TOOLS = [
           properties: {}
         }
       }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'prompt_agent',
+        description: 'Directly prompt another agent with a specific question or request. Creates a structured dialogue turn. Use this for bidirectional communication - agents should actually talk to each other!',
+        parameters: {
+          type: 'object',
+          properties: {
+            targetAgent: { type: 'string', description: 'The agent to prompt (e.g., "ui-bee", "logic-bee", "test-bee", or "all" for broadcast).' },
+            act: { type: 'string', enum: ['REQUEST', 'QUESTION', 'PROVIDE', 'AGREE', 'DISAGREE'], description: 'The type of dialogue act.' },
+            content: { type: 'string', description: 'The message to send to the other agent.' },
+            context: { type: 'string', description: 'Optional: Relevant code or file context to share with the prompt.' },
+            requiresResponse: { type: 'boolean', description: 'Whether you expect a response. Default true for questions.' }
+          },
+          required: ['targetAgent', 'act', 'content']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'respond_to_prompt',
+        description: 'Respond to a prompt you received from another agent. Use this to reply to specific questions or requests from teammates.',
+        parameters: {
+          type: 'object',
+          properties: {
+            promptId: { type: 'string', description: 'The ID of the prompt you are responding to.' },
+            response: { type: 'string', description: 'Your response to the prompt.' }
+          },
+          required: ['promptId', 'response']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'share_with_agent',
+        description: 'Share relevant memories or context with another agent. This helps coordinate by sharing what you have learned.',
+        parameters: {
+          type: 'object',
+          properties: {
+            targetAgent: { type: 'string', description: 'The agent to share with.' },
+            query: { type: 'string', description: 'What context or memories to share (search terms).' },
+            reason: { type: 'string', description: 'Why this is relevant to the other agent.' }
+          },
+          required: ['targetAgent', 'query', 'reason']
+        }
+      }
     }
   ];
   
