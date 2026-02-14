@@ -11,12 +11,17 @@ export function middleware(request: NextRequest) {
         .split(',')
         .map(s => s.trim());
     
+    // Electron sends origin 'null' or 'file://' or no origin at all
+    const isElectron = !origin || origin === 'null' || origin.startsWith('file://');
     // Allow any trycloudflare.com subdomain dynamically
-    const isAllowed = origin && (
+    const isAllowed = isElectron || (origin && (
         allowedOrigins.includes(origin) ||
-        /^https?:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(origin)
-    );
-    const allowOrigin = isAllowed ? origin! : allowedOrigins[0];
+        /^https?:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(origin) ||
+        // In dev, allow any localhost origin
+        (process.env.NODE_ENV !== 'production' && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin))
+    ));
+    // For Electron, reflect '*' since credentials aren't cookie-based there
+    const allowOrigin = isElectron ? '*' : (isAllowed ? origin! : allowedOrigins[0]);
 
     // Detect if running behind HTTPS (e.g. Cloudflare tunnel)
     const isSecure = request.headers.get('x-forwarded-proto') === 'https'
@@ -38,17 +43,17 @@ export function middleware(request: NextRequest) {
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
-        const resp = new NextResponse(null, {
-            status: 200,
-            headers: {
-                'Access-Control-Allow-Origin': allowOrigin,
-                'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Codex-Provider, X-Request-Id',
-                'Access-Control-Allow-Credentials': 'true',
-                'X-Request-Id': requestId,
-            },
-        });
-        if (needsSession) {
+        const headers: Record<string, string> = {
+            'Access-Control-Allow-Origin': allowOrigin,
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Codex-Provider, X-Request-Id',
+            'X-Request-Id': requestId,
+        };
+        // credentials: true is invalid with origin: * (CORS spec)
+        if (allowOrigin !== '*') headers['Access-Control-Allow-Credentials'] = 'true';
+
+        const resp = new NextResponse(null, { status: 200, headers });
+        if (needsSession && allowOrigin !== '*') {
             resp.cookies.set(SESSION_COOKIE, sessionId, cookieOpts);
         }
         return resp;
@@ -69,10 +74,10 @@ export function middleware(request: NextRequest) {
     response.headers.set('Access-Control-Allow-Origin', allowOrigin);
     response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Codex-Provider, X-Request-Id');
-    response.headers.set('Access-Control-Allow-Credentials', 'true');
+    if (allowOrigin !== '*') response.headers.set('Access-Control-Allow-Credentials', 'true');
     response.headers.set('X-Request-Id', requestId);
 
-    if (needsSession) {
+    if (needsSession && allowOrigin !== '*') {
         response.cookies.set(SESSION_COOKIE, sessionId, cookieOpts);
     }
 
