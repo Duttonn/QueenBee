@@ -62,27 +62,32 @@ Real-time updates are powered by Socket.io with ~15+ named events:
 QueenBee/
 ├── proxy-bridge/          # Next.js backend API (port 3000)
 │   ├── src/
-│   │   ├── lib/           # 47+ service modules
-│   │   ├── pages/api/     # 18+ API endpoints
+│   │   ├── lib/           # 90+ service modules
+│   │   ├── pages/api/     # 70+ API endpoints
+│   │   ├── utils/         # Utilities
 │   │   └── middleware.ts
 │   └── server.ts
 ├── dashboard/             # React + Vite frontend (port 5173)
 │   ├── src/
 │   │   ├── components/    # React components
 │   │   ├── hooks/         # Custom React hooks
-│   │   ├── services/     # API services
+│   │   ├── services/      # API services
 │   │   └── store/         # Zustand state management
 │   └── index.html
 ├── electron/              # Electron desktop wrapper
-│   ├── main.ts           # Main process
-│   ├── preload.ts        # IPC bridge
+│   ├── main.ts            # Main process
+│   ├── preload.ts         # IPC bridge
 │   └── NativeFSManager.ts
-├── worktrees/            # Git worktree branches (60+ branches)
-├── sessions/             # Session relay cache
-├── config/               # Local configuration
-├── masterdocs/          # Master documentation & prompts
-├── architecture/        # Architecture synthesis documents
-└── scripts/             # DevOps and utility scripts
+├── worktrees/             # Git worktree branches (~30 branches)
+├── sessions/              # Session relay cache
+├── config/                # Local configuration
+├── masterdocs/            # Master documentation & prompts
+├── architecture/          # Architecture synthesis documents
+├── scripts/               # DevOps and utility scripts
+├── electron-expert/       # Electron expert skill
+├── projects/              # Project workspaces
+├── Users/                 # User-specific data
+└── notebookresearch/      # Research documents
 ```
 
 ---
@@ -94,40 +99,57 @@ QueenBee/
 - **Framework**: Next.js (API routes)
 - **WebSocket**: Socket.io
 
-### Key Modules (47+ lib modules)
+### Key Modules (90+ lib modules)
 
 | Category | Modules |
 |----------|---------|
-| **Orchestration** | `HiveOrchestrator.ts`, `EventLoopManager.ts`, `AutonomousRunner.ts`, `UniversalDispatcher.ts` |
-| **Agent Management** | `AgentSession.ts`, `TaskManager.ts`, `Roundtable.ts`, `ProposalService.ts`, `ReactionMatrix.ts` |
-| **LLM/AI** | `UnifiedLLMService.ts`, `LLMProvider.ts`, `ToolExecutor.ts`, `ToolDefinitions.ts` |
-| **Git Integration** | `WorkTreeManager.ts`, `GitHubSyncService.ts`, `RepoClonerService.ts`, `ConflictResolver.ts` |
-| **Memory** | `MemoryStore.ts`, `MemoryDistillation.ts`, `AutoContextManager.ts` |
-| **Security** | `SecurityAuditor.ts`, `PolicyStore.ts`, `Keyring.ts` |
+| **Orchestration** | `HiveOrchestrator.ts`, `EventLoopManager.ts`, `AutonomousRunner.ts`, `UniversalDispatcher.ts`, `TriggerEngine.ts`, `OrchestrationVisualizer.ts` |
+| **Agent Management** | `AgentSession.ts`, `TaskManager.ts`, `Roundtable.ts`, `ProposalService.ts`, `ReactionMatrix.ts`, `MedicAgent.ts`, `AccessibilityAgent.ts`, `SecurityAuditAgent.ts` |
+| **LLM/AI** | `UnifiedLLMService.ts`, `LLMProvider.ts`, `ToolExecutor.ts`, `ToolDefinitions.ts`, `PromptOptimizer.ts` |
+| **Git Integration** | `WorkTreeManager.ts`, `GitHubSyncService.ts`, `RepoClonerService.ts`, `ConflictResolver.ts`, `GitHubAuthManager.ts`, `RepoContextAggregator.ts` |
+| **Memory** | `MemoryStore.ts`, `MemoryDistillation.ts`, `AutoContextManager.ts`, `SessionManager.ts` |
+| **Security** | `SecurityAuditor.ts`, `PolicyStore.ts`, `Keyring.ts`, `AccountPersistenceService.ts`, `AccountStateManager.ts` |
 | **Providers** | `OpenAIProvider.ts`, `AnthropicProvider.ts`, `GeminiProvider.ts`, `MistralProvider.ts`, `KimiAdapter.ts` |
 | **MCP** | `MCPBridge.ts`, `ToolSchemaBridge.ts` |
-| **System** | `FileWatcher.ts`, `HealthCheck.ts`, `CronManager.ts`, `CostTracker.ts`, `PerfMonitor.ts` |
-| **Phase 7 (Planned)** | `HeartbeatService.ts`, `ProposalService.ts`, `PolicyStore.ts`, `MemoryDistillation.ts`, `ReactionMatrix.ts` |
+| **System** | `FileWatcher.ts`, `HealthCheck.ts`, `CronManager.ts`, `CostTracker.ts`, `PerfMonitor.ts`, `EventLog.ts`, `DiagnosticCollector.ts` |
+| **Browser Control** | `BrowserControlService.ts`, `BrowserRelay.ts`, `ContextScraper.ts`, `ScreenshotAnalyzer.ts`, `ScreenshotComparator.ts`, `VisualVerificationEngine.ts` |
+| **Terminal** | `TerminalSessionManager.ts`, `RuntimeBridge.ts` |
+| **Forges** | `ForgeAdapter.ts`, `GitHubAdapter.ts`, `GitLabAdapter.ts` |
+| **Learning** | `DiffLearner.ts`, `StyleScraper.ts` |
+| **Phase 7 (Implemented)** | `HeartbeatService.ts`, `ProposalService.ts`, `PolicyStore.ts`, `MemoryDistillation.ts`, `ReactionMatrix.ts` |
 
-### API Endpoints (18+)
+### API Endpoints (70+)
 
 ```
 /api/auth/*           - Authentication (login, profiles, GitHub OAuth)
 /api/chat             - AI chat with streaming support
-/api/projects/*      - Project management, threads, files
-/api/git/*           - Git operations (status, diff, commit, worktree)
-/api/tasks/*         - Task claiming and completion
-/api/execution/*    - Command execution
-/api/skills/*       - Skills/MCP management
-/api/automations    - Automation scheduling
-/api/voice/*        - Voice transcription
-/api/config/*       - Configuration management
-/api/health         - Health check
-/api/providers/*   - LLM provider testing
+/api/projects/*       - Project management, threads, files
+/api/git/*            - Git operations (status, diff, commit, worktree)
+/api/tasks/*          - Task claiming and completion
+/api/execution/*      - Command execution
+/api/skills/*         - Skills/MCP management
+/api/automations      - Automation scheduling
+/api/voice/*         - Voice transcription
+/api/config/*        - Configuration management
+/api/health          - Health check
+/api/providers/*     - LLM provider testing
 /api/workflow/ship  - Ship worktree to GitHub/GitLab
-/api/roundtable/*   - Multi-agent communication
-/api/inbox/*        - Message inbox triage
-/api/logs/stream    - WebSocket log streaming
+/api/roundtable/*    - Multi-agent communication
+/api/inbox/*         - Message inbox triage
+/api/logs/stream     - WebSocket log streaming
+/api/github/*        - GitHub API integration
+/api/gitlab/*        - GitLab API integration
+/api/terminal/*     - Terminal session management
+/api/account/*       - Account persistence
+/api/audio/*        - Audio processing
+/api/diagnostics    - System diagnostics
+/api/events/*       - Event management
+/api/policies/*     - Policy management
+/api/costs/*        - Cost tracking
+/api/usage/*        - Usage statistics
+/api/files/*        - File operations
+/api/utils/*        - Utility functions
+/api/automation/*   - Automation endpoints
 ```
 
 ---

@@ -71,6 +71,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         if (push) {
             console.log('[Git Commit] Pushing...');
+            // Fix remote URL: GitHub OAuth tokens (gho_*) need x-access-token: prefix
+            try {
+                const remotes = await git.getRemotes(true);
+                const origin = remotes.find(r => r.name === 'origin');
+                if (origin?.refs?.push) {
+                    const url = origin.refs.push;
+                    // Detect https://gho_TOKEN@github.com (missing x-access-token:)
+                    const badTokenMatch = url.match(/^https:\/\/(gho_[^@]+)@github\.com/);
+                    if (badTokenMatch) {
+                        const token = badTokenMatch[1];
+                        const fixedUrl = url.replace(`https://${token}@`, `https://x-access-token:${token}@`);
+                        console.log('[Git Commit] Fixing malformed remote URL (adding x-access-token prefix)');
+                        await git.remote(['set-url', 'origin', fixedUrl]);
+                    }
+                }
+            } catch (e) {
+                console.warn('[Git Commit] Could not check/fix remote URL:', e);
+            }
             const pushResult = await git.push();
             console.log('[Git Commit] Push result:', JSON.stringify(pushResult));
         } else {

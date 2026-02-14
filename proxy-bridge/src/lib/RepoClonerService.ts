@@ -22,10 +22,10 @@ export class RepoClonerService {
     const sessionId = uuidv4();
     const targetPath = path.join(this.baseDir, `cloud-${sessionId}`);
     
-    // Inject token if provided: https://<token>@github.com/user/repo
+    // Inject token if provided: https://x-access-token:<token>@github.com/user/repo
     let authenticatedUrl = repoUrl;
     if (accessToken) {
-      authenticatedUrl = repoUrl.replace('https://', `https://${accessToken}@`);
+      authenticatedUrl = repoUrl.replace('https://', `https://x-access-token:${accessToken}@`);
     }
 
     console.log(`[CloudClone] Cloning ${repoUrl} to ${targetPath}`);
