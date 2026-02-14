@@ -6,18 +6,22 @@ const SESSION_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
 
 export function middleware(request: NextRequest) {
     const requestId = request.headers.get('x-request-id') || crypto.randomUUID();
+    // Force l'origine dynamique pour le développement et les previews
     const origin = request.headers.get('origin');
-    const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://127.0.0.1:5173,http://localhost:5173')
-        .split(',')
-        .map(s => s.trim());
-    
+    const allowedOrigins = [
+        'https://queenbee.vercel.app',
+        'https://queen-bee-nataos-projects.vercel.app',
+        'http://localhost:3000',
+        'http://localhost:5173'
+    ];
+
     // Electron sends origin 'null' or 'file://' or no origin at all
     const isElectron = !origin || origin === 'null' || origin.startsWith('file://');
-    // Allow any trycloudflare.com subdomain dynamically
+    // Allow listed origins, any .vercel.app preview, and trycloudflare tunnels
     const isAllowed = isElectron || (origin && (
         allowedOrigins.includes(origin) ||
+        origin.endsWith('.vercel.app') ||
         /^https?:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(origin) ||
-        // In dev, allow any localhost origin
         (process.env.NODE_ENV !== 'production' && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin))
     ));
     // For Electron, reflect '*' since credentials aren't cookie-based there
