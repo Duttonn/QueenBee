@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
+    "@types/node": "^25.2.3",
     "concurrently": "^8.2.2",
     "electron": "^29.2.0",
     "electron-builder": "^23.0.0",
