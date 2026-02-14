@@ -14,19 +14,33 @@ export const config = {
   },
 };
 
+const DEFAULT_ORIGINS = ['https://queenbee.vercel.app', 'https://queen-bee-nataos-projects.vercel.app', 'http://localhost:3000', 'http://localhost:5173'];
+
+function getAllowedOrigins(): string[] {
+  return process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+    : DEFAULT_ORIGINS;
+}
+
+function isOriginAllowed(origin: string | undefined): boolean {
+  if (!origin || origin === 'null' || origin.startsWith('file://')) return true;
+  if (getAllowedOrigins().includes(origin)) return true;
+  if (origin.endsWith('.vercel.app')) return true;
+  if (/^https?:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(origin)) return true;
+  if (process.env.NODE_ENV !== 'production' && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  return false;
+}
+
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Set CORS headers for preflight
-  const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://127.0.0.1:5173,http://localhost:5173')
-    .split(',')
-    .map(s => s.trim());
-  
-  const origin = req.headers.origin as string;
-  const allowOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+  const origin = req.headers.origin as string | undefined;
+  const isElectron = !origin || origin === 'null' || origin.startsWith('file://');
+  const isAllowed = isOriginAllowed(origin);
+  const allowOrigin = isElectron ? '*' : (isAllowed ? origin! : getAllowedOrigins()[0]);
 
   res.setHeader('Access-Control-Allow-Origin', allowOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  if (allowOrigin !== '*') res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   if (req.method === 'OPTIONS') {
     res.status(200).end();
@@ -42,12 +56,14 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   }
 
   console.log('[LogRelay] Initializing Socket.io with CORS...');
-  const io = new Server((res.socket as any).server, {
-    cors: {
-      origin: allowedOrigins,
-      methods: ["GET", "POST"],
-      credentials: true
-    },
+    const io = new Server((res.socket as any).server, {
+        cors: {
+          origin: (reqOrigin, callback) => {
+            callback(null, isOriginAllowed(reqOrigin));
+          },
+        methods: ["GET", "POST"],
+        credentials: true
+      },
     path: '/api/logs/stream',
     transports: ['websocket', 'polling'],
     allowEIO3: true
