@@ -1,4 +1,5 @@
-import 'dotenv/config';
+import { loadQueenBeeEnv } from './src/utils/env';
+loadQueenBeeEnv();
 
 import { createServer } from 'http';
 import { Server } from 'socket.io';
