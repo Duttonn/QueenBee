@@ -1,4 +1,18 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// On cherche le fichier sur le VPS ou en local
+// On teste les deux chemins possibles pour que ça marche partout
+dotenv.config({ path: path.resolve(__dirname, '../../.env.bridge') });
+dotenv.config({ path: path.resolve(__dirname, '../.env.bridge') });
+dotenv.config(); // Fallback sur le .env local standard
+
+console.log('DEBUG: ALLOWED_ORIGINS loaded:', process.env.ALLOWED_ORIGINS);
+
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { EventLoopManager } from './src/lib/EventLoopManager';
