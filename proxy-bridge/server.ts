@@ -1,3 +1,4 @@
+import 'dotenv/config'; // Charge le .env s'il existe dans le dossier courant
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -5,13 +6,12 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// On cherche le fichier sur le VPS ou en local
-// On teste les deux chemins possibles pour que ça marche partout
-dotenv.config({ path: path.resolve(__dirname, '../../.env.bridge') });
+// Sécurité : Charger explicitement le fichier bridge s'il existe
 dotenv.config({ path: path.resolve(__dirname, '../.env.bridge') });
-dotenv.config(); // Fallback sur le .env local standard
+dotenv.config({ path: path.resolve(__dirname, '../../.env.bridge') });
 
-console.log('DEBUG: ALLOWED_ORIGINS loaded:', process.env.ALLOWED_ORIGINS);
+console.log('--- Environment Loaded ---');
+console.log('CORS Origins:', process.env.ALLOWED_ORIGINS);
 
 import { createServer } from 'http';
 import { Server } from 'socket.io';
