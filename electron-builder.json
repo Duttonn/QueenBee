@@ -8,7 +8,12 @@
   "files": [
     "dist-electron/**/*",
     "dashboard/dist/**/*",
+    "proxy-bridge/**/*",
     "package.json"
+  ],
+  "asar": true,
+  "asarUnpack": [
+    "proxy-bridge/node_modules/**/*"
   ],
   "mac": {
     "target": ["dmg", "zip"],

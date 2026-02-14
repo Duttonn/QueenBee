@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, Notification, Menu, shell: electronShell, globalShortcut } = require('electron');
 const path = require('path');
+const { spawn } = require('child_process');
 import { NativeFSManager } from './NativeFSManager';
 
 const nativeFS = new NativeFSManager();
@@ -8,6 +9,53 @@ nativeFS.setupHandlers();
 let mainWindow: any; 
 let lastUrl: string | null = null; 
 let authCache: any = null; // Store auth data if renderer isn't ready
+let backendProcess: any = null;
+
+// Start bundled proxy-bridge backend
+function startBackend() {
+  const isDev = process.env.NODE_ENV === 'development';
+  const isPackaged = app.isPackaged;
+  
+  if (isDev) {
+    console.log('[Main] Development mode - expecting external backend');
+    return;
+  }
+  
+  // In packaged app, start bundled backend
+  const backendPath = isPackaged 
+    ? path.join(process.resourcesPath, 'app', 'proxy-bridge')
+    : path.join(__dirname, '..', 'proxy-bridge');
+    
+  console.log('[Main] Starting bundled backend from:', backendPath);
+  
+  backendProcess = spawn('bun', ['run', 'dev'], {
+    cwd: backendPath,
+    stdio: 'pipe',
+    env: { ...process.env, PORT: '3000' }
+  });
+  
+  backendProcess.stdout.on('data', (data: any) => {
+    console.log('[Backend]', data.toString());
+  });
+  
+  backendProcess.stderr.on('data', (data: any) => {
+    console.error('[Backend Error]', data.toString());
+  });
+  
+  backendProcess.on('error', (err: any) => {
+    console.error('[Main] Failed to start backend:', err);
+  });
+  
+  console.log('[Main] Backend started on port 3000');
+}
+
+// Stop backend when app quits
+function stopBackend() {
+  if (backendProcess) {
+    backendProcess.kill();
+    console.log('[Main] Backend stopped');
+  }
+}
 
 function handleDeepLink(url: string) {
   if (!url) return;
@@ -196,6 +244,9 @@ if (process.defaultApp) {
 }
 
 app.whenReady().then(() => {
+  // Start bundled backend in production
+  startBackend();
+  
   createWindow();
 
   // Register Global Shortcut: Cmd+Option+B to toggle window
@@ -224,6 +275,7 @@ app.on('activate', () => {
 app.on('will-quit', () => {
   // Unregister all shortcuts
   globalShortcut.unregisterAll();
+  stopBackend();
 });
 
 // IPC Bridge for Native Features
