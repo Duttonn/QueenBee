@@ -7,7 +7,7 @@ on:
     paths:
       - 'proxy-bridge/**'
 
-jobs:
+jobs: 
   deploy:
     runs-on: ubuntu-latest
     steps:
