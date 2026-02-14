@@ -1,4 +1,3 @@
-import 'dotenv/config'; // Charge le .env s'il existe dans le dossier courant
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -6,12 +5,11 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Sécurité : Charger explicitement le fichier bridge s'il existe
+// On charge explicitement le fichier situé dans le dossier parent du projet
 dotenv.config({ path: path.resolve(__dirname, '../.env.bridge') });
-dotenv.config({ path: path.resolve(__dirname, '../../.env.bridge') });
 
-console.log('--- Environment Loaded ---');
-console.log('CORS Origins:', process.env.ALLOWED_ORIGINS);
+// Log de sécurité pour voir ce qui est chargé dans les logs PM2
+console.log('CORS Origins loaded:', process.env.ALLOWED_ORIGINS);
 
 import { createServer } from 'http';
 import { Server } from 'socket.io';
