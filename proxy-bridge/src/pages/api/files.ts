@@ -11,14 +11,7 @@ const PROJECT_ROOT = process.cwd();
  * Used by the customization panel for source code editing
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-    // Enable CORS
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
+    // CORS is handled by middleware.ts — no manual headers here
 
     const filePath = req.query.path as string || (req.body as any)?.path;
     let baseDir = (req.query.projectPath as string) || (req.body as any)?.projectPath || PROJECT_ROOT;

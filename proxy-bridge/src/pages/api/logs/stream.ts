@@ -32,20 +32,7 @@ function isOriginAllowed(origin: string | undefined): boolean {
 }
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  const origin = req.headers.origin as string | undefined;
-  const isElectron = !origin || origin === 'null' || origin.startsWith('file://');
-  const isAllowed = isOriginAllowed(origin);
-  const allowOrigin = isElectron ? '*' : (isAllowed ? origin! : getAllowedOrigins()[0]);
-
-  res.setHeader('Access-Control-Allow-Origin', allowOrigin);
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id');
-  if (allowOrigin !== '*') res.setHeader('Access-Control-Allow-Credentials', 'true');
-
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
+  // CORS is handled by middleware.ts — no manual headers here
 
   if (res.socket && (res.socket as any).server.io) {
     console.log('[LogRelay] Socket.io already running');

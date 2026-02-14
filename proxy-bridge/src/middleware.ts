@@ -6,28 +6,25 @@ const SESSION_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
 
 export function middleware(request: NextRequest) {
     const requestId = request.headers.get('x-request-id') || crypto.randomUUID();
-    // Force l'origine dynamique pour le développement et les previews
     const origin = request.headers.get('origin');
-    const allowedOrigins = process.env.ALLOWED_ORIGINS
-        ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
-        : [
-            'https://queenbee.vercel.app',
-            'https://queen-bee-nataos-projects.vercel.app',
-            'http://localhost:3000',
-            'http://localhost:5173'
-        ];
 
-    // Electron sends origin 'null' or 'file://' or no origin at all
-    const isElectron = !origin || origin === 'null' || origin.startsWith('file://');
-    // Allow listed origins, any .vercel.app preview, and trycloudflare tunnels
-    const isAllowed = isElectron || (origin && (
+    const allowedOriginsEnv = process.env.ALLOWED_ORIGINS || "";
+    const allowedOrigins = allowedOriginsEnv
+        ? allowedOriginsEnv.split(',').map(s => s.trim())
+        : [];
+
+    console.log(`[CORS Check] Origin: ${origin} | Allowed: ${allowedOrigins.join(' ')}`);
+
+    // Match origin against allowed list, .vercel.app previews, trycloudflare tunnels, and localhost in dev
+    const isAllowed = origin && (
         allowedOrigins.includes(origin) ||
         origin.endsWith('.vercel.app') ||
         /^https?:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(origin) ||
         (process.env.NODE_ENV !== 'production' && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin))
-    ));
-    // For Electron, reflect '*' since credentials aren't cookie-based there
-    const allowOrigin = isElectron ? '*' : (isAllowed ? origin! : allowedOrigins[0]);
+    );
+
+    // Electron: no origin, 'null', or 'file://' — allow without CORS headers (same-origin)
+    const isElectron = !origin || origin === 'null' || origin.startsWith('file://');
 
     // Detect if running behind HTTPS (e.g. Cloudflare tunnel)
     const isSecure = request.headers.get('x-forwarded-proto') === 'https'
@@ -49,44 +46,45 @@ export function middleware(request: NextRequest) {
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
-        const headers: Record<string, string> = {
-            'Access-Control-Allow-Origin': allowOrigin,
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Codex-Provider, X-Request-Id',
-            'X-Request-Id': requestId,
-        };
-        // credentials: true is invalid with origin: * (CORS spec)
-        if (allowOrigin !== '*') headers['Access-Control-Allow-Credentials'] = 'true';
-
-        const resp = new NextResponse(null, { status: 200, headers });
-        if (needsSession && allowOrigin !== '*') {
-            resp.cookies.set(SESSION_COOKIE, sessionId, cookieOpts);
+        if (isAllowed) {
+            const resp = new NextResponse(null, {
+                status: 200,
+                headers: {
+                    'Access-Control-Allow-Origin': origin!,
+                    'Access-Control-Allow-Credentials': 'true',
+                    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Codex-Provider, X-Request-Id',
+                    'X-Request-Id': requestId,
+                },
+            });
+            if (needsSession) resp.cookies.set(SESSION_COOKIE, sessionId, cookieOpts);
+            return resp;
         }
-        return resp;
+        // Electron or unmatched origin: no CORS headers
+        return new NextResponse(null, { status: 200 });
     }
 
-    // Clone request headers and set X-Request-Id + session for the actual request handler
+    // Clone request headers
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set('X-Request-Id', requestId);
     requestHeaders.set('X-Session-Id', sessionId);
 
-    // For all other requests, add CORS headers
-    const response = NextResponse.next({
-        request: {
-            headers: requestHeaders,
-        },
-    });
-    
-    response.headers.set('Access-Control-Allow-Origin', allowOrigin);
-    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Codex-Provider, X-Request-Id');
-    if (allowOrigin !== '*') response.headers.set('Access-Control-Allow-Credentials', 'true');
-    response.headers.set('X-Request-Id', requestId);
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
 
-    if (needsSession && allowOrigin !== '*') {
-        response.cookies.set(SESSION_COOKIE, sessionId, cookieOpts);
+    // Only set CORS headers if origin is explicitly allowed — never '*'
+    if (isAllowed) {
+        response.headers.set('Access-Control-Allow-Origin', origin!);
+        response.headers.set('Access-Control-Allow-Credentials', 'true');
+        response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+        response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Codex-Provider, X-Request-Id');
+        if (needsSession) response.cookies.set(SESSION_COOKIE, sessionId, cookieOpts);
+    } else if (isElectron) {
+        // Electron gets session but no CORS headers needed
+        if (needsSession) response.cookies.set(SESSION_COOKIE, sessionId, cookieOpts);
     }
+    // Unmatched browser origin: no CORS headers = browser blocks the request
 
+    response.headers.set('X-Request-Id', requestId);
     return response;
 }
 

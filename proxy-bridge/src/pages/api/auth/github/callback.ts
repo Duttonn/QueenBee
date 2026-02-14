@@ -5,14 +5,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
  * Exchanges authorization code for access token and fetches user data
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-    // Enable CORS
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
+    // CORS is handled by middleware.ts — no manual headers here
 
     const { code, state, error: oauthError, error_description } = req.query;
 
