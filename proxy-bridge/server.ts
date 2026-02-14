@@ -5,11 +5,11 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// On charge explicitement le fichier situé dans le dossier parent du projet
+// On force le chargement du fichier externe situé un dossier plus haut
 dotenv.config({ path: path.resolve(__dirname, '../.env.bridge') });
 
-// Log de sécurité pour voir ce qui est chargé dans les logs PM2
-console.log('CORS Origins loaded:', process.env.ALLOWED_ORIGINS);
+console.log('--- Socket Auth Check ---');
+console.log('Allowed Origins:', process.env.ALLOWED_ORIGINS);
 
 import { createServer } from 'http';
 import { Server } from 'socket.io';
