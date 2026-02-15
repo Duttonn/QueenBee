@@ -11,6 +11,7 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-latest
@@ -38,23 +39,29 @@ jobs:
       - name: Install root dependencies
         run: npm ci
 
-      - name: Install sub-project dependencies
-        run: |
-          cd dashboard && npm ci && cd ..
-          cd proxy-bridge && npm ci && cd ..
+      - name: Install dashboard dependencies
+        working-directory: dashboard
+        run: npm ci
+
+      - name: Install proxy-bridge dependencies
+        working-directory: proxy-bridge
+        run: npm ci
 
       - name: Build dashboard
-        run: cd dashboard && npm run build
+        working-directory: dashboard
+        run: npm run build
         env:
           VITE_ELECTRON: 'true'
 
       - name: Build proxy-bridge
-        run: cd proxy-bridge && npm run build
+        working-directory: proxy-bridge
+        run: npm run build
 
       - name: Compile Electron
         run: npm run compile:electron
 
       - name: Copy Electron output
+        shell: bash
         run: npm run copy:electron && npm run fix:export
 
       - name: Build Electron app (macOS)
