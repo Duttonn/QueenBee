@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, Notification, Menu, shell: electronShell, globalShortcut } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 import { NativeFSManager } from './NativeFSManager';
 
 const nativeFS = new NativeFSManager();
@@ -9,52 +9,164 @@ nativeFS.setupHandlers();
 let mainWindow: any; 
 let lastUrl: string | null = null; 
 let authCache: any = null; // Store auth data if renderer isn't ready
-let backendProcess: any = null;
+let nextProcess: any = null;
+let socketProcess: any = null;
+
+function pipeProcessLogs(proc: any, label: string) {
+  if (!proc) return;
+  proc.stdout?.on('data', (data: any) => console.log(`[${label}]`, data.toString().trim()));
+  proc.stderr?.on('data', (data: any) => console.error(`[${label} Error]`, data.toString().trim()));
+  proc.on('error', (err: any) => console.error(`[${label}] Failed to start:`, err));
+}
+
+// Copy bundled proxy-bridge to a writable location so Next.js can write cache/trace files.
+// The app bundle (especially on a DMG mount or in /Applications) is read-only.
+async function ensureWritableBackend(): Promise<string> {
+  const fs = require('fs-extra');
+  const bundledPath = path.join(process.resourcesPath, 'proxy-bridge');
+  const writablePath = path.join(app.getPath('userData'), 'proxy-bridge');
+  const versionFile = path.join(writablePath, '.version');
+  const appVersion = app.getVersion();
+
+  // Only re-copy when the app version changes (or on first run)
+  let needsCopy = true;
+  try {
+    const existing = await fs.readFile(versionFile, 'utf-8');
+    if (existing.trim() === appVersion) needsCopy = false;
+  } catch { /* first run or missing */ }
+
+  if (needsCopy) {
+    console.log('[Main] Copying proxy-bridge to writable location:', writablePath);
+    await fs.remove(writablePath);
+    await fs.copy(bundledPath, writablePath, { overwrite: true });
+    await fs.writeFile(versionFile, appVersion);
+    console.log('[Main] Proxy-bridge copied successfully');
+  } else {
+    console.log('[Main] Proxy-bridge already up to date at:', writablePath);
+  }
+
+  return writablePath;
+}
 
 // Start bundled proxy-bridge backend
-function startBackend() {
-  const isDev = process.env.NODE_ENV === 'development';
-  const isPackaged = app.isPackaged;
-  
-  if (isDev) {
+function startBackend(): Promise<void> {
+  if (!app.isPackaged) {
     console.log('[Main] Development mode - expecting external backend');
-    return;
+    return Promise.resolve();
   }
   
-  // In packaged app, start bundled backend
-  const backendPath = isPackaged 
-    ? path.join(process.resourcesPath, 'app', 'proxy-bridge')
-    : path.join(__dirname, '..', 'proxy-bridge');
+  return ensureWritableBackend().then((backendPath) => {
+    const nextCli = path.join(backendPath, 'node_modules', 'next', 'dist', 'bin', 'next');
+    const tsxCli = path.join(backendPath, 'node_modules', 'tsx', 'dist', 'cli.mjs');
     
-  console.log('[Main] Starting bundled backend from:', backendPath);
-  
-  backendProcess = spawn('bun', ['run', 'dev'], {
-    cwd: backendPath,
-    stdio: 'pipe',
-    env: { ...process.env, PORT: '3000' }
+    console.log('[Main] Starting bundled backend from:', backendPath);
+    
+    // Use Electron's Node.js binary with ELECTRON_RUN_AS_NODE=1
+    const nodeExec = process.execPath;
+    const homeDir = app.getPath('home');
+
+    // Load .env.local from the config dir (user may have placed secrets there)
+    const configDir = path.join(homeDir, '.queenbee');
+    const envLocalPath = path.join(configDir, '.env');
+    let userEnv: Record<string, string> = {};
+    try {
+      const envContent = require('fs').readFileSync(envLocalPath, 'utf-8');
+      for (const line of envContent.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx > 0) {
+          userEnv[trimmed.slice(0, eqIdx).trim()] = trimmed.slice(eqIdx + 1).trim();
+        }
+      }
+      console.log('[Main] Loaded user env from:', envLocalPath, Object.keys(userEnv));
+    } catch { /* no user env file, that's fine */ }
+
+    const env = {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
+      HOME: homeDir,
+      PORT: '3000',
+      SOCKET_PORT: '3001',
+      NODE_ENV: 'production',
+      QUEENBEE_CONFIG_DIR: configDir,
+      PROJECTS_ROOT: path.join(homeDir, 'QueenBee'),
+      // User-provided secrets override everything
+      ...userEnv,
+    };
+
+    // Prevent child processes from showing in Dock / as a terminal window on macOS.
+    // ELECTRON_RUN_AS_NODE makes the Electron binary act as plain Node, but macOS
+    // still shows it in the Dock unless we explicitly suppress it.
+    env['ELECTRON_NO_ATTACH_CONSOLE'] = '1';
+    // LSUIElement tells macOS this is a background-only process (no Dock icon)
+    env['LSUIElement'] = '1';
+    // Prevent Electron from showing a Dock icon for the child
+    env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true';
+    
+    const spawnOpts = {
+      cwd: backendPath,
+      stdio: ['ignore', 'pipe', 'pipe'] as any,
+      env,
+      windowsHide: true,  // Windows: don't show console window
+    };
+
+    // 1. Start Next.js API server (port 3000)
+    nextProcess = spawn(nodeExec, [nextCli, 'start', '-p', '3000'], spawnOpts);
+    pipeProcessLogs(nextProcess, 'Next.js');
+    
+    // 2. Start Socket.io server (port 3001)
+    socketProcess = spawn(nodeExec, [tsxCli, 'server.ts'], spawnOpts);
+    pipeProcessLogs(socketProcess, 'Socket');
+    
+    console.log('[Main] Backend processes spawned, waiting for Next.js to be ready...');
+    
+    // Wait for Next.js to be ready (up to 15s)
+    return new Promise<void>((resolve) => {
+      const http = require('http');
+      let attempts = 0;
+      const maxAttempts = 30;
+      const check = () => {
+        attempts++;
+        const req = http.get('http://127.0.0.1:3000/api/health', (res: any) => {
+          if (res.statusCode === 200) {
+            console.log('[Main] Backend ready after', attempts, 'checks');
+            resolve();
+          } else {
+            retry();
+          }
+          res.resume();
+        });
+        req.on('error', retry);
+        req.setTimeout(1000, () => { req.destroy(); retry(); });
+      };
+      const retry = () => {
+        if (attempts >= maxAttempts) {
+          console.warn('[Main] Backend did not become ready in time, continuing anyway');
+          resolve();
+        } else {
+          setTimeout(check, 500);
+        }
+      };
+      check();
+    });
   });
-  
-  backendProcess.stdout.on('data', (data: any) => {
-    console.log('[Backend]', data.toString());
-  });
-  
-  backendProcess.stderr.on('data', (data: any) => {
-    console.error('[Backend Error]', data.toString());
-  });
-  
-  backendProcess.on('error', (err: any) => {
-    console.error('[Main] Failed to start backend:', err);
-  });
-  
-  console.log('[Main] Backend started on port 3000');
 }
 
 // Stop backend when app quits
 function stopBackend() {
-  if (backendProcess) {
-    backendProcess.kill();
-    console.log('[Main] Backend stopped');
-  }
+  const killProc = (proc: any, label: string) => {
+    if (!proc || proc.killed) return;
+    try {
+      // Kill entire process group on Unix
+      process.kill(-proc.pid, 'SIGTERM');
+    } catch {
+      try { proc.kill('SIGTERM'); } catch {}
+    }
+    console.log(`[Main] ${label} server stopped`);
+  };
+  killProc(nextProcess, 'Next.js');
+  killProc(socketProcess, 'Socket');
 }
 
 function handleDeepLink(url: string) {
@@ -209,16 +321,14 @@ function createWindow() {
     console.log(`[Renderer-${levels[level] || 'LOG'}] ${message}`);
   });
 
-  // Open DevTools automatically in development
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.webContents.openDevTools();
-  }
+  // Use app.isPackaged to determine the correct URL
+  // In production, load from extraResources (not asar)
+  const isPackaged = app.isPackaged;
+  const startUrl = isPackaged
+    ? `file://${path.join(process.resourcesPath, 'dashboard/dist/index.html')}`
+    : 'http://localhost:5173';
 
-  // In development, load from Vite dev server
-  // In production, load from build/index.html
-  const startUrl = process.env.NODE_ENV === 'development' 
-    ? 'http://localhost:5173' 
-    : `file://${path.join(__dirname, '../dist/index.html')}`;
+  console.log('[Main] Loading URL:', startUrl, 'isPackaged:', isPackaged);
 
   mainWindow.loadURL(startUrl);
 
@@ -243,9 +353,9 @@ if (process.defaultApp) {
   app.setAsDefaultProtocolClient('queenbee');
 }
 
-app.whenReady().then(() => {
-  // Start bundled backend in production
-  startBackend();
+app.whenReady().then(async () => {
+  // Start bundled backend in production (when packaged)
+  await startBackend();
   
   createWindow();
 
@@ -290,7 +400,7 @@ ipcMain.on('notification:show', (event: any, { title, body }: { title: string, b
 });
 
 // Native Direct Logger
-const logPath = path.resolve(__dirname, '..', '..', 'app.log');
+const logPath = path.join(app.getPath('userData'), 'app.log');
 const fs = require('fs-extra');
 ipcMain.on('app:log', (event: any, { level, message }: { level: string, message: string }) => {
   const entry = `[${new Date().toISOString()}] [RENDERER-${level.toUpperCase()}] ${message}\n`;

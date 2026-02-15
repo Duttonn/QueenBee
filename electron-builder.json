@@ -1,27 +1,49 @@
 {
   "appId": "com.queenbee.app",
   "productName": "QueenBee",
+  "protocols": [
+    {
+      "name": "QueenBee",
+      "schemes": ["queenbee"]
+    }
+  ],
   "directories": {
     "output": "dist",
     "app": "."
   },
   "files": [
-    "dist-electron/**/*",
-    "dashboard/dist/**/*",
-    "proxy-bridge/**/*",
+    "dist-electron/main.cjs",
+    "dist-electron/preload.cjs",
     "package.json"
   ],
-  "asar": true,
-  "asarUnpack": [
-    "proxy-bridge/node_modules/**/*"
+  "extraResources": [
+    {
+      "from": "proxy-bridge",
+      "to": "proxy-bridge",
+        "filter": [
+          "**/*",
+          "node_modules/**",
+          "!.env",
+          "!.env.local",
+          "!*.log",
+          "!test-project/**",
+          "!logs/**",
+          "!.next/cache/**"
+        ]
+    },
+    {
+      "from": "dashboard/dist",
+      "to": "dashboard/dist",
+      "filter": ["**/*"]
+    }
   ],
+  "asar": true,
   "mac": {
-    "target": ["dmg", "zip"],
+    "target": ["dmg"],
     "category": "public.app-category.developer-tools",
+    "identity": null,
     "hardenedRuntime": true,
-    "gatekeeperAssess": false,
-    "entitlements": "build/entitlements.mac.plist",
-    "entitlementsInherit": "build/entitlements.mac.plist"
+    "gatekeeperAssess": false
   },
   "linux": {
     "target": ["AppImage"]

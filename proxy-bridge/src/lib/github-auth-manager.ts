@@ -2,7 +2,10 @@
 import os from 'os';
 import { v4 as uuidv4 } from 'uuid';
 
-const CLIENT_ID = process.env.GITHUB_CLIENT_ID;
+// Hardcoded fallback for packaged app — env var takes precedence
+const DEFAULT_CLIENT_ID = 'Ov23lit0FgPDINdBAXU0';
+
+const CLIENT_ID = process.env.GITHUB_CLIENT_ID || DEFAULT_CLIENT_ID;
 
 interface AuthInitResponse {
     type: 'redirect' | 'device_flow';
@@ -22,7 +25,7 @@ export class GitHubAuthManager {
     }
 
     static async initiateLogin(redirectUri: string, mode?: 'electron' | 'web'): Promise<AuthInitResponse> {
-        const clientId = process.env.GITHUB_CLIENT_ID;
+        const clientId = CLIENT_ID;
         if (!clientId) throw new Error('GITHUB_CLIENT_ID is not configured');
 
         // Allow force usage of device flow via env var for testing or preference
@@ -101,7 +104,7 @@ export class GitHubAuthManager {
     }
 
     static async pollForToken(deviceCode: string): Promise<any> {
-        const clientId = process.env.GITHUB_CLIENT_ID;
+        const clientId = CLIENT_ID;
         if (!clientId) throw new Error('GITHUB_CLIENT_ID is not configured');
 
         const response = await fetch('https://github.com/login/oauth/access_token', {

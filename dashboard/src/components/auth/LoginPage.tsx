@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Github, Sparkles, ArrowRight, Zap, Shield, GitBranch, AlertCircle, Loader2, ExternalLink } from 'lucide-react';
+import { Github, ArrowRight, Zap, Shield, GitBranch, AlertCircle, Loader2, ExternalLink } from 'lucide-react';
 import { SystemService } from '../../services/SystemService';
 import { API_BASE } from '../../services/api';
 
@@ -12,7 +12,6 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [waitingMessage, setWaitingMessage] = useState<string | null>(null);
-    const [setupInstructions, setSetupInstructions] = useState<any>(null);
     const [isBackendOffline, setIsBackendOffline] = useState(false);
 
     const [deviceFlowData, setDeviceFlowData] = useState<any>(null);
@@ -82,7 +81,6 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
         setIsLoading(true);
         setError(null);
         setWaitingMessage(null);
-        setSetupInstructions(null);
         setDeviceFlowData(null);
 
         try {
@@ -99,9 +97,6 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
             SystemService.logs.log('info', `LoginPage: Strategy received: ${data.type || 'web'}`);
 
             if (!response.ok) {
-                if (data.setup) {
-                    setSetupInstructions(data.setup);
-                }
                 throw new Error(data.message || 'Failed to initiate GitHub login');
             }
 
@@ -303,79 +298,6 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
                             <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
                                 <Loader2 size={12} className="animate-spin" />
                                 Waiting for you to authorize...
-                            </div>
-                        </div>
-                    ) : setupInstructions ? (
-                        <div className="space-y-4">
-                            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl mb-4">
-                                <h3 className="text-white font-medium mb-2 flex items-center gap-2">
-                                    <Github size={16} />
-                                    Setup GitHub Integration
-                                </h3>
-                                <p className="text-xs text-slate-400 mb-4">
-                                    To connect your GitHub account, you need to create a GitHub App once.
-                                    <a href="https://github.com/settings/applications/new" target="_blank" rel="noreferrer" className="text-[#3B82F6] hover:text-blue-300 ml-1 inline-flex items-center gap-0.5">
-                                        Create App <ExternalLink size={10} />
-                                    </a>
-                                </p>
-
-                                <div className="space-y-3">
-                                    <div>
-                                        <label className="block text-xs text-slate-500 mb-1">Client ID</label>
-                                        <input
-                                            type="text"
-                                            className="w-full bg-slate-950/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50 transition-colors"
-                                            placeholder="Ov23..."
-                                            id="client_id"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs text-slate-500 mb-1">Client Secret</label>
-                                        <input
-                                            type="password"
-                                            className="w-full bg-slate-950/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500/50 transition-colors"
-                                            placeholder="e4d2..."
-                                            id="client_secret"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <button
-                                onClick={async () => {
-                                    const clientId = (document.getElementById('client_id') as HTMLInputElement).value;
-                                    const clientSecret = (document.getElementById('client_secret') as HTMLInputElement).value;
-
-                                    if (!clientId || !clientSecret) {
-                                        setError('Please enter both Client ID and Client Secret');
-                                        return;
-                                    }
-
-                                    setIsLoading(true);
-                                    try {
-                                        const res = await fetch(`${API_BASE}/api/auth/github/setup`, {
-                                            method: 'POST',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({ clientId, clientSecret })
-                                        });
-
-                                        if (!res.ok) throw new Error('Failed to save credentials');
-
-                                        // Retry login immediately
-                                        handleGitHubLogin();
-                                    } catch (err: any) {
-                                        setError(err.message);
-                                        setIsLoading(false);
-                                    }
-                                }}
-                                disabled={isLoading}
-                                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 px-4 rounded-xl transition-all flex items-center justify-center gap-2"
-                            >
-                                {isLoading ? <Loader2 size={16} className="animate-spin" /> : 'Save & Connect'}
-                            </button>
-
-                            <div className="text-[10px] text-slate-500 text-center">
-                                Credentials will be saved to your local .env file
                             </div>
                         </div>
                     ) : (

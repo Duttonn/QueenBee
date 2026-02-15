@@ -14,14 +14,14 @@ export default defineConfig(async () => {
     electronPlugins.push(
       electron([
         {
-          entry: '../electron/main.ts',
-          onstart(args: any) {
-            try {
-              execSync("sed -i '' 's/export default //g' dist-electron/main.cjs dist-electron/preload.cjs")
-            } catch (e) {
-              console.error('Failed to patch Electron files', e)
-            }
-            args.startup()
+            entry: '../electron/main.ts',
+              onstart(args: any) {
+                try {
+                    execSync('node ../scripts/fix-electron-exports.js dist-electron')
+                  } catch (e) {
+                    console.error('Failed to patch Electron files', e)
+                  }
+                args.startup()
           },
           vite: {
             build: {
@@ -40,12 +40,12 @@ export default defineConfig(async () => {
         },
         {
           entry: '../electron/preload.ts',
-          onstart(options: any) {
-            try {
-              execSync("sed -i '' 's/export default //g' dist-electron/preload.cjs")
-            } catch (e) {}
-            options.reload()
-          },
+            onstart(options: any) {
+              try {
+                execSync('node ../scripts/fix-electron-exports.js dist-electron')
+              } catch (e) {}
+              options.reload()
+            },
           vite: {
             build: {
               minify: false,

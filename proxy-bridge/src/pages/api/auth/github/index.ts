@@ -11,24 +11,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const clientId = process.env.GITHUB_CLIENT_ID;
-
-    if (!clientId) {
-        return res.status(500).json({
-            error: 'GitHub OAuth not configured',
-            message: 'Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET in your environment variables.',
-            setup: {
-                step1: 'Go to https://github.com/settings/developers',
-                step2: 'Create a new OAuth App',
-                step3: `Set Homepage URL to ${process.env.FRONTEND_URL || 'http://127.0.0.1:5173'}`,
-                step4: `Set Authorization callback URL to ${process.env.API_BASE_URL || 'http://127.0.0.1:3000'}/api/auth/github/callback`,
-                step5: 'Copy Client ID and Client Secret to .env.local'
-            }
-        });
-    }
+    // Client ID is always available via hardcoded fallback in GitHubAuthManager
 
     // Get the redirect URI from query or use default
-    const redirectUri = req.query.redirect_uri as string || `${process.env.API_BASE_URL || 'http://127.0.0.1:3000'}/api/auth/github/callback`;
+    const redirectUri = req.query.redirect_uri as string || `${process.env.API_BASE_URL || 'http://localhost:3000'}/api/auth/github/callback`;
     const mode = req.query.mode as 'electron' | 'web';
 
     // Use the Auth Manager to decide the best flow (Hybrid Strategy)

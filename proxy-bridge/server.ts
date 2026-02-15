@@ -25,8 +25,8 @@ function isOriginAllowed(origin: string | undefined): boolean {
   if (origin.startsWith('file://')) return true; // Electron file:// protocol
   if (ALLOWED_ORIGINS.includes(origin)) return true;
   if (/^https?:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(origin)) return true;
-  // In development, allow all localhost origins
-  if (process.env.NODE_ENV !== 'production' && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  // Always allow localhost — this is a local desktop app
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
   return false;
 }
 

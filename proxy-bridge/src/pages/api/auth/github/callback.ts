@@ -19,23 +19,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
     }
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://127.0.0.1:5173';
-    const apiBaseUrl = process.env.API_BASE_URL || 'http://127.0.0.1:3000';
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
 
     if (!code || typeof code !== 'string') {
         return res.redirect(`${frontendUrl}/auth/callback?error=${encodeURIComponent('Authorization code is missing')}`);
     }
 
-    const clientId = process.env.GITHUB_CLIENT_ID;
-    const clientSecret = process.env.GITHUB_CLIENT_SECRET;
-
-    if (!clientId || !clientSecret) {
-        return res.status(500).json({
-            error: 'not_configured',
-            message: 'GitHub OAuth credentials are not configured on the server.',
-            success: false,
-            help: 'Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET in .env.local'
-        });
+    const clientId = process.env.GITHUB_CLIENT_ID || 'Ov23lit0FgPDINdBAXU0';
+    const clientSecret = process.env.GITHUB_CLIENT_SECRET || '4ae938318916be65b59cf68ed159b2a03b17929d';
+    
+    if (!clientSecret) {
+      console.error('[Auth] GITHUB_CLIENT_SECRET not configured');
+      return res.status(500).json({
+        error: 'config_error',
+        message: 'GitHub OAuth is not configured. Set GITHUB_CLIENT_SECRET in ~/.queenbee/.env',
+        success: false
+      });
     }
 
     try {
