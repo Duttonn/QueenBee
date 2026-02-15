@@ -79,6 +79,7 @@ const httpServer = createServer(async (req, res) => {
 });
 
 const io = new Server(httpServer, {
+  path: '/api/logs/stream',
   cors: {
     origin: (origin, callback) => {
       if (isOriginAllowed(origin)) {

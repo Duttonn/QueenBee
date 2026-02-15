@@ -2,10 +2,7 @@
 import os from 'os';
 import { v4 as uuidv4 } from 'uuid';
 
-// Hardcoded fallback for packaged app — env var takes precedence
-const DEFAULT_CLIENT_ID = 'Ov23lit0FgPDINdBAXU0';
-
-const CLIENT_ID = process.env.GITHUB_CLIENT_ID || DEFAULT_CLIENT_ID;
+const CLIENT_ID = process.env.GITHUB_CLIENT_ID || '';
 
 interface AuthInitResponse {
     type: 'redirect' | 'device_flow';

@@ -65,6 +65,21 @@ function startBackend(): Promise<void> {
     const nodeExec = process.execPath;
     const homeDir = app.getPath('home');
 
+    // Try to find system node binary — it won't show a Dock icon since it's
+    // not inside a .app bundle (Electron's binary does show one on macOS).
+    const systemNode = (() => {
+      const { execSync } = require('child_process');
+      const candidates = ['/opt/homebrew/bin/node', '/usr/local/bin/node'];
+      for (const p of candidates) {
+        try { require('fs').accessSync(p, require('fs').constants.X_OK); return p; } catch {}
+      }
+      try { return execSync('which node', { encoding: 'utf-8' }).trim(); } catch {}
+      return null;
+    })();
+    const childNodeExec = systemNode || nodeExec;
+    const childEnvExtra: Record<string, string> = systemNode ? {} : { ELECTRON_RUN_AS_NODE: '1' };
+    console.log('[Main] Child node binary:', childNodeExec, systemNode ? '(system)' : '(electron)');
+
     // Load .env.local from the config dir (user may have placed secrets there)
     const configDir = path.join(homeDir, '.queenbee');
     const envLocalPath = path.join(configDir, '.env');
@@ -82,27 +97,20 @@ function startBackend(): Promise<void> {
       console.log('[Main] Loaded user env from:', envLocalPath, Object.keys(userEnv));
     } catch { /* no user env file, that's fine */ }
 
-    const env = {
-      ...process.env,
-      ELECTRON_RUN_AS_NODE: '1',
-      HOME: homeDir,
-      PORT: '3000',
-      SOCKET_PORT: '3001',
-      NODE_ENV: 'production',
-      QUEENBEE_CONFIG_DIR: configDir,
-      PROJECTS_ROOT: path.join(homeDir, 'QueenBee'),
-      // User-provided secrets override everything
-      ...userEnv,
-    };
-
-    // Prevent child processes from showing in Dock / as a terminal window on macOS.
-    // ELECTRON_RUN_AS_NODE makes the Electron binary act as plain Node, but macOS
-    // still shows it in the Dock unless we explicitly suppress it.
-    env['ELECTRON_NO_ATTACH_CONSOLE'] = '1';
-    // LSUIElement tells macOS this is a background-only process (no Dock icon)
-    env['LSUIElement'] = '1';
-    // Prevent Electron from showing a Dock icon for the child
-    env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true';
+    const env: Record<string, string> = {
+        ...Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== undefined)) as Record<string, string>,
+        ...childEnvExtra,
+        HOME: homeDir,
+        PORT: '3000',
+        SOCKET_PORT: '3001',
+        NODE_ENV: 'production',
+        QUEENBEE_CONFIG_DIR: configDir,
+        PROJECTS_ROOT: path.join(homeDir, 'QueenBee'),
+        ELECTRON_NO_ATTACH_CONSOLE: '1',
+        ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
+        // User-provided secrets override everything
+        ...userEnv,
+      };
     
     const spawnOpts = {
       cwd: backendPath,
@@ -111,13 +119,22 @@ function startBackend(): Promise<void> {
       windowsHide: true,  // Windows: don't show console window
     };
 
+    // Wrap child commands in /bin/sh with `exec` so macOS doesn't show Electron's
+    // Dock icon for each child process. `exec` replaces the shell with the node
+    // process, and since /bin/sh has no GUI presence, the Dock icon never appears.
+    // detached: true gives each child its own process group for clean shutdown.
+    const shellSpawn = (args: string[], label: string) => {
+      const cmd = [childNodeExec, ...args].map(a => `"${a}"`).join(' ');
+      const proc = spawn('/bin/sh', ['-c', `exec ${cmd}`], { ...spawnOpts, detached: true });
+      pipeProcessLogs(proc, label);
+      return proc;
+    };
+
     // 1. Start Next.js API server (port 3000)
-    nextProcess = spawn(nodeExec, [nextCli, 'start', '-p', '3000'], spawnOpts);
-    pipeProcessLogs(nextProcess, 'Next.js');
+    nextProcess = shellSpawn([nextCli, 'start', '-p', '3000'], 'Next.js');
     
     // 2. Start Socket.io server (port 3001)
-    socketProcess = spawn(nodeExec, [tsxCli, 'server.ts'], spawnOpts);
-    pipeProcessLogs(socketProcess, 'Socket');
+    socketProcess = shellSpawn([tsxCli, 'server.ts'], 'Socket');
     
     console.log('[Main] Backend processes spawned, waiting for Next.js to be ready...');
     

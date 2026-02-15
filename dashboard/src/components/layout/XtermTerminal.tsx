@@ -70,12 +70,11 @@ const XtermTerminal = () => {
     let socket: any = null;
     
     fetch(`${API_BASE}/api/terminal/socket`).finally(() => {
-          socket = io(SOCKET_BASE, {
-            path: '/api/terminal/socket',
-            transports: ['websocket'],
-            secure: true,
-            reconnectionAttempts: 5
-        });
+            socket = io(SOCKET_BASE, {
+              path: '/api/terminal/socket',
+              transports: ['websocket'],
+              reconnectionAttempts: 5
+          });
 
         // 4. pty.onData -> term.write
         socket.on('output', (data: any) => {

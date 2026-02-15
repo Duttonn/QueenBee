@@ -65,11 +65,11 @@ export const useHiveStore = create<HiveState>()(
         console.log('[HiveStore] Initializing Socket...');
 
         // Boot the socket server endpoint (best-effort, non-blocking)
-        const bootServer = async (retries = 3) => {
-          for (let i = 0; i < retries; i++) {
-            try {
-              await fetch(`${API_BASE}/api/logs/stream`);
-              return;
+          const bootServer = async (retries = 3) => {
+            for (let i = 0; i < retries; i++) {
+              try {
+                await fetch(`${SOCKET_BASE}/api/health`);
+                return;
             } catch (e) {
               if (i < retries - 1) {
                 await new Promise(r => setTimeout(r, 1000 * (i + 1)));
@@ -83,7 +83,6 @@ export const useHiveStore = create<HiveState>()(
           const socket = io(SOCKET_BASE, {
           path: '/api/logs/stream',
           transports: ['websocket'],
-          secure: true,
           reconnection: true,
           reconnectionAttempts: 10,
           reconnectionDelay: 1000,
