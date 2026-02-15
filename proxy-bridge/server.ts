@@ -41,6 +41,22 @@ const triggerEngine = new TriggerEngine(Paths.getWorkspaceRoot());
 triggerEngine.start().catch(err => console.error('Failed to start trigger engine', err));
 
 const httpServer = createServer(async (req, res) => {
+  // CORS handling for all HTTP requests
+  const origin = req.headers.origin;
+  if (isOriginAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin || 'null');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Codex-Provider, X-Request-Id');
+  }
+
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
+
   // Simple router for Claim API
   if (req.url === '/api/tasks/claim' && req.method === 'POST') {
     let body = '';
