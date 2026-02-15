@@ -10,7 +10,7 @@
   "main": "dist-electron/main.cjs",
   "scripts": {
     "postinstall": "cd dashboard && npm install && cd ../proxy-bridge && npm install && cd ..",
-    "compile:electron": "tsc -p tsconfig.electron.json",
+    "compile:electron": "npx tsc -p tsconfig.electron.json",
     "copy:electron": "node -e \"const fs=require('fs');fs.mkdirSync('dist-electron',{recursive:true});fs.copyFileSync('dashboard/dist-electron/main.cjs','dist-electron/main.cjs');fs.copyFileSync('dashboard/dist-electron/preload.cjs','dist-electron/preload.cjs');\"",
     "fix:export": "node scripts/fix-electron-exports.js",
     "build:backend": "cd proxy-bridge && npm run build && cd ..",
