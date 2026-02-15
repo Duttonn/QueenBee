@@ -13,19 +13,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-latest
-            platform: mac
-            arch: arm64
-          - os: macos-13
-            platform: mac
-            arch: x64
-          - os: ubuntu-latest
-            platform: linux
-            arch: x64
-          - os: windows-latest
-            platform: win
-            arch: x64
+          include:
+            - os: macos-latest
+              platform: mac
+              arch: arm64
+            - os: ubuntu-latest
+              platform: linux
+              arch: x64
+            - os: windows-latest
+              platform: win
+              arch: x64
 
     runs-on: ${{ matrix.os }}
 
