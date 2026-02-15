@@ -10,9 +10,14 @@
     "fix:export": "node scripts/fix-electron-exports.js",
     "build:backend": "cd proxy-bridge && npm run build && cd ..",
     "build:dashboard": "cd dashboard && npm run build && cd ..",
-    "build": "export VITE_ELECTRON=true && npm run compile:electron && npm run build:backend && npm run build:dashboard && npm run copy:electron && npm run fix:export && electron-builder",
+    "build:prepare": "export VITE_ELECTRON=true && npm run compile:electron && npm run build:backend && npm run build:dashboard && npm run copy:electron && npm run fix:export",
+    "build": "npm run build:prepare && electron-builder --mac",
+    "build:mac": "npm run build:prepare && electron-builder --mac",
+    "build:win": "npm run build:prepare && electron-builder --win",
+    "build:linux": "npm run build:prepare && electron-builder --linux",
+    "build:all": "npm run build:prepare && electron-builder --mac --win --linux",
     "electron:dev": "export VITE_ELECTRON=true && cd dashboard && npm run dev",
-    "electron:build": "export VITE_ELECTRON=true && npm run compile:electron && npm run build:backend && npm run build:dashboard && npm run copy:electron && npm run fix:export && electron-builder"
+    "electron:build": "npm run build:prepare && electron-builder"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",

@@ -63,33 +63,53 @@ function startBackend(): Promise<void> {
     
     const homeDir = app.getPath('home');
 
-    // Prevent child processes from showing a Dock icon on macOS.
-    // macOS shows Dock icons for any binary inside a .app bundle. To avoid this
-    // we create a symlink to the Electron binary OUTSIDE the bundle (in userData).
-    // The symlink resolves to the same binary but macOS doesn't assign it a Dock icon.
+    // Find a node binary for child processes.
+    // On macOS: avoid using Electron binary inside .app bundle (causes extra Dock icon).
+    // On Windows/Linux: system node avoids needing ELECTRON_RUN_AS_NODE.
     const childNodeExec = (() => {
       const fs = require('fs');
-      // 1. Try system node first (never has a Dock icon)
-      const candidates = ['/opt/homebrew/bin/node', '/usr/local/bin/node'];
-      for (const p of candidates) {
-        try { fs.accessSync(p, fs.constants.X_OK); return { exec: p, env: {} as Record<string, string> }; } catch {}
+      const isWin = process.platform === 'win32';
+
+      // 1. Try system node first
+      if (isWin) {
+        // On Windows, try common node locations
+        const winCandidates = [
+          path.join(process.env.ProgramFiles || 'C:\\Program Files', 'nodejs', 'node.exe'),
+          path.join(process.env.LOCALAPPDATA || '', 'Programs', 'nodejs', 'node.exe'),
+        ];
+        for (const p of winCandidates) {
+          try { fs.accessSync(p, fs.constants.X_OK); return { exec: p, env: {} as Record<string, string> }; } catch {}
+        }
+        try {
+          const { execSync } = require('child_process');
+          const p = execSync('where node', { encoding: 'utf-8' }).trim().split('\n')[0].trim();
+          if (p) { fs.accessSync(p, fs.constants.X_OK); return { exec: p, env: {} as Record<string, string> }; }
+        } catch {}
+      } else {
+        // macOS / Linux
+        const candidates = ['/opt/homebrew/bin/node', '/usr/local/bin/node', '/usr/bin/node'];
+        for (const p of candidates) {
+          try { fs.accessSync(p, fs.constants.X_OK); return { exec: p, env: {} as Record<string, string> }; } catch {}
+        }
+        try {
+          const { execSync } = require('child_process');
+          const p = execSync('which node', { encoding: 'utf-8' }).trim();
+          if (p) { fs.accessSync(p, fs.constants.X_OK); return { exec: p, env: {} as Record<string, string> }; }
+        } catch {}
       }
-      try {
-        const { execSync } = require('child_process');
-        const p = execSync('which node', { encoding: 'utf-8' }).trim();
-        if (p) { fs.accessSync(p, fs.constants.X_OK); return { exec: p, env: {} as Record<string, string> }; }
-      } catch {}
 
-      // 2. Symlink Electron binary outside the .app bundle so macOS hides its Dock icon
-      const symlinkPath = path.join(app.getPath('userData'), 'node');
-      try {
-        try { fs.unlinkSync(symlinkPath); } catch {}
-        fs.symlinkSync(process.execPath, symlinkPath);
-        fs.accessSync(symlinkPath, fs.constants.X_OK);
-        return { exec: symlinkPath, env: { ELECTRON_RUN_AS_NODE: '1' } };
-      } catch {}
+      // 2. macOS only: symlink Electron binary outside .app bundle to hide Dock icon
+      if (process.platform === 'darwin') {
+        const symlinkPath = path.join(app.getPath('userData'), 'node');
+        try {
+          try { fs.unlinkSync(symlinkPath); } catch {}
+          fs.symlinkSync(process.execPath, symlinkPath);
+          fs.accessSync(symlinkPath, fs.constants.X_OK);
+          return { exec: symlinkPath, env: { ELECTRON_RUN_AS_NODE: '1' } };
+        } catch {}
+      }
 
-      // 3. Fallback to raw Electron binary (will show Dock icon)
+      // 3. Fallback to Electron binary as node
       return { exec: process.execPath, env: { ELECTRON_RUN_AS_NODE: '1' } };
     })();
     console.log('[Main] Child node binary:', childNodeExec.exec);
@@ -133,9 +153,11 @@ function startBackend(): Promise<void> {
       windowsHide: true,  // Windows: don't show console window
     };
 
-      // detached: true gives each child its own process group for clean shutdown.
+      // detached: true gives each child its own process group for clean shutdown (Unix only).
+      // On Windows, detached opens a visible console; taskkill handles tree-kill instead.
+      const isWin = process.platform === 'win32';
       const shellSpawn = (args: string[], label: string) => {
-        const proc = spawn(childNodeExec.exec, args, { ...spawnOpts, detached: true });
+        const proc = spawn(childNodeExec.exec, args, { ...spawnOpts, ...(isWin ? {} : { detached: true }) });
       pipeProcessLogs(proc, label);
       return proc;
     };
@@ -185,8 +207,13 @@ function stopBackend() {
   const killProc = (proc: any, label: string) => {
     if (!proc || proc.killed) return;
     try {
-      // Kill entire process group on Unix
-      process.kill(-proc.pid, 'SIGTERM');
+      if (process.platform === 'win32') {
+        // Windows: use taskkill to kill process tree
+        spawn('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
+      } else {
+        // Unix: kill entire process group via negative PID
+        process.kill(-proc.pid, 'SIGTERM');
+      }
     } catch {
       try { proc.kill('SIGTERM'); } catch {}
     }
@@ -243,8 +270,9 @@ app.on('open-url', (event: any, url: string) => {
 });
 
 function createMenu() {
-  const template = [
-    {
+    const isMac = process.platform === 'darwin';
+
+    const macAppMenu = isMac ? [{
       label: app.name,
       submenu: [
         { role: 'about' },
@@ -257,84 +285,103 @@ function createMenu() {
         { type: 'separator' },
         { role: 'quit' }
       ]
-    },
-    {
-      label: 'Edit',
-      submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
-        { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'selectAll' }
-      ]
-    },
-    {
-      label: 'View',
-      submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
-        { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' },
-        { type: 'separator' },
-        {
-          label: 'Clear App Data & Restart',
-          click: async () => {
-            if (mainWindow) {
-              await mainWindow.webContents.session.clearStorageData();
-              app.relaunch();
-              app.exit();
+    }] : [];
+
+    const template = [
+      ...macAppMenu,
+      {
+        label: 'File',
+        submenu: [
+          isMac ? { role: 'close' } : { role: 'quit' }
+        ]
+      },
+      {
+        label: 'Edit',
+        submenu: [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'selectAll' }
+        ]
+      },
+      {
+        label: 'View',
+        submenu: [
+          { role: 'reload' },
+          { role: 'forceReload' },
+          { role: 'toggleDevTools' },
+          { type: 'separator' },
+          { role: 'resetZoom' },
+          { role: 'zoomIn' },
+          { role: 'zoomOut' },
+          { type: 'separator' },
+          { role: 'togglefullscreen' },
+          { type: 'separator' },
+          {
+            label: 'Clear App Data & Restart',
+            click: async () => {
+              if (mainWindow) {
+                await mainWindow.webContents.session.clearStorageData();
+                app.relaunch();
+                app.exit();
+              }
             }
           }
-        }
-      ]
-    },
-    {
-      label: 'Window',
-      submenu: [
-        { role: 'minimize' },
-        { role: 'zoom' },
-        { type: 'separator' },
-        { role: 'front' },
-        { type: 'separator' },
-        { role: 'window' }
-      ]
-    },
-    {
-      role: 'help',
-      submenu: [
-        {
-          label: 'Learn More',
-          click: async () => {
-            await electronShell.openExternal('https://github.com/Duttonn/QueenBee');
+        ]
+      },
+      {
+        label: 'Window',
+        submenu: [
+          { role: 'minimize' },
+          { role: 'zoom' },
+          ...(isMac ? [
+            { type: 'separator' },
+            { role: 'front' },
+            { type: 'separator' },
+            { role: 'window' }
+          ] : [
+            { role: 'close' }
+          ])
+        ]
+      },
+      {
+        role: 'help',
+        submenu: [
+          {
+            label: 'Learn More',
+            click: async () => {
+              await electronShell.openExternal('https://github.com/Duttonn/QueenBee');
+            }
           }
-        }
-      ]
-    }
-  ];
+        ]
+      }
+    ];
 
-  const menu = Menu.buildFromTemplate(template);
-  Menu.setApplicationMenu(menu);
-}
+    const menu = Menu.buildFromTemplate(template);
+    Menu.setApplicationMenu(menu);
+  }
 
 function createWindow() {
   createMenu();
+
+  const isMac = process.platform === 'darwin';
 
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1000,
     minHeight: 700,
-    titleBarStyle: 'hiddenInset', // Apple Native Aesthetic
-    vibrancy: 'under-window', // Better macOS vibrancy
-    visualEffectState: 'active',
-    backgroundColor: '#00000000', // Transparent for vibrancy
+    ...(isMac ? {
+      titleBarStyle: 'hiddenInset',
+      vibrancy: 'under-window',
+      visualEffectState: 'active',
+      backgroundColor: '#00000000',
+    } : {
+      backgroundColor: '#1a1a2e',
+    }),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
@@ -380,11 +427,35 @@ if (process.defaultApp) {
   app.setAsDefaultProtocolClient('queenbee');
 }
 
+// Windows / Linux: enforce single instance and handle deep links via argv
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event: any, argv: string[]) => {
+    // On Windows, the deep link URL is passed as the last argv entry
+    if (process.platform === 'win32' || process.platform === 'linux') {
+      const url = argv.find((a: string) => a.startsWith('queenbee://'));
+      if (url) handleDeepLink(url);
+    }
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
 app.whenReady().then(async () => {
   // Start bundled backend in production (when packaged)
   await startBackend();
   
   createWindow();
+
+  // Windows/Linux: check initial argv for deep link
+  if (process.platform !== 'darwin') {
+    const url = process.argv.find((a: string) => a.startsWith('queenbee://'));
+    if (url) handleDeepLink(url);
+  }
 
   // Register Global Shortcut: Cmd+Option+B to toggle window
   globalShortcut.register('CommandOrControl+Alt+B', () => {
