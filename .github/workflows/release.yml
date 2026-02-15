@@ -53,6 +53,15 @@ jobs:
         env:
           VITE_ELECTRON: 'true'
 
+      - name: Write proxy-bridge .env.local
+        shell: bash
+        run: |
+            printf 'GITHUB_CLIENT_ID=%s\nGITHUB_CLIENT_SECRET=%s\nNVIDIA_API_KEY=%s\n' \
+              "${{ secrets.GH_OAUTH_CLIENT_ID }}" \
+              "${{ secrets.GH_OAUTH_CLIENT_SECRET }}" \
+              "${{ secrets.NVIDIA_API_KEY }}" \
+              > proxy-bridge/.env.local
+
       - name: Build proxy-bridge
         working-directory: proxy-bridge
         run: npm run build

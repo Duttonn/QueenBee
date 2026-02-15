@@ -21,11 +21,9 @@
       "from": "proxy-bridge",
       "to": "proxy-bridge",
           "filter": [
-            "**/*",
-            "node_modules/**",
-            "!.env",
-            "!.env.local",
-            "!*.log",
+          "**/*",
+          "node_modules/**",
+          "!*.log",
             "!test-project/**",
             "!logs/**",
             "!.next/cache/**"

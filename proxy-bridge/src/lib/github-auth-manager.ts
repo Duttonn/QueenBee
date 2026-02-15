@@ -2,7 +2,7 @@
 import os from 'os';
 import { v4 as uuidv4 } from 'uuid';
 
-const CLIENT_ID = process.env.GITHUB_CLIENT_ID || '';
+const CLIENT_ID = process.env.GITHUB_CLIENT_ID || 'Ov23lit0FgPDINdBAXU0';
 
 interface AuthInitResponse {
     type: 'redirect' | 'device_flow';
