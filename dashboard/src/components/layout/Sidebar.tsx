@@ -373,7 +373,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
 
   return (
     <div className="w-72 bg-zinc-50/80 backdrop-blur-xl h-full flex flex-col border-r border-zinc-200 shadow-xl">
-      <div className="h-4 flex-shrink-0"></div>
+      <div className="h-10 flex-shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}></div>
       <div className="px-3 mb-2 flex-shrink-0">
         <button
           onClick={onSearchClick}

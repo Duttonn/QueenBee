@@ -23,6 +23,7 @@ relay_cache.json
 
 # Project specific
 worktrees/
+.queenbee/
 data/inbox.json
 proxy-bridge/data/
 search_index.json

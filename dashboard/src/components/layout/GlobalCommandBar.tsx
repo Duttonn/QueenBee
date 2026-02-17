@@ -1,10 +1,37 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Mic, Command, Search, Cpu, GitBranch, Zap, Layers, Loader2, Bot, X, PenSquare, RefreshCw, Activity } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Mic, Command, Search, Cpu, GitBranch, Zap, Layers, Loader2, Bot, X, PenSquare, RefreshCw, Activity, MessageSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useHiveStore } from '../../store/useHiveStore';
 import { useAppStore } from '../../store/useAppStore';
 import { useVoiceRecording } from '../../hooks/useVoiceRecording';
 import { healthCheck } from '../../services/api';
+
+const getThreadDisplayName = (thread: any): string => {
+  const title = thread.title || '';
+  const isGeneric = !title || /^new\s*thread$/i.test(title.trim());
+  if (!isGeneric) return title;
+  const firstUserMsg = thread.messages?.find((m: any) => m.role === 'user');
+  if (firstUserMsg?.content) {
+    const text = typeof firstUserMsg.content === 'string' ? firstUserMsg.content : '';
+    if (text) return text.length > 60 ? text.slice(0, 60) + '...' : text;
+  }
+  return title || 'New Thread';
+};
+
+const getThreadSnippet = (thread: any, query: string): string => {
+  const q = query.toLowerCase();
+  for (const msg of (thread.messages || [])) {
+    const text = typeof msg.content === 'string' ? msg.content : '';
+    if (!text) continue;
+    const idx = text.toLowerCase().indexOf(q);
+    if (idx !== -1) {
+      const start = Math.max(0, idx - 30);
+      const end = Math.min(text.length, idx + q.length + 60);
+      return (start > 0 ? '...' : '') + text.slice(start, end) + (end < text.length ? '...' : '');
+    }
+  }
+  return '';
+};
 
 const GlobalCommandBar = () => {
   const { isCommandBarOpen: isOpen, setCommandBarOpen: setIsOpen } = useAppStore();
@@ -89,6 +116,35 @@ const GlobalCommandBar = () => {
 
   const filteredActions = actions.filter(a => a.title.toLowerCase().includes(query.toLowerCase()));
 
+  // Search through all threads across all projects
+  const matchingThreads = useMemo(() => {
+    if (!query.trim()) return [];
+    const q = query.toLowerCase();
+    const results: { projectId: string; projectName: string; thread: any; snippet: string }[] = [];
+    for (const project of projects) {
+      for (const thread of (project.threads || [])) {
+        const displayName = getThreadDisplayName(thread);
+        const titleMatch = displayName.toLowerCase().includes(q);
+        // Search message content
+        const contentMatch = (thread.messages || []).some((m: any) => {
+          const text = typeof m.content === 'string' ? m.content : '';
+          return text.toLowerCase().includes(q);
+        });
+        if (titleMatch || contentMatch) {
+          results.push({
+            projectId: project.id,
+            projectName: project.name,
+            thread,
+            snippet: getThreadSnippet(thread, query),
+          });
+          if (results.length >= 10) break;
+        }
+      }
+      if (results.length >= 10) break;
+    }
+    return results;
+  }, [query, projects]);
+
   // Toggle with Cmd+K and Ctrl+M for Voice
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -123,9 +179,13 @@ const GlobalCommandBar = () => {
     stopRecording();
   };
 
-  // Clear status when closing
+  // Clear status and query when closing
   useEffect(() => {
-    if (!isOpen) setStatusMessage(null);
+    if (!isOpen) {
+      setStatusMessage(null);
+      setQuery('');
+      setSelectedIdx(0);
+    }
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -169,49 +229,87 @@ const GlobalCommandBar = () => {
           </div>
         </div>
 
-        <div className="p-2 max-h-[60vh] overflow-y-auto bg-zinc-50/30">
-          {filteredActions.length > 0 ? (
-            <div className="space-y-1">
-              {filteredActions.map((action, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => { action.perform(); if (!['System Status', 'Refresh Projects'].includes(action.title)) setIsOpen(false); }}
-                  className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl transition-all ${
-                    idx === selectedIdx ? 'bg-zinc-900 text-white shadow-xl shadow-black/10' : 'hover:bg-zinc-50 text-zinc-600'
-                  }`}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={`p-2 rounded-xl ${idx === selectedIdx ? 'bg-white/10 text-white' : 'bg-zinc-100 text-zinc-500'}`}>
-                      {action.icon}
-                    </div>
-                    <div className="text-left">
-                      <div className={`text-sm font-bold uppercase tracking-wide ${idx === selectedIdx ? 'text-white' : 'text-zinc-900'}`}>
-                        {action.title}
+          <div className="p-2 max-h-[60vh] overflow-y-auto bg-zinc-50/30">
+            {/* Thread search results */}
+            {matchingThreads.length > 0 && (
+              <div className="mb-2">
+                <div className="px-4 py-1.5 text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em]">Threads</div>
+                <div className="space-y-1">
+                  {matchingThreads.map((result, idx) => (
+                    <button
+                      key={result.thread.id}
+                      onClick={() => {
+                        setSelectedProjectId(result.projectId);
+                        setActiveThread(result.thread.id);
+                        setIsOpen(false);
+                      }}
+                      className="w-full flex items-center gap-4 px-4 py-3 rounded-2xl transition-all hover:bg-zinc-100 text-zinc-600"
+                    >
+                      <div className="p-2 rounded-xl bg-zinc-100 text-zinc-500 flex-shrink-0">
+                        <MessageSquare size={16} />
                       </div>
-                      <div className={`text-[10px] font-medium ${idx === selectedIdx ? 'text-white/50' : 'text-zinc-400'}`}>
-                        {action.description}
+                      <div className="text-left min-w-0 flex-1">
+                        <div className="text-sm font-bold text-zinc-900 truncate">
+                          {getThreadDisplayName(result.thread)}
+                        </div>
+                        {result.snippet ? (
+                          <div className="text-[10px] text-zinc-400 truncate mt-0.5">{result.snippet}</div>
+                        ) : (
+                          <div className="text-[10px] text-zinc-400 uppercase tracking-wider">{result.projectName}</div>
+                        )}
                       </div>
-                    </div>
-                  </div>
-                  {action.shortcut && (
-                    <div className={`text-[10px] font-black px-2 py-1 rounded-lg border ${
-                      idx === selectedIdx ? 'bg-white/10 border-white/20 text-white' : 'bg-white border-zinc-200 text-zinc-400'
-                    }`}>
-                      {action.shortcut}
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="py-20 text-center">
-              <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 border border-zinc-100 shadow-sm">
-                 <Bot size={24} className="text-zinc-300" />
+                    </button>
+                  ))}
+                </div>
               </div>
-              <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">No matching commands found</p>
-            </div>
-          )}
-        </div>
+            )}
+
+            {/* Command actions */}
+            {filteredActions.length > 0 ? (
+              <div className="space-y-1">
+                {query.trim() && matchingThreads.length > 0 && (
+                  <div className="px-4 py-1.5 text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em]">Commands</div>
+                )}
+                {filteredActions.map((action, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => { action.perform(); if (!['System Status', 'Refresh Projects'].includes(action.title)) setIsOpen(false); }}
+                    className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl transition-all ${
+                      idx === selectedIdx ? 'bg-zinc-900 text-white shadow-xl shadow-black/10' : 'hover:bg-zinc-50 text-zinc-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={`p-2 rounded-xl ${idx === selectedIdx ? 'bg-white/10 text-white' : 'bg-zinc-100 text-zinc-500'}`}>
+                        {action.icon}
+                      </div>
+                      <div className="text-left">
+                        <div className={`text-sm font-bold uppercase tracking-wide ${idx === selectedIdx ? 'text-white' : 'text-zinc-900'}`}>
+                          {action.title}
+                        </div>
+                        <div className={`text-[10px] font-medium ${idx === selectedIdx ? 'text-white/50' : 'text-zinc-400'}`}>
+                          {action.description}
+                        </div>
+                      </div>
+                    </div>
+                    {action.shortcut && (
+                      <div className={`text-[10px] font-black px-2 py-1 rounded-lg border ${
+                        idx === selectedIdx ? 'bg-white/10 border-white/20 text-white' : 'bg-white border-zinc-200 text-zinc-400'
+                      }`}>
+                        {action.shortcut}
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            ) : matchingThreads.length === 0 ? (
+              <div className="py-20 text-center">
+                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 border border-zinc-100 shadow-sm">
+                   <Bot size={24} className="text-zinc-300" />
+                </div>
+                <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">No matching threads or commands found</p>
+              </div>
+            ) : null}
+          </div>
 
         {statusMessage && (
           <div className="px-6 py-3 bg-blue-50 border-t border-blue-100 flex items-center gap-2">
