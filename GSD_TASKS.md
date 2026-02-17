@@ -739,3 +739,90 @@
   - **Description**: Replace the blue dot with a "Pill" that shows the current agent's specific sub-action (e.g., "Indexing...", "Refactoring...").
   - **Context**: Use the `queenStatus` from `useHiveStore`.
   - **Criteria**: Max 12 characters, font-mono, text-[8px].
+
+## 🚧 PHASE 15: BUG FIXES & FEATURE ENHANCEMENTS
+> **Goal**: Fix critical bugs and implement missing features from user feedback.
+
+### 🔴 CRITICAL — Bug Fixes
+
+- [ ] `FIX-04`: [Backend] **Roundtable Agents Not Responding**
+  - **Description**: Roundtable agents are not responding to messages. Investigate and fix the communication channel between workers and roundtable.
+  - **Files**: `proxy-bridge/src/lib/Roundtable.ts`, `proxy-bridge/src/lib/ToolExecutor.ts`
+  - **Worker**: BACKEND
+
+- [ ] `FIX-05`: [Frontend] **Architect Approve Button Incorrectly Popping Up**
+  - **Description**: The plan approve button appears even when not using @qb command, in plan mode, and when just @-mentioning a file.
+  - **Files**: `dashboard/src/components/layout/CodexLayout.tsx`
+  - **Context**: Fix the detection logic for when to show the approve bar (should only show during @qb swarm workflow)
+  - **Worker**: FRONTEND
+
+- [ ] `FIX-06`: [Frontend] **Workflow Panel Tab Not Reopenable**
+  - **Description**: When the agent workflow panel is closed, there's no way to reopen it.
+  - **Files**: `dashboard/src/components/layout/CodexLayout.tsx`, `dashboard/src/components/layout/Sidebar.tsx`
+  - **Context**: Add a toggle button in the sidebar or header to reopen the workflow panel
+  - **Worker**: FRONTEND
+
+- [ ] `FIX-07`: [Frontend] **Voice Command Not Working**
+  - **Description**: Voice input is not being captured or processed correctly.
+  - **Files**: `dashboard/src/hooks/useVoiceRecording.ts`, `dashboard/src/components/layout/CodexLayout.tsx`
+  - **Worker**: FRONTEND
+
+- [ ] `FIX-08`: [Frontend] **Adding Files to Prompt Context**
+  - **Description**: Attaching files to the prompt context is broken or not working as expected.
+  - **Files**: `dashboard/src/components/layout/CodexLayout.tsx`
+  - **Context**: Fix the file attachment flow via the Plus button
+  - **Worker**: FRONTEND
+
+- [ ] `FIX-09`: [Frontend] **Embedded Terminal & Open in Terminal**
+  - **Description**: The embedded terminal is not working properly and "Open in Terminal" button is broken.
+  - **Files**: `dashboard/src/components/layout/XtermTerminal.tsx`, `dashboard/src/components/layout/AgenticWorkbench.tsx`
+  - **Worker**: FRONTEND
+
+### 🟠 HIGH — Feature Implementation
+
+- [ ] `FEAT-01`: [Backend] **Implement Swarm Features from Leoswarm**
+  - **Description**: Port over all swarm features implemented in the leoswarm project.
+  - **Context**: Need access to leoswarm project to review implementation
+  - **Worker**: BACKEND
+
+- [ ] `FEAT-02`: [Frontend] **Implement/Fix Automations**
+  - **Description**: Automations feature is not fully functional.
+  - **Files**: `dashboard/src/components/layout/AutomationDashboard.tsx`, `dashboard/src/components/layout/Sidebar.tsx`
+  - **Context**: Review current implementation and fix issues
+  - **Worker**: FRONTEND
+
+- [ ] `FEAT-03`: [Frontend] **Implement/Fix Skills with Template from Worktree**
+  - **Description**: Skills feature needs to be implemented or fixed. Get the skills template from worktree.
+  - **Files**: `dashboard/src/components/layout/SkillsManager.tsx`
+  - **Context**: Implement skills management system
+  - **Worker**: FRONTEND
+
+- [ ] `FEAT-04`: [Frontend] **OAuth for All Models**
+  - **Description**: Add OAuth authentication support for all AI model providers.
+  - **Files**: `dashboard/src/components/settings/`, `proxy-bridge/src/pages/api/auth/`
+  - **Context**: Implement OAuth flow for providers like Google, Anthropic, etc.
+  - **Worker**: FULLSTACK
+
+- [ ] `FEAT-05`: [Backend] **Fix Requests for All Models**
+  - **Description**: API requests to various models are failing or not working correctly.
+  - **Files**: `proxy-bridge/src/lib/UnifiedLLMService.ts`
+  - **Context**: Debug and fix model request handling
+  - **Worker**: BACKEND
+
+- [ ] `FEAT-06`: [Frontend/Backend] **Deep Inspector**
+  - **Description**: Implement a deep code inspector for analyzing project structure and dependencies.
+  - **Files**: NEW `dashboard/src/components/inspector/`, `proxy-bridge/src/pages/api/inspector/`
+  - **Context**: Create comprehensive code analysis tool
+  - **Worker**: FULLSTACK
+
+- [ ] `FEAT-07`: [Frontend/Backend] **QueenBee Chrome Extension**
+  - **Description**: Create a Chrome extension similar to Google Antigravity for browser integration.
+  - **Files**: NEW `chrome-extension/`
+  - **Context**: Allow QueenBee to interact with browser tabs
+  - **Worker**: FULLSTACK
+
+- [ ] `FEAT-08`: [Frontend/Backend] **Integrated Navigator (Orchids-style)**
+  - **Description**: Add an integrated navigator like Orchids with a "select element" button to add HTML elements to the prompt context.
+  - **Files**: NEW `dashboard/src/components/navigator/`, `proxy-bridge/src/pages/api/navigator/`
+  - **Context**: Allow users to select elements from web pages and add them to context
+  - **Worker**: FULLSTACK
