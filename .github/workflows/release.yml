@@ -131,6 +131,24 @@ jobs:
         with:
           draft: false
           generate_release_notes: true
+          body: |
+            ## Installation
+
+            ### macOS
+            > **"QueenBee is damaged and can't be opened"** — this is a macOS Gatekeeper warning for unsigned apps. Run this once after installing:
+            > ```bash
+            > xattr -cr /Applications/QueenBee.app
+            > ```
+            > Then double-click the app normally.
+
+            ### Windows
+            Download and run `QueenBee Setup x.x.x.exe`. Windows SmartScreen may warn on first run — click **More info → Run anyway**.
+
+            ### Linux
+            Download the `.AppImage`, make it executable and run:
+            ```bash
+            chmod +x QueenBee-*.AppImage && ./QueenBee-*.AppImage
+            ```
           files: |
             artifacts/**/*.dmg
             artifacts/**/*.zip
