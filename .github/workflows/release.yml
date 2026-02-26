@@ -36,8 +36,18 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Cache Electron binary
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/AppData/Local/electron/Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - name: Install root dependencies
         run: npm ci
+        env:
+          ELECTRON_CACHE: ~/.cache/electron
 
       - name: Install dashboard dependencies
         working-directory: dashboard
