@@ -40,7 +40,7 @@
     "target": ["dmg"],
     "category": "public.app-category.developer-tools",
     "identity": null,
-    "hardenedRuntime": true,
+    "hardenedRuntime": false,
     "gatekeeperAssess": false
   },
   "linux": {
