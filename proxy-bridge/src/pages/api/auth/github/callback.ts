@@ -26,14 +26,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.redirect(`${frontendUrl}/auth/callback?error=${encodeURIComponent('Authorization code is missing')}`);
     }
 
-    const clientId = process.env.GITHUB_CLIENT_ID || 'Ov23lit0FgPDINdBAXU0';
-    const clientSecret = process.env.GITHUB_CLIENT_SECRET || '4ae938318916be65b59cf68ed159b2a03b17929d';
-    
-    if (!clientSecret) {
-      console.error('[Auth] GITHUB_CLIENT_SECRET not configured');
+    const clientId = process.env.GITHUB_CLIENT_ID;
+    const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+
+    if (!clientId || !clientSecret) {
+      console.error('[Auth] GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET not configured');
       return res.status(500).json({
         error: 'config_error',
-        message: 'GitHub OAuth is not configured. Set GITHUB_CLIENT_SECRET in ~/.queenbee/.env',
+        message: 'GitHub OAuth is not configured. Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET in ~/.queenbee/.env',
         success: false
       });
     }
