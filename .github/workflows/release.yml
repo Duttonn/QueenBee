@@ -105,7 +105,6 @@ jobs:
             dist/*.dmg
             dist/*.zip
             dist/*.AppImage
-            dist/*.deb
             dist/*.exe
             dist/*.blockmap
           if-no-files-found: warn
@@ -133,7 +132,6 @@ jobs:
             artifacts/**/*.dmg
             artifacts/**/*.zip
             artifacts/**/*.AppImage
-            artifacts/**/*.deb
             artifacts/**/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
