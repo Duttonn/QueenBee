@@ -5,6 +5,10 @@ import { EventLog } from './EventLog';
 import { diagnosticCollector } from './DiagnosticCollector';
 import { MemoryDistillation } from './MemoryDistillation';
 import { MemoryStore } from './MemoryStore';
+import { synthesizeSwarmSession } from './SwarmSynthesizer';
+import { runGEAReflection } from './GEAReflection';
+import { runWorkflowOptimizerCycle } from './WorkflowOptimizer';
+import { MetacognitivePlanner } from './MetacognitivePlanner';
 import fs from 'fs-extra';
 import path from 'path';
 import { broadcast } from './socket-instance';
@@ -85,9 +89,64 @@ export class HeartbeatService {
       const memoryStore = new MemoryStore(project.path);
       const distillation = new MemoryDistillation(memoryStore);
       await distillation.distillTeamChat(project.path);
-      
-      // Future steps: Trigger evaluation, Reaction processing, etc.
-      
+
+      // LS-06: Session synthesis — write .queenbee/session-summary.md
+      await synthesizeSwarmSession(project.path).catch(err =>
+        console.error(`[Heartbeat] Synthesis failed for ${project.name}:`, err)
+      );
+
+      // P17-05: MetacognitivePlanner — triggered evolution scheduling
+      const planner = new MetacognitivePlanner(project.path);
+      await planner.load();
+      const cycleCount = planner.incrementCycleCount();
+      await planner.save();
+
+      const triggerResult = planner.hasTrigger();
+      const forceReflect  = cycleCount % 10 === 0; // every 10 heartbeat cycles
+
+      // Check for second-order meta-reflection prompt
+      const metaPrompt = planner.getSecondOrderTrigger();
+      if (metaPrompt) {
+        console.warn(`[Heartbeat][MetaCog] Second-order trigger for ${project.name}: ${metaPrompt}`);
+        broadcast('metacognition:meta_reflection', {
+          projectPath:  project.path,
+          metaPrompt,
+          cycleCount,
+        });
+      }
+
+      // GEA-03: Reflection cycle — run only on LP stagnation trigger OR every 10 cycles
+      if (triggerResult.triggered || forceReflect) {
+        const focusTaskType = triggerResult.triggered ? triggerResult.taskType : undefined;
+        if (triggerResult.triggered) {
+          console.log(
+            `[Heartbeat][MetaCog] LP stagnation detected for task type "${focusTaskType}" ` +
+            `(stagnationRate=${triggerResult.stagnationRate?.toFixed(2)}) in ${project.name}. ` +
+            `Running focused GEA reflection.`
+          );
+        } else {
+          console.log(`[Heartbeat][MetaCog] Forced reflection cycle (every 10) for ${project.name}.`);
+        }
+
+        // Build full reflection prompt, optionally appending meta-reflection context
+        await runGEAReflection(project.path, 'auto', undefined, focusTaskType).catch(err =>
+          console.error(`[Heartbeat] GEA reflection failed for ${project.name}:`, err)
+        );
+
+        // After reflection, mark trigger handled so second-order count updates correctly
+        if (triggerResult.triggered && triggerResult.taskType) {
+          planner.markTriggerHandled(triggerResult.taskType);
+          await planner.save();
+        }
+      } else {
+        console.log(`[Heartbeat][MetaCog] Skipping GEA reflection for ${project.name} (no stagnation, cycle=${cycleCount}).`);
+      }
+
+      // GEA-07: MCTS workflow optimizer cycle — update UCB1 bandit from archive
+      await runWorkflowOptimizerCycle(project.path).catch(err =>
+        console.error(`[Heartbeat] Workflow optimizer failed for ${project.name}:`, err)
+      );
+
     } catch (error) {
       console.error(`[Heartbeat] Error processing project ${project.name}:`, error);
     }

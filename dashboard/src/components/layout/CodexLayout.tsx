@@ -46,6 +46,7 @@ import Sidebar from './Sidebar';
 import AgenticWorkbench from './AgenticWorkbench';
 import GlobalCommandBar from './GlobalCommandBar';
 import InspectorPanel from './InspectorPanel';
+import EvolutionPanel from '../evolution/EvolutionPanel';
 import DictationOverlay from './DictationOverlay';
 import CustomizationPanel from '../settings/CustomizationPanel';
 import UniversalAuthModal from './UniversalAuthModal';
@@ -144,7 +145,7 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
     return base;
   }, [mentionSearch, projectFiles]);
 
-  const { isRecording, isProcessing, toggleRecording } = useVoiceRecording(
+  const { isRecording, isProcessing, error: voiceError, clearError: clearVoiceError, toggleRecording } = useVoiceRecording(
     useCallback((transcript) => {
       onChange(value ? `${value} ${transcript}` : transcript);
     }, [value, onChange])
@@ -237,9 +238,10 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
   return (
     <div className="absolute bottom-6 left-4 right-4 sm:left-0 sm:right-0 sm:mx-auto sm:w-full sm:max-w-3xl sm:px-4 z-50">
       <DictationOverlay
-        isVisible={isRecording}
+        isVisible={isRecording || isProcessing || !!voiceError}
         isProcessing={isProcessing}
-        onClose={toggleRecording}
+        error={voiceError}
+        onClose={() => { clearVoiceError(); if (isRecording) toggleRecording(); }}
       />
 
       <div className="bg-white border border-zinc-200 rounded-3xl shadow-2xl flex flex-col relative">
@@ -329,13 +331,16 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
         {/* Bottom: Controls Row */}
         <div className="px-3 pb-3 pt-1 flex items-center justify-between bg-zinc-50 border-t border-zinc-100 rounded-b-3xl">
           <div className="flex items-center gap-2">
-            <button 
+            <button
               onClick={() => {
                 const input = document.createElement('input');
                 input.type = 'file';
                 input.multiple = true;
+                input.accept = '.ts,.tsx,.js,.jsx,.py,.md,.txt,.json,.yaml,.yml,.html,.css,.sh,.env,.config,.toml,image/*';
+                input.style.display = 'none';
+                document.body.appendChild(input); // Prevent GC before click fires
                 input.onchange = async (e: any) => {
-                  const files = Array.from(e.target.files) as File[];
+                  const files = Array.from(e.target.files || []) as File[];
                   for (const file of files) {
                     const isImage = file.type.startsWith('image/');
                     const fileInfo = { name: file.name, type: file.type };
@@ -357,11 +362,12 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
                       reader.readAsText(file);
                     }
                   }
+                  document.body.removeChild(input);
                 };
                 input.click();
               }}
               className="p-2 hover:bg-zinc-200 rounded-xl text-zinc-400 hover:text-zinc-600 transition-all"
-              title="Import Files"
+              title="Attach Files"
             >
               <Plus size={18} strokeWidth={1.5} />
             </button>
@@ -477,6 +483,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [isDiffOpen, setIsDiffOpen] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [isEvolutionOpen, setIsEvolutionOpen] = useState(false);
   const [isCommitModalOpen, setIsCommitModalOpen] = useState(false);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -582,6 +589,9 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
 
   const planWaiting = React.useMemo(() => {
       if (isLoading || !messages.length) return false;
+      // Only show approve bar in architect (swarm) threads, never in regular chat
+      const isArchitectThread = activeThreadId?.startsWith('architect-');
+      if (!isArchitectThread) return false;
       const last = messages[messages.length - 1];
       if (last?.role !== 'assistant' || !last?.content) return false;
       // Show approve bar during both plan phase and prompts phase
@@ -592,7 +602,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         last.content.includes('worker assignment') ||
         last.content.includes('<plan>')
       );
-    }, [messages, isLoading, swarmPhase]);
+    }, [messages, isLoading, swarmPhase, activeThreadId]);
 
   const handleSendMessage = useCallback(async (contentOverride?: string, contextInjection?: string) => {
     let content = contentOverride || inputValue;
@@ -905,7 +915,8 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           await shell.showItemInFolder(activeProject.path);
           break;
         case 'terminal':
-          await shell.openExternal(`x-apple.terminal:${activeProject.path}`);
+          // x-apple.terminal: is not a valid URL scheme; fall through to executeCommand
+          await executeCommand(`open -a Terminal "${activeProject.path}"`);
           break;
         case 'xcode':
           await shell.openExternal(`xcode://open?url=file://${activeProject.path}`);
@@ -1039,6 +1050,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                     activeThreadId={activeThreadId}
                     setActiveThread={setActiveThread}
                     onToggleInspector={() => setIsInspectorOpen(prev => !prev)}
+                    onToggleEvolution={() => setIsEvolutionOpen(prev => !prev)}
                     onToggleTerminal={() => setIsTerminalOpen(prev => !prev)}
                     onToggleDiff={() => setIsDiffOpen(prev => !prev)}
                     onRun={handleRunProject}
@@ -1111,6 +1123,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         </div>
 
         <InspectorPanel isOpen={isInspectorOpen} onClose={() => setIsInspectorOpen(false)} />
+        <EvolutionPanel isOpen={isEvolutionOpen} onClose={() => setIsEvolutionOpen(false)} />
 
         <AnimatePresence>
           {isTerminalOpen && (

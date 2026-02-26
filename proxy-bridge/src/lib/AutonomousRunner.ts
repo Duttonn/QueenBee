@@ -6,12 +6,48 @@ import { unifiedLLMService } from './UnifiedLLMService';
 import { logContext } from './logger';
 import { sessionManager } from './SessionManager';
 import { Roundtable } from './Roundtable';
+import { AgentCircuitBreaker } from './ByzantineDetector';
+import { ContextCompressor } from './ContextCompressor';
+import { GEAReflection } from './GEAReflection';
+import { WorkflowOptimizer } from './WorkflowOptimizer';
 import fs from 'fs-extra';
 import path from 'path';
 import { Writable } from 'stream';
 import { EventLog } from './EventLog';
 import { MemoryStore } from './MemoryStore';
 import { PolicyStore } from './PolicyStore';
+
+/**
+ * Session Lifecycle States (from Composio Agent Orchestrator)
+ * Represents the full lifecycle of an agent session from spawn to completion
+ */
+export enum SessionLifecycleState {
+  SPAWNING = 'spawning',       // Creating workspace/runtime/agent
+  WORKING = 'working',         // Agent actively processing
+  PR_OPEN = 'pr_open',         // PR created, awaiting CI/reviews
+  CI_FAILED = 'ci_failed',     // CI checks failed
+  REVIEW_PENDING = 'review_pending', // Awaiting review
+  CHANGES_REQUESTED = 'changes_requested', // Reviewer requested changes
+  APPROVED = 'approved',      // Approved, not yet mergeable
+  MERGEABLE = 'mergeable',     // Ready to merge
+  MERGED = 'merged',           // Successfully merged
+  NEEDS_INPUT = 'needs_input', // Agent blocked waiting for human
+  STUCK = 'stuck',            // Agent inactive for too long
+  ERRORED = 'errored',        // Agent hit an error
+  KILLED = 'killed',          // Session killed
+}
+
+/**
+ * Activity States (detected from agent introspection)
+ */
+export enum ActivityState {
+  ACTIVE = 'active',           // Agent processing (thinking, writing)
+  READY = 'ready',            // Finished turn, waiting for input
+  IDLE = 'idle',              // Inactive for threshold duration
+  WAITING_INPUT = 'waiting_input', // Permission prompt or question
+  BLOCKED = 'blocked',        // Error encountered
+  EXITED = 'exited',          // Process no longer running
+}
 
 export type AgentRole = 'solo' | 'orchestrator' | 'worker' | 'architect';
 
@@ -30,6 +66,16 @@ export class AutonomousRunner {
   private writable: Writable | null = null;
   private requestId: string | null = null;
   
+  // CO-01: Lifecycle State Machine
+  private lifecycleState: SessionLifecycleState = SessionLifecycleState.SPAWNING;
+  private previousLifecycleState: SessionLifecycleState | null = null;
+  private stateHistory: Array<{ state: SessionLifecycleState; timestamp: number }> = [];
+  
+  // CO-02: Activity Detection
+  private activityState: ActivityState = ActivityState.READY;
+  private lastActivityTimestamp: number = Date.now();
+  private idleThresholdMs: number = 5 * 60 * 1000; // 5 minutes default
+  
   private eventLog: EventLog;
   private memoryStore: MemoryStore;
   private policyStore: PolicyStore;
@@ -37,8 +83,193 @@ export class AutonomousRunner {
     private swarmId: string | undefined;
     private mainProjectPath: string; // Always points to the main project root (not worktree)
 
+    // LS-07: Reflexion error recovery
+    private errorTracker = new Map<string, number>(); // error key → count
+    private reflectionMemory: string[] = [];          // sliding window of 3 reflections
+    private static readonly MAX_REFLECTIONS = 3;
+    private static readonly REFLEXION_THRESHOLD = 3;  // trigger after N same errors
+
+    // LS-08: Byzantine circuit breaker
+    private circuitBreaker = new AgentCircuitBreaker(100);
+
+    // LS-09: Context compressor
+    private contextCompressor = new ContextCompressor(6);
+
+    // P17-01: Goal-conditioned context pruning — last extracted goal from plan blocks
+    private lastGoalDescription: string = '';
+
     private static fileTreeCache = new Map<string, { files: string[]; timestamp: number }>();
     private static CACHE_TTL = 30000; // 30 seconds
+
+    // ============================================
+    // CO-01: Lifecycle State Machine Methods
+    // ============================================
+
+    /**
+     * Transition to a new lifecycle state and emit events
+     */
+    private transitionState(newState: SessionLifecycleState): void {
+      if (this.lifecycleState === newState) return;
+      
+      const previousState = this.lifecycleState;
+      this.previousLifecycleState = previousState;
+      this.lifecycleState = newState;
+      
+      // Record state history
+      this.stateHistory.push({ state: newState, timestamp: Date.now() });
+      
+      // Emit lifecycle event
+      this.emitLifecycleEvent(newState, previousState);
+      
+      console.log(`[AutonomousRunner] State transition: ${previousState} → ${newState}`);
+    }
+
+    /**
+     * Emit lifecycle state change events
+     */
+    private emitLifecycleEvent(state: SessionLifecycleState, previousState: SessionLifecycleState | null): void {
+      // Send via writable stream
+      this.sendEvent({
+        type: 'lifecycle_state',
+        data: {
+          state,
+          previousState,
+          timestamp: Date.now(),
+          threadId: this.threadId,
+        }
+      });
+
+      // Also emit via socket for real-time UI updates
+      this.socket.emit('SESSION_LIFECYCLE', {
+        state,
+        previousState,
+        timestamp: Date.now(),
+        threadId: this.threadId,
+      });
+
+      // Emit specific events based on state
+      switch (state) {
+        case SessionLifecycleState.SPAWNING:
+          this.socket.emit('session.spawned', { threadId: this.threadId, timestamp: Date.now() });
+          break;
+        case SessionLifecycleState.WORKING:
+          this.socket.emit('session.working', { threadId: this.threadId, timestamp: Date.now() });
+          break;
+        case SessionLifecycleState.PR_OPEN:
+          this.socket.emit('pr.created', { threadId: this.threadId, timestamp: Date.now() });
+          break;
+        case SessionLifecycleState.CI_FAILED:
+          this.socket.emit('ci.failing', { threadId: this.threadId, timestamp: Date.now() });
+          break;
+        case SessionLifecycleState.REVIEW_PENDING:
+          this.socket.emit('review.pending', { threadId: this.threadId, timestamp: Date.now() });
+          break;
+        case SessionLifecycleState.CHANGES_REQUESTED:
+          this.socket.emit('review.changes_requested', { threadId: this.threadId, timestamp: Date.now() });
+          break;
+        case SessionLifecycleState.APPROVED:
+          this.socket.emit('review.approved', { threadId: this.threadId, timestamp: Date.now() });
+          break;
+        case SessionLifecycleState.MERGEABLE:
+          this.socket.emit('merge.ready', { threadId: this.threadId, timestamp: Date.now() });
+          break;
+        case SessionLifecycleState.MERGED:
+          this.socket.emit('merge.completed', { threadId: this.threadId, timestamp: Date.now() });
+          break;
+        case SessionLifecycleState.NEEDS_INPUT:
+          this.socket.emit('session.needs_input', { threadId: this.threadId, timestamp: Date.now() });
+          break;
+        case SessionLifecycleState.STUCK:
+          this.socket.emit('session.stuck', { threadId: this.threadId, timestamp: Date.now() });
+          break;
+        case SessionLifecycleState.ERRORED:
+          this.socket.emit('session.errored', { threadId: this.threadId, timestamp: Date.now() });
+          break;
+        case SessionLifecycleState.KILLED:
+          this.socket.emit('session.killed', { threadId: this.threadId, timestamp: Date.now() });
+          break;
+      }
+    }
+
+    /**
+     * Get current lifecycle state
+     */
+    public getLifecycleState(): SessionLifecycleState {
+      return this.lifecycleState;
+    }
+
+    /**
+     * Get lifecycle state history
+     */
+    public getStateHistory(): Array<{ state: SessionLifecycleState; timestamp: number }> {
+      return [...this.stateHistory];
+    }
+
+    // ============================================
+    // CO-02: Activity Detection Methods
+    // ============================================
+
+    /**
+     * Update activity state and check for idle
+     */
+    private updateActivityState(newState: ActivityState): void {
+      const previousState = this.activityState;
+      if (previousState === newState) return;
+
+      this.activityState = newState;
+      this.lastActivityTimestamp = Date.now();
+
+      // Emit activity state change
+      this.socket.emit('ACTIVITY_STATE', {
+        state: newState,
+        previousState,
+        timestamp: Date.now(),
+        threadId: this.threadId,
+      });
+
+      console.log(`[AutonomousRunner] Activity: ${previousState} → ${newState}`);
+    }
+
+    /**
+     * Mark agent as active (processing)
+     */
+    public markActive(): void {
+      this.updateActivityState(ActivityState.ACTIVE);
+    }
+
+    /**
+     * Mark agent as ready (waiting for input)
+     */
+    public markReady(): void {
+      this.updateActivityState(ActivityState.READY);
+    }
+
+    /**
+     * Check if agent is idle based on timestamp
+     */
+    public checkIdle(): boolean {
+      const now = Date.now();
+      if (this.activityState === ActivityState.READY && 
+          now - this.lastActivityTimestamp > this.idleThresholdMs) {
+        this.updateActivityState(ActivityState.IDLE);
+        return true;
+      }
+      return false;
+    }
+
+    /**
+     * Get current activity state
+     */
+    public getActivityState(): ActivityState {
+      return this.activityState;
+    }
+
+    /**
+     * Set idle threshold (for testing or configuration)
+     */
+    public setIdleThreshold(ms: number): void {
+      this.idleThresholdMs = ms;
+    }
 
     constructor(
       socket: Socket, 
@@ -337,10 +568,46 @@ Call spawn_worker ONCE per worker. Do NOT re-present the plan or prompts. After 
         const currentGoalContext = `
 # CURRENT USER INTENT
 The user wants you to: "${userPrompt}"
-STRICT RULE: Do not perform ANY technical actions (benchmarks, refactors, files edits) that are not directly required to fulfill THIS SPECIFIC intent. 
+STRICT RULE: Do not perform ANY technical actions (benchmarks, refactors, files edits) that are not directly required to fulfill THIS SPECIFIC intent.
 If you finish this task, stop and wait for the next command.`;
 
+        // GEA-07: Load active workflow operator from evolved config
+        let activeOperator: 'sequential' | 'ensemble' | 'review_revise' = 'sequential';
+        try {
+          const geaR = new GEAReflection(this.projectPath);
+          const evolvedCfg = await geaR.loadEvolvedConfig();
+          if (evolvedCfg?.workflowOperator) activeOperator = evolvedCfg.workflowOperator;
+        } catch { /* default to sequential */ }
+
         let result = await this.session!.prompt(userPrompt + currentGoalContext, options);
+
+        // P17-01: Goal-conditioned context pruning
+        const lastAssistantContent = result.content ? String(result.content) : '';
+        const extractedGoal = ContextCompressor.extractGoalFromPlan(lastAssistantContent);
+        if (extractedGoal) this.lastGoalDescription = extractedGoal;
+        if (this.lastGoalDescription && this.session) {
+          this.session.messages = this.contextCompressor.pruneByGoal(
+            this.session.messages,
+            this.lastGoalDescription
+          );
+        }
+
+        // GEA-07: Apply operator post-processing for ensemble / review_revise
+        // Only applies to solo/worker roles (not architect which manages multi-turn flow itself)
+        if (activeOperator !== 'sequential' && this.role !== 'architect' && result.content) {
+          try {
+            const baseMessages = this.session!.messages.filter(m => m.role !== 'tool').slice(-8);
+            if (activeOperator === 'ensemble') {
+              const ensembled = await WorkflowOptimizer.applyEnsemble(baseMessages, this.providerId, { apiKey: this.apiKey || undefined });
+              if (ensembled.content) result = { ...result, content: ensembled.content };
+            } else if (activeOperator === 'review_revise') {
+              const revised = await WorkflowOptimizer.applyReviewRevise(baseMessages, this.providerId, { apiKey: this.apiKey || undefined });
+              if (revised.content) result = { ...result, content: revised.content };
+            }
+          } catch (opErr) {
+            console.warn(`[AutonomousRunner] Operator ${activeOperator} failed, using original response:`, opErr);
+          }
+        }
 
     // Capture tool signature for failure-aware retry
     const currentToolSignature = this.extractToolSignature(this.session!.messages);
@@ -435,6 +702,42 @@ If you finish this task, stop and wait for the next command.`;
         retryPrompt = `STOP. You are repeating the same failing approach. Take a completely different approach to solving this problem.\n\nPrevious failure: ${verification.reason}`;
       }
       this.lastAttemptToolSignature = retryToolSignature;
+
+      // LS-07: Reflexion — check if this specific error keeps recurring
+      const reflexionPrompt = this.handleToolError('verification', verification.reason || 'unknown');
+      if (reflexionPrompt) {
+        console.warn('[RecursiveRunner] Reflexion threshold hit — injecting recovery prompt.');
+        retryPrompt = reflexionPrompt;
+      }
+
+      // LS-08: Byzantine circuit breaker check
+      const lastContent = typeof result.content === 'string' ? result.content : JSON.stringify(result.content || '');
+      const bCheck = this.circuitBreaker.check('verification_retry', lastContent, retryToolSignature);
+      if (!bCheck.ok) {
+        if (bCheck.reason === 'BUDGET_EXCEEDED') {
+          console.warn('[RecursiveRunner] Agent budget exceeded. Stopping retry loop.');
+          break;
+        }
+        if (bCheck.reason !== 'CIRCUIT_OPEN') {
+          console.warn(`[RecursiveRunner] Byzantine fault detected: ${bCheck.reason}. Injecting recovery.`);
+
+          // GEA-05: Group-based self-healing — query healthy peers for a repair directive
+          let repairDirective: string | null = null;
+          try {
+            const geaReflection = new GEAReflection(this.projectPath);
+            repairDirective = await geaReflection.repairReflect(
+              this.threadId || 'unknown',
+              [bCheck.reason || 'UNKNOWN_FAULT'],
+              this.providerId,
+              this.apiKey || undefined
+            );
+          } catch { /* ignore repair errors */ }
+
+          retryPrompt = repairDirective
+            ? `[GEA REPAIR] Peer analysis: ${repairDirective}`
+            : `[SYSTEM] Fault detected: ${bCheck.reason}. You appear to be repeating a pattern. Stop current approach completely. Use request_help if you need assistance.`;
+        }
+      }
 
       result = await this.session!.prompt(retryPrompt, options);
     }
@@ -647,9 +950,24 @@ After posting the completion summary, call **report_completion(taskId, status)**
       .map(m => `[${m.type.toUpperCase()}] ${m.content}`)
       .join('\n');
 
+    // GEA-04: Load evolved config for this project and inject into system prompt
+    let evolvedDirectives = '';
+    try {
+      const geaReflection = new GEAReflection(this.projectPath);
+      const evolvedConfig = await geaReflection.loadEvolvedConfig();
+      if (evolvedConfig?.systemPromptAppend) {
+        evolvedDirectives = `\n${evolvedConfig.systemPromptAppend}`;
+      }
+      if (evolvedConfig?.avoidPatterns && evolvedConfig.avoidPatterns.length > 0) {
+        evolvedDirectives += `\n# AVOID PATTERNS (learned from past failures)\n` +
+          evolvedConfig.avoidPatterns.map((p: string) => `- AVOID: ${p}`).join('\n');
+      }
+    } catch { /* no evolved config yet — skip silently */ }
+
     return `
 ${modeDirective}
 ${roleDirective}
+${evolvedDirectives}
 
 # USER PREFERENCES & STYLE (CRITICAL)
 ${highPriorityMemories || 'No personal style preferences recorded yet. I will learn from your corrections.'}
@@ -699,7 +1017,57 @@ NEVER retry the exact same command that just failed without changing something.
 # TEAM COORDINATION (Roundtable)
 The following is the recent history of messages from other agents in this swarm. Use this to guide your work and avoid duplication.
 ${teamContext}
+
+# AUTONOMY PROTOCOL (CRITICAL — read carefully)
+You are a truly autonomous agent. NEVER say "I can't do this" or "This is outside my capabilities" or "I don't have access to."
+
+When you are stuck, use this decision tree:
+1. **Lack knowledge** → call read_memory or read_findings first
+2. **Lack a tool capability** → call request_help(problem, capability_needed) to ask teammates
+3. **Blocked by dependency** → call check_status, then work on another task or wait
+4. **Failed 3+ times on same step** → call request_help with full error context and what you tried
+5. **Need deep domain expertise** → call escalate_to_expert(expert_type, problem)
+
+Always make **forward progress**. Paralysis is never acceptable.
+If you are completely stuck, write what you know with write_finding, then call request_help.
+Do NOT abandon a task — escalate it.
 `;
+  }
+
+  // LS-07: Reflexion — build recovery prompt after repeated failures
+  private buildReflexionRecoveryPrompt(toolName: string, errorMessage: string): string {
+    const pastReflections = this.reflectionMemory.length > 0
+      ? `\n\nLearnings from past failures:\n${this.reflectionMemory.map((r, i) => `Attempt ${i + 1}: ${r}`).join('\n')}`
+      : '';
+
+    return `STOP — You have hit the same error ${AutonomousRunner.REFLEXION_THRESHOLD} times on "${toolName}": "${errorMessage.slice(0, 120)}"${pastReflections}
+
+Do NOT try the same thing again. Instead:
+1. Analyze WHY this keeps failing (root cause, not symptoms)
+2. Consider using request_help to ask a teammate who has this capability
+3. Break the task into smaller, more concrete steps
+4. Write your analysis to memory using write_finding before continuing
+5. Try a completely different approach
+
+What assumption might be wrong? What have you not tried yet?`;
+  }
+
+  // LS-07: Track errors and trigger Reflexion when threshold hit
+  private handleToolError(toolName: string, errorMessage: string): string | null {
+    const key = `${toolName}:${errorMessage.slice(0, 60)}`;
+    const count = (this.errorTracker.get(key) ?? 0) + 1;
+    this.errorTracker.set(key, count);
+
+    if (count >= AutonomousRunner.REFLEXION_THRESHOLD) {
+      const reflection = `Failed ${toolName}: "${errorMessage.slice(0, 100)}"`;
+      this.reflectionMemory.push(reflection);
+      if (this.reflectionMemory.length > AutonomousRunner.MAX_REFLECTIONS) {
+        this.reflectionMemory.shift();
+      }
+      this.errorTracker.delete(key); // reset for next round
+      return this.buildReflexionRecoveryPrompt(toolName, errorMessage);
+    }
+    return null;
   }
 
   private async scanFiles(dir: string, depth = 0): Promise<string[]> {

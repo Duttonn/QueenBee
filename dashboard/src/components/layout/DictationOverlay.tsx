@@ -6,9 +6,10 @@ interface DictationOverlayProps {
   isVisible: boolean;
   isProcessing: boolean;
   onClose: () => void;
+  error?: string | null;
 }
 
-const DictationOverlay = ({ isVisible, isProcessing, onClose }: DictationOverlayProps) => {
+const DictationOverlay = ({ isVisible, isProcessing, onClose, error }: DictationOverlayProps) => {
   React.useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -44,8 +45,10 @@ const DictationOverlay = ({ isVisible, isProcessing, onClose }: DictationOverlay
                   className="absolute inset-0 bg-blue-500/20 rounded-full"
                 />
               )}
-              <div className={`w-20 h-20 rounded-full flex items-center justify-center ${isProcessing ? 'bg-zinc-100' : 'bg-blue-600 shadow-xl shadow-blue-500/40'}`}>
-                {isProcessing ? (
+              <div className={`w-20 h-20 rounded-full flex items-center justify-center ${error ? 'bg-rose-100' : isProcessing ? 'bg-zinc-100' : 'bg-blue-600 shadow-xl shadow-blue-500/40'}`}>
+                {error ? (
+                  <X size={32} className="text-rose-500" />
+                ) : isProcessing ? (
                   <Loader2 size={32} className="text-blue-600 animate-spin" />
                 ) : (
                   <Mic size={32} className="text-white" />
@@ -54,10 +57,12 @@ const DictationOverlay = ({ isVisible, isProcessing, onClose }: DictationOverlay
             </div>
 
             <h3 className="text-xl font-bold text-zinc-900 mb-2">
-              {isProcessing ? 'Processing Audio...' : 'Listening...'}
+              {error ? 'Voice Error' : isProcessing ? 'Processing Audio...' : 'Listening...'}
             </h3>
             <p className="text-sm text-zinc-500 text-center mb-8">
-              {isProcessing
+              {error
+                ? error
+                : isProcessing
                 ? 'Converting your voice to text using Whisper AI'
                 : 'Speak clearly into your microphone. Press Esc or click outside to cancel.'}
             </p>

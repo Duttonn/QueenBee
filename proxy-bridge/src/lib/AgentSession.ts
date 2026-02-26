@@ -14,6 +14,9 @@ import { CostTracker } from './CostTracker';
 import { DiffLearner } from './learning/DiffLearner';
 import { diagnosticCollector } from './DiagnosticCollector';
 import { Roundtable } from './Roundtable';
+import { ExperienceArchive, TraceToolUse } from './ExperienceArchive';
+import { MetacognitivePlanner } from './MetacognitivePlanner';
+import { broadcast } from './socket-instance';
 import fs from 'fs-extra';
 import path from 'path';
 
@@ -38,13 +41,17 @@ export class AgentSession extends EventEmitter {
   private diffLearner: DiffLearner;
   private failureTracker = new Map<string, number>();
     private sessionFiles: Set<string> = new Set(); // Track files touched in this session
+    // GEA-06: Evolutionary trace for Experience Archive
+    private traceToolHistory: TraceToolUse[] = [];
+    private traceSessionStart = Date.now();
       public blockedTools: Set<string> = new Set(); // Tools that should be blocked and returned as errors
       public swarmId: string | undefined;
       public mainProjectPath: string | undefined; // Main project root for roundtable (not worktree)
       private lastSeenRoundtableTs: string = ''; // Track last roundtable message we've seen
+  public parentSessionId?: string; // CMP: session that spawned this one (for lineage)
 
-  constructor(projectPath: string, options: { 
-    systemPrompt?: string, 
+  constructor(projectPath: string, options: {
+    systemPrompt?: string,
     maxSteps?: number,
     providerId?: string,
     threadId?: string,
@@ -55,7 +62,8 @@ export class AgentSession extends EventEmitter {
     policyStore?: PolicyStore,
       blockedTools?: string[],
       swarmId?: string,
-      mainProjectPath?: string
+      mainProjectPath?: string,
+      parentSessionId?: string
     } = {}) {
     super();
     this.eventLog = options.eventLog;
@@ -77,6 +85,7 @@ export class AgentSession extends EventEmitter {
     this.mode = options.mode || 'local';
     this.swarmId = options.swarmId;
     this.mainProjectPath = options.mainProjectPath;
+    this.parentSessionId = options.parentSessionId;
     // Initialize roundtable watermark to "now" so we only see NEW messages during execution
     this.lastSeenRoundtableTs = new Date().toISOString();
     if (options.blockedTools) {
@@ -225,7 +234,8 @@ export class AgentSession extends EventEmitter {
             }
 
             this.emit('event', { type: 'tool_start', data: { toolName, args, toolCallId: toolCall.id } });
-          
+            const toolCallStart = Date.now(); // GEA-06: timing
+
             try {
               const result = await this.executor.execute({
                 name: toolName,
@@ -247,6 +257,9 @@ export class AgentSession extends EventEmitter {
 
             this.emit('event', { type: 'tool_end', data: { toolName, result, toolCallId: toolCall.id } });
 
+            // GEA-06: Record successful tool trace
+            this.traceToolHistory.push({ tool: toolName, outcome: 'success', durationMs: Date.now() - toolCallStart });
+
             // Circuit Breaker: Reset failure count on success
             this.failureTracker.delete(toolName);
 
@@ -259,6 +272,9 @@ export class AgentSession extends EventEmitter {
             } as LLMMessage;
           } catch (error: any) {
             this.emit('event', { type: 'tool_error', data: { toolName, error: error.message, toolCallId: toolCall.id } });
+
+            // GEA-06: Record failed tool trace
+            this.traceToolHistory.push({ tool: toolName, outcome: 'fail', durationMs: Date.now() - toolCallStart });
 
             // Circuit Breaker: Track consecutive failures per tool
             const failCount = (this.failureTracker.get(toolName) || 0) + 1;
@@ -399,6 +415,115 @@ export class AgentSession extends EventEmitter {
         console.error('[AgentSession] Failed to summarize session:', error);
       }
     }
+
+    // GEA-02 + GEA-06: Score session and persist to ExperienceArchive
+    await this.persistExperienceTrace().catch(err =>
+      console.error('[AgentSession] GEA trace persistence failed:', err)
+    );
+  }
+
+  /** GEA-06 + GEA-02: Build trace, score, and append to ExperienceArchive */
+  private async persistExperienceTrace(): Promise<void> {
+    if (this.traceToolHistory.length === 0) return; // nothing to record
+
+    try {
+      const archive = new ExperienceArchive(this.projectPath);
+
+      // Update vocabulary with tools used this session
+      const toolsUsed = [...new Set(this.traceToolHistory.map(t => t.tool))];
+      const vocabulary = await archive.updateVocabulary(toolsUsed);
+      const toolVector = archive.buildToolVector(toolsUsed, vocabulary);
+
+      // Collect task outcomes from PLAN.md via simple parse
+      const taskOutcomes = await this.collectTaskOutcomes();
+      const successRate = taskOutcomes.length > 0
+        ? taskOutcomes.filter(t => t.success).length / taskOutcomes.length
+        : (this.traceToolHistory.filter(t => t.outcome === 'success').length /
+           Math.max(1, this.traceToolHistory.length));
+
+      // P17-05: Record task outcomes in MetacognitivePlanner for LP tracking
+      if (taskOutcomes.length > 0) {
+        try {
+          const planner = new MetacognitivePlanner(this.projectPath);
+          await planner.load();
+          // Use the first user message as the task description for keyword detection
+          const taskDescription = this.messages.find(m => m.role === 'user')?.content;
+          const descStr = typeof taskDescription === 'string'
+            ? taskDescription
+            : (Array.isArray(taskDescription)
+              ? taskDescription.filter((p: any) => p.type === 'text').map((p: any) => p.text).join(' ')
+              : '');
+          for (const outcome of taskOutcomes) {
+            // Combine task ID + session description for richer type detection
+            planner.recordOutcome(`${outcome.taskId} ${descStr}`, outcome.success);
+          }
+          await planner.save();
+        } catch (plannerErr) {
+          console.warn('[AgentSession] MetacognitivePlanner recordOutcome failed:', plannerErr);
+        }
+      }
+
+      // Compute novelty vs recent population
+      const recentEntries = await archive.query({ limit: 20, sortBy: 'timestamp' });
+      const noveltyScore  = archive.computeNovelty(toolVector, recentEntries);
+      const performanceScore = Math.max(0, Math.min(1, successRate));
+      const combinedScore    = ExperienceArchive.combinedScore(performanceScore, noveltyScore);
+
+      const entry = await archive.append({
+        agentId:          this.threadId || 'unknown',
+        sessionId:        this.threadId || `session-${Date.now()}`,
+        projectPath:      this.projectPath,
+        timestamp:        this.traceSessionStart,
+        toolHistory:      this.traceToolHistory,
+        taskOutcomes,
+        successRate,
+        toolVector,
+        codePatches:      [...this.sessionFiles],
+        promptStrategies: [],
+        performanceScore,
+        noveltyScore,
+        combinedScore,
+        parentSessionId:  this.parentSessionId ?? undefined,
+        cmBonus:          0,
+      });
+
+      // P17-03: CMP lineage — update parent's cmBonus with this child's score
+      if (this.parentSessionId) {
+        await archive.updateCMBonus(this.parentSessionId, combinedScore);
+        console.log(`[GEA/CMP] Updated cmBonus for parent session ${this.parentSessionId} with child score ${combinedScore.toFixed(3)}`);
+      }
+
+      // Broadcast score to dashboard
+      broadcast('EXPERIENCE_SCORED', {
+        sessionId:    entry.sessionId,
+        performance:  performanceScore,
+        novelty:      noveltyScore,
+        combined:     combinedScore,
+        projectPath:  this.projectPath,
+      });
+
+      console.log(`[GEA] Session trace archived — perf=${performanceScore.toFixed(2)} novelty=${noveltyScore.toFixed(2)} combined=${combinedScore.toFixed(3)}`);
+    } catch (err) {
+      console.error('[AgentSession] Failed to persist GEA trace:', err);
+    }
+  }
+
+  /** Collect task outcomes from PLAN.md for this session */
+  private async collectTaskOutcomes(): Promise<{ taskId: string; success: boolean }[]> {
+    try {
+      const planPath = path.join(this.projectPath, 'PLAN.md');
+      if (!(await fs.pathExists(planPath))) return [];
+      const content = await fs.readFile(planPath, 'utf-8');
+      const done    = (content.match(/^- \[(?:x|DONE)\] `([^`]+)`/gm) || [])
+        .map(l => { const m = l.match(/`([^`]+)`/); return m ? { taskId: m[1], success: true } : null; })
+        .filter(Boolean) as { taskId: string; success: boolean }[];
+      const inProg  = (content.match(/^- \[IN PROGRESS.*?\] `([^`]+)`/gm) || [])
+        .map(l => { const m = l.match(/`([^`]+)`/); return m ? { taskId: m[1], success: false } : null; })
+        .filter(Boolean) as { taskId: string; success: boolean }[];
+      return [...done, ...inProg];
+    } catch {
+      return [];
+    }
   }
 
   private estimateTokens(): number {
@@ -505,5 +630,81 @@ export class AgentSession extends EventEmitter {
     const systemMessage = this.messages.find(m => m.role === 'system');
     this.messages = systemMessage ? [systemMessage] : [];
     this.failureTracker.clear();
+  }
+
+  // ============================================================
+  // LS-07: Checkpoint save / restore
+  // ============================================================
+
+  /**
+   * Save agent checkpoint to .queenbee/checkpoints/{sessionId}-step-{n}.json
+   * Call after each completed tool batch for long-horizon tasks.
+   */
+  async saveCheckpoint(
+    taskId: string,
+    stepCount: number,
+    extras?: { reflectionMemory?: string[]; artifacts?: string[] }
+  ): Promise<void> {
+    if (!this.projectPath) return;
+    const dir = path.join(this.projectPath, '.queenbee', 'checkpoints');
+    await fs.ensureDir(dir);
+
+    const completedSteps = this.messages
+      .filter(m => m.role === 'tool')
+      .slice(-20)
+      .map((m, i) => ({
+        stepId: `step-${i}`,
+        action: 'tool_result',
+        result: String(m.content || '').slice(0, 200),
+        timestamp: new Date().toISOString(),
+      }));
+
+    const checkpoint = {
+      sessionId: this.threadId || 'unknown',
+      taskId,
+      checkpointId: `${taskId}-step-${stepCount}`,
+      timestamp: new Date().toISOString(),
+      completedSteps,
+      lastSuccessfulStep: stepCount,
+      reflectionMemory: extras?.reflectionMemory || [],
+      artifacts: extras?.artifacts || [],
+      messageCount: this.messages.length,
+    };
+
+    const key = `${taskId}-step-${String(stepCount).padStart(4, '0')}.json`;
+    await fs.writeJson(path.join(dir, key), checkpoint, { spaces: 2 });
+    console.log(`[AgentSession] Checkpoint saved: ${key}`);
+  }
+
+  /**
+   * Restore the most recent checkpoint for a given taskId.
+   * Returns null if no checkpoint exists.
+   */
+  static async restoreCheckpoint(
+    projectPath: string,
+    taskId: string
+  ): Promise<{
+    checkpointId: string;
+    lastSuccessfulStep: number;
+    reflectionMemory: string[];
+    artifacts: string[];
+    messageCount: number;
+  } | null> {
+    const dir = path.join(projectPath, '.queenbee', 'checkpoints');
+    const exists = await fs.pathExists(dir);
+    if (!exists) return null;
+
+    const files = await fs.readdir(dir);
+    const taskFiles = files.filter(f => f.startsWith(taskId)).sort();
+    if (!taskFiles.length) return null;
+
+    const latest = taskFiles.at(-1)!;
+    try {
+      const data = await fs.readJson(path.join(dir, latest));
+      console.log(`[AgentSession] Checkpoint found: ${latest} (step ${data.lastSuccessfulStep})`);
+      return data;
+    } catch {
+      return null;
+    }
   }
 }

@@ -158,12 +158,29 @@ export class ToolExecutor {
       let result = null;
       switch (tool.name) {
         // ... (write_file case remains same)
-        case 'write_file':
+        case 'write_file': {
           // OC-10: Security Audit for file content
           const audit = await SecurityAuditor.auditContent(tool.arguments.content);
           if (!audit.safe) {
             console.error(`[SecurityAuditor] write_file BLOCKED: ${audit.findings.join(' ')}`);
             throw new Error(`SECURITY_BLOCK: ${audit.findings.join(' ')} ${audit.remediation}`);
+          }
+
+          // LS-01: Scope guard — validate against work environment if set
+          if (tool.arguments.taskId || tool.arguments._taskId) {
+            const scopeTaskId = tool.arguments.taskId || tool.arguments._taskId;
+            const env = await ptm.getWorkEnvironment(scopeTaskId, projectPath);
+            if (env?.files?.length) {
+              const filePath = tool.arguments.path;
+              const allowed = env.files.some((pattern: string) =>
+                filePath.includes(pattern) || filePath.endsWith(pattern)
+              );
+              if (!allowed) {
+                throw new Error(
+                  `SCOPE_VIOLATION: '${filePath}' is outside the work environment for task ${scopeTaskId}. Allowed: ${env.files.join(', ')}`
+                );
+              }
+            }
           }
 
           if (cloudFS) {
@@ -201,6 +218,7 @@ export class ToolExecutor {
             result = { success: true, path: filePath, stats };
           }
           break;
+        }
           
         case 'run_shell':
           result = await this.runShellCommand(tool.arguments.command, projectPath, { projectId, threadId, toolCallId, allowedCommands });
@@ -282,9 +300,24 @@ export class ToolExecutor {
           result = await this.handleWriteMemory(projectPath, tool.arguments.category, tool.arguments.content, agentId, cloudFS);
           break;
 
-        case 'read_memory':
-          result = await this.handleReadMemory(projectPath, tool.arguments.category, cloudFS);
+        case 'read_memory': {
+          // P17-04: If an entry ID is provided, use graph-aware retrieval via MemoryStore
+          if (tool.arguments.id) {
+            const memStore = new MemoryStore(projectPath);
+            const depth: number = typeof tool.arguments.depth === 'number'
+              ? Math.min(2, Math.max(0, Math.floor(tool.arguments.depth)))
+              : 1;
+            const entries = await memStore.getWithLinks(tool.arguments.id, depth);
+            if (entries.length === 0) {
+              result = `No memory entry found with id: ${tool.arguments.id}`;
+            } else {
+              result = { entries, count: entries.length };
+            }
+          } else {
+            result = await this.handleReadMemory(projectPath, tool.arguments.category, cloudFS);
+          }
           break;
+        }
 
         case 'spawn_worker':
           result = await this.handleSpawnWorker(projectPath, tool.arguments.taskId, tool.arguments.instructions, threadId);
@@ -318,10 +351,15 @@ export class ToolExecutor {
           result = { success: true, taskId: tool.arguments.taskId, message: 'Task added to PLAN.md' };
           break;
 
-        case 'claim_task':
-          const claimed = await ptm.claimTask(tool.arguments.taskId, agentId || 'unknown', projectPath);
-          result = { success: claimed, taskId: tool.arguments.taskId, message: claimed ? 'Task claimed' : 'Task not found or already claimed' };
+        case 'claim_task': {
+          const claimResult = await ptm.claimTask(tool.arguments.taskId, agentId || 'unknown', projectPath);
+          if (typeof claimResult === 'object' && claimResult.blocked) {
+            result = claimResult; // { success: false, blocked: true, waitingOn: [...], message }
+          } else {
+            result = { success: claimResult, taskId: tool.arguments.taskId, message: claimResult ? 'Task claimed' : 'Task not found or already claimed' };
+          }
           break;
+        }
 
         case 'submit_proposal':
           const proposalService = new ProposalService(projectPath);
@@ -407,7 +445,168 @@ export class ToolExecutor {
             tool.arguments.reason
           );
           break;
-          
+
+        // ============== LS-01: Work Environment ==============
+        case 'set_work_environment': {
+          await ptm.setWorkEnvironment(
+            tool.arguments.taskId,
+            tool.arguments.files,
+            tool.arguments.notes,
+            projectPath
+          );
+          result = {
+            success: true,
+            message: `Work environment set for task ${tool.arguments.taskId}: ${tool.arguments.files.length} file pattern(s) registered.`
+          };
+          break;
+        }
+
+        // ============== LS-02: Findings Blackboard ==============
+        case 'write_finding': {
+          const { v4: uuidv4 } = await import('uuid');
+          const findingsPath = path.join(projectPath, '.queenbee', 'findings.json');
+          await fs.ensureDir(path.dirname(findingsPath));
+          const findings: any[] = await fs.readJson(findingsPath).catch(() => []);
+          const finding = {
+            id: uuidv4(),
+            taskId: tool.arguments.taskId || '',
+            agentId: agentId || 'unknown',
+            title: tool.arguments.title,
+            content: tool.arguments.content,
+            tags: tool.arguments.tags || [],
+            confidence: tool.arguments.confidence ?? 0.8,
+            timestamp: new Date().toISOString(),
+          };
+          findings.push(finding);
+          await fs.writeJson(findingsPath, findings, { spaces: 2 });
+          result = { success: true, id: finding.id, message: `Finding "${finding.title}" saved.` };
+          break;
+        }
+
+        case 'read_findings': {
+          const findingsPath2 = path.join(projectPath, '.queenbee', 'findings.json');
+          let allFindings: any[] = await fs.readJson(findingsPath2).catch(() => []);
+          if (tool.arguments.taskId) allFindings = allFindings.filter((f: any) => f.taskId === tool.arguments.taskId);
+          if (tool.arguments.agentId) allFindings = allFindings.filter((f: any) => f.agentId === tool.arguments.agentId);
+          if (tool.arguments.tags?.length) {
+            allFindings = allFindings.filter((f: any) =>
+              tool.arguments.tags.some((t: string) => (f.tags || []).includes(t))
+            );
+          }
+          const limit = tool.arguments.limit ?? 20;
+          result = allFindings.slice(-limit);
+          break;
+        }
+
+        // ============== LS-03: Swarm Context ==============
+        case 'read_swarm_context': {
+          const ctxProjectPath = mainProjectPath || projectPath;
+          // Mission from PLAN.md
+          const planPath2 = path.join(ctxProjectPath, 'PLAN.md');
+          const planRaw = await fs.readFile(planPath2, 'utf-8').catch(() => '');
+          const mission = planRaw.slice(0, 500);
+          const pending2 = (planRaw.match(/^- \[ \]/gm) || []).length;
+          const inProgress2 = (planRaw.match(/^- \[IN PROGRESS/gm) || []).length;
+          const done2 = (planRaw.match(/^- \[(?:x|DONE)\]/gm) || []).length;
+
+          // Recent roundtable
+          const { Roundtable: RT } = await import('./Roundtable');
+          const rt2 = new RT(ctxProjectPath);
+          const allMsgs = await rt2.getRecentMessages(3);
+
+          // Top memories
+          const memStore = new MemoryStore(ctxProjectPath);
+          const mems = await memStore.getAll().catch(() => []);
+          const topMems = mems
+            .sort((a: any, b: any) => (b.confidence || 0) - (a.confidence || 0))
+            .slice(0, 5);
+
+          // Open proposals
+          const ps = new ProposalService(ctxProjectPath);
+          const openProposals = await ps.getPendingProposals();
+
+          // Session summary
+          const summaryPath = path.join(ctxProjectPath, '.queenbee', 'session-summary.md');
+          const sessionSummary = await fs.readFile(summaryPath, 'utf-8').catch(() => null);
+
+          result = {
+            mission,
+            tasks: { pending: pending2, inProgress: inProgress2, done: done2 },
+            recentMessages: allMsgs,
+            topMemories: topMems,
+            openProposals,
+            sessionSummary: sessionSummary ? sessionSummary.slice(0, 400) : null,
+          };
+          break;
+        }
+
+        // ============== LS-04: Proposal Debate ==============
+        case 'challenge_proposal': {
+          const ps2 = new ProposalService(mainProjectPath || projectPath);
+          const challenged = await ps2.challenge(
+            tool.arguments.proposalId,
+            agentId || 'unknown',
+            tool.arguments.risks,
+            tool.arguments.questions,
+            tool.arguments.severity
+          );
+          result = challenged
+            ? { success: true, proposal: challenged, message: 'Proposal challenged. A judge should now call judge_proposal.' }
+            : { success: false, message: 'Proposal not found.' };
+          break;
+        }
+
+        case 'judge_proposal': {
+          const ps3 = new ProposalService(mainProjectPath || projectPath);
+          const judged = await ps3.judge(
+            tool.arguments.proposalId,
+            agentId || 'unknown',
+            tool.arguments.confidence,
+            tool.arguments.reasoning,
+            tool.arguments.stressor
+          );
+          result = judged
+            ? { success: true, proposal: judged, message: `Judgment recorded: ${judged.judgment?.confidenceLevel} (${judged.judgment?.confidence}/100)` }
+            : { success: false, message: 'Proposal not found.' };
+          break;
+        }
+
+        // ============== LS-07: Autonomous Recovery ==============
+        case 'request_help': {
+          const helpRt = new Roundtable(mainProjectPath || projectPath);
+          const urgencyTag = tool.arguments.urgency ? `[${(tool.arguments.urgency as string).toUpperCase()}]` : '[MEDIUM]';
+          const helpMsg = `[HELP REQUEST ${urgencyTag} from ${agentId}]\nProblem: ${tool.arguments.problem}\nCapability needed: ${tool.arguments.capability_needed}${tool.arguments.context ? `\nContext: ${tool.arguments.context}` : ''}`;
+          await helpRt.postMessage(agentId || 'unknown', 'help_request', helpMsg, { threadId, swarmId });
+          if (this.eventLog) {
+            await this.eventLog.emit('help_requested', agentId || 'unknown', {
+              problem: tool.arguments.problem,
+              capability: tool.arguments.capability_needed,
+            });
+          }
+          result = { success: true, message: 'Help request broadcast to roundtable. A capable teammate will respond.' };
+          break;
+        }
+
+        case 'escalate_to_expert': {
+          const escalateRt = new Roundtable(mainProjectPath || projectPath);
+          const filesNote = tool.arguments.files_involved?.length
+            ? `\nFiles: ${tool.arguments.files_involved.join(', ')}`
+            : '';
+          const escalateMsg = `[ESCALATION → ${tool.arguments.expert_type} from ${agentId}]\nProblem: ${tool.arguments.problem}${filesNote}${tool.arguments.context ? `\nContext: ${tool.arguments.context}` : ''}`;
+          await escalateRt.postMessage(agentId || 'unknown', 'escalation', escalateMsg, {
+            threadId,
+            swarmId,
+          });
+          if (this.eventLog) {
+            await this.eventLog.emit('escalation', agentId || 'unknown', {
+              expertType: tool.arguments.expert_type,
+              problem: tool.arguments.problem,
+            });
+          }
+          result = { success: true, message: `Escalated to ${tool.arguments.expert_type}. They will pick this up on the next heartbeat or prompt cycle.` };
+          break;
+        }
+
         default:
           throw new Error(`Unknown tool: ${tool.name}`);
       }
@@ -701,6 +900,57 @@ export class ToolExecutor {
           // Cleanup tracker
           swarmWorkerTracker.delete(swarmId);
         }
+      }
+    }
+
+    // Post-completion roundtable listening phase (60 seconds)
+    // Workers remain available to answer team questions after finishing their primary task.
+    if (swarmId) {
+      try {
+        const listeningDuration = 60000; // 60 seconds
+        let listeningEnd = Date.now() + listeningDuration;
+        let lastSeenTs = new Date().toISOString();
+        let responseCycles = 0;
+        const maxResponseCycles = 3;
+
+        console.log(`[Swarm] Worker ${agentId} entering post-task listening mode for ${listeningDuration / 1000}s`);
+
+        while (Date.now() < listeningEnd && responseCycles < maxResponseCycles) {
+          await new Promise(r => setTimeout(r, 8000)); // Poll every 8 seconds
+
+          const rt = new Roundtable(resolvedMainPath);
+          const recentMsgs = await rt.getRecentMessages(10, swarmId);
+
+          // New messages: not from self, and either from user OR targeted at this worker
+          const newMsgs = recentMsgs.filter(m =>
+            m.timestamp > lastSeenTs &&
+            m.agentId !== agentId &&
+            m.threadId !== threadId &&
+            (m.role === 'user' || !m.targetAgentId || m.targetAgentId === agentId || m.targetAgentId === threadId)
+          );
+
+          if (recentMsgs.length > 0) {
+            lastSeenTs = recentMsgs[recentMsgs.length - 1].timestamp;
+          }
+
+          if (newMsgs.length > 0) {
+            console.log(`[Swarm] Worker ${agentId} got ${newMsgs.length} post-completion roundtable message(s)`);
+            responseCycles++;
+
+            const ctx = newMsgs.map(m => `[${m.agentId}]: ${m.content}`).join('\n');
+            await runner.executeLoop(
+              `Your primary task is done. New team messages arrived:\n\n${ctx}\n\nRespond briefly via chat_with_team if the message is addressed to you or asks a question you can answer. Otherwise stay silent.`,
+              []
+            );
+
+            // Extend listening window after each response
+            listeningEnd = Math.max(listeningEnd, Date.now() + 30000);
+          }
+        }
+
+        console.log(`[Swarm] Worker ${agentId} post-task listening ended`);
+      } catch (err: any) {
+        console.error(`[Swarm] Worker ${agentId} post-task listening error:`, err.message);
       }
     }
 

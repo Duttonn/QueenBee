@@ -419,10 +419,10 @@ const AgentStepsPanel = ({ messages = [] }: AgentStepsPanelProps) => {
         : 'Agent Execution';
 
   return (
-    <div className="flex h-full relative">
-      <button 
+    <div className={`flex h-full relative transition-all duration-300 ${isOpen ? '' : 'w-4'}`}>
+      <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-10 bg-white border border-zinc-200 rounded-lg shadow-lg flex items-center justify-center text-zinc-400 hover:text-zinc-900 transition-all z-20 ${isOpen ? 'translate-x-0' : 'translate-x-3'}`}
+        className={`absolute top-1/2 -translate-y-1/2 w-6 h-10 bg-white border border-zinc-200 rounded-lg shadow-lg flex items-center justify-center text-zinc-400 hover:text-zinc-900 transition-all z-20 ${isOpen ? '-left-3' : 'left-0'}`}
       >
         {isOpen ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
       </button>

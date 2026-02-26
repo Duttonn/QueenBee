@@ -65,7 +65,53 @@ Génère le contenu pour un fichier PLAN.md avec :
       .map(line => line.replace('- [ ]', '').trim());
   }
 
-  async claimTask(taskId: string, agentId: string, projectPath?: string): Promise<boolean> {
+  /**
+   * LS-05: Check if all depends_on tasks for a given taskId are done.
+   * Format in PLAN.md: `- [ ] FEAT-02: ... (depends_on: FEAT-01, FEAT-03)`
+   */
+  async checkDependencies(taskId: string, projectPath?: string): Promise<{
+    blocked: boolean;
+    waitingOn: string[];
+  }> {
+    const targetFile = projectPath ? path.join(projectPath, 'PLAN.md') : this.tasksFile;
+    if (!(await fs.pathExists(targetFile))) return { blocked: false, waitingOn: [] };
+    const content = await fs.readFile(targetFile, 'utf-8');
+    const lines = content.split('\n');
+
+    const taskLine = lines.find(l => l.includes(`\`${taskId}\``));
+    if (!taskLine) return { blocked: false, waitingOn: [] };
+
+    const match = taskLine.match(/\(depends_on:\s*([^)]+)\)/);
+    if (!match) return { blocked: false, waitingOn: [] };
+
+    const deps = match[1].split(',').map(d => d.trim()).filter(Boolean);
+    const waitingOn: string[] = [];
+
+    for (const dep of deps) {
+      const depLine = lines.find(l => l.includes(`\`${dep}\``));
+      if (!depLine) continue;
+      // Done if marked [x] or [DONE]
+      const isDone = /- \[(?:x|DONE)\]/.test(depLine);
+      if (!isDone) waitingOn.push(dep);
+    }
+
+    return { blocked: waitingOn.length > 0, waitingOn };
+  }
+
+  async claimTask(taskId: string, agentId: string, projectPath?: string): Promise<
+    boolean | { success: false; blocked: true; waitingOn: string[]; message: string }
+  > {
+    // LS-05: Check dependency constraints before claiming
+    const deps = await this.checkDependencies(taskId, projectPath);
+    if (deps.blocked) {
+      return {
+        success: false,
+        blocked: true,
+        waitingOn: deps.waitingOn,
+        message: `Task ${taskId} is blocked — waiting for: ${deps.waitingOn.join(', ')}`,
+      };
+    }
+
     const targetFile = projectPath ? path.join(projectPath, 'PLAN.md') : this.tasksFile;
     if (!(await fs.pathExists(targetFile))) return false;
     let content = await fs.readFile(targetFile, 'utf-8');
@@ -83,6 +129,38 @@ Génère le contenu pour un fichier PLAN.md avec :
 
     await fs.writeFile(targetFile, newContent);
     return true;
+  }
+
+  /**
+   * LS-01: Set per-task file scope (work environment).
+   * Stored in .queenbee/work-environments.json
+   */
+  async setWorkEnvironment(
+    taskId: string,
+    files: string[],
+    notes?: string,
+    projectPath?: string
+  ): Promise<void> {
+    const base = projectPath || this.projectPath;
+    const envPath = path.join(base, '.queenbee', 'work-environments.json');
+    await fs.ensureDir(path.dirname(envPath));
+    const envs: Record<string, any> = await fs.readJson(envPath).catch(() => ({}));
+    envs[taskId] = { files, notes, setAt: new Date().toISOString() };
+    await fs.writeJson(envPath, envs, { spaces: 2 });
+  }
+
+  /**
+   * LS-01: Get the work environment for a task (null if not set).
+   */
+  async getWorkEnvironment(
+    taskId: string,
+    projectPath?: string
+  ): Promise<{ files: string[]; notes?: string } | null> {
+    if (!taskId) return null;
+    const base = projectPath || this.projectPath;
+    const envPath = path.join(base, '.queenbee', 'work-environments.json');
+    const envs: Record<string, any> = await fs.readJson(envPath).catch(() => ({}));
+    return envs[taskId] || null;
   }
 
   async completeTask(taskId: string, agentId: string, projectPath?: string): Promise<boolean> {

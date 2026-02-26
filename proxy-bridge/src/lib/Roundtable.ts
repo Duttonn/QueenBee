@@ -2,6 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { Paths } from './Paths';
 import { broadcast } from './socket-instance';
+import { aggregateScores } from './consensus';
 
 export interface TeamMessage {
   id: string;
@@ -63,7 +64,8 @@ export class Roundtable {
     let messages = lines.map(line => JSON.parse(line) as TeamMessage);
     
     if (swarmId) {
-      messages = messages.filter(m => m.swarmId === swarmId);
+      // Include messages for this swarm OR messages with no swarmId (global broadcasts)
+      messages = messages.filter(m => m.swarmId === swarmId || !m.swarmId);
     }
     
     return messages.slice(-limit);
@@ -99,5 +101,59 @@ export class Roundtable {
     );
 
     return removed;
+  }
+
+  /**
+   * P17-02: Extract numeric scores from roundtable messages and aggregate them
+   * using geometric median (Byzantine-robust) instead of a plain mean.
+   *
+   * Messages that contain a numeric score are expected to embed it as
+   * "confidence: <number>" (e.g. from ProposalService.judge broadcast) or as
+   * a bare number anywhere in the message content.  Both patterns are extracted
+   * and fed into aggregateScores() which runs Weiszfeld's algorithm (consensus.ts).
+   *
+   * @param threadId - optional thread to narrow the message search
+   * @param taskId   - optional task to narrow the message search
+   * @param limit    - how many recent messages to scan (default 50)
+   * @returns aggregated score via geometric median, or null if no scores found
+   */
+  async getConsensusScore(threadId?: string, taskId?: string, limit = 50): Promise<number | null> {
+    const messages = await this.getRecentMessages(limit);
+
+    // Narrow to thread/task if provided
+    const candidates = messages.filter(m => {
+      if (threadId && m.threadId !== threadId) return false;
+      if (taskId && m.taskId !== taskId) return false;
+      return true;
+    });
+
+    const scores: number[] = [];
+
+    for (const m of candidates) {
+      // Pattern 1: "confidence: <number>/100" or "confidence: <number>"
+      const confidenceMatch = m.content.match(/confidence[:\s]+(\d+(?:\.\d+)?)\s*(?:\/\s*100)?/i);
+      if (confidenceMatch) {
+        const val = parseFloat(confidenceMatch[1]);
+        if (isFinite(val) && val >= 0 && val <= 100) {
+          scores.push(val);
+          continue;
+        }
+      }
+
+      // Pattern 2: "score: <number>" or "score=<number>"
+      const scoreMatch = m.content.match(/score[=:\s]+(\d+(?:\.\d+)?)/i);
+      if (scoreMatch) {
+        const val = parseFloat(scoreMatch[1]);
+        if (isFinite(val) && val >= 0 && val <= 100) {
+          scores.push(val);
+          continue;
+        }
+      }
+    }
+
+    if (scores.length === 0) return null;
+
+    // Use geometric median (Weiszfeld) — Byzantine-robust aggregation (P17-02).
+    return aggregateScores(scores);
   }
 }

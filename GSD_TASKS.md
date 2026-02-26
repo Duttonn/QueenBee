@@ -745,29 +745,29 @@
 
 ### 🔴 CRITICAL — Bug Fixes
 
-- [ ] `FIX-04`: [Backend] **Roundtable Agents Not Responding**
+- [x] `FIX-04`: [Backend] **Roundtable Agents Not Responding**
   - **Description**: Roundtable agents are not responding to messages. Investigate and fix the communication channel between workers and roundtable.
   - **Files**: `proxy-bridge/src/lib/Roundtable.ts`, `proxy-bridge/src/lib/ToolExecutor.ts`
   - **Worker**: BACKEND
 
-- [ ] `FIX-05`: [Frontend] **Architect Approve Button Incorrectly Popping Up**
+- [x] `FIX-05`: [Frontend] **Architect Approve Button Incorrectly Popping Up**
   - **Description**: The plan approve button appears even when not using @qb command, in plan mode, and when just @-mentioning a file.
   - **Files**: `dashboard/src/components/layout/CodexLayout.tsx`
   - **Context**: Fix the detection logic for when to show the approve bar (should only show during @qb swarm workflow)
   - **Worker**: FRONTEND
 
-- [ ] `FIX-06`: [Frontend] **Workflow Panel Tab Not Reopenable**
+- [x] `FIX-06`: [Frontend] **Workflow Panel Tab Not Reopenable**
   - **Description**: When the agent workflow panel is closed, there's no way to reopen it.
   - **Files**: `dashboard/src/components/layout/CodexLayout.tsx`, `dashboard/src/components/layout/Sidebar.tsx`
   - **Context**: Add a toggle button in the sidebar or header to reopen the workflow panel
   - **Worker**: FRONTEND
 
-- [ ] `FIX-07`: [Frontend] **Voice Command Not Working**
+- [x] `FIX-07`: [Frontend] **Voice Command Not Working**
   - **Description**: Voice input is not being captured or processed correctly.
   - **Files**: `dashboard/src/hooks/useVoiceRecording.ts`, `dashboard/src/components/layout/CodexLayout.tsx`
   - **Worker**: FRONTEND
 
-- [ ] `FIX-08`: [Frontend] **Adding Files to Prompt Context**
+- [x] `FIX-08`: [Frontend] **Adding Files to Prompt Context**
   - **Description**: Attaching files to the prompt context is broken or not working as expected.
   - **Files**: `dashboard/src/components/layout/CodexLayout.tsx`
   - **Context**: Fix the file attachment flow via the Plus button
@@ -785,44 +785,454 @@
   - **Context**: Need access to leoswarm project to review implementation
   - **Worker**: BACKEND
 
-- [ ] `FEAT-02`: [Frontend] **Implement/Fix Automations**
-  - **Description**: Automations feature is not fully functional.
-  - **Files**: `dashboard/src/components/layout/AutomationDashboard.tsx`, `dashboard/src/components/layout/Sidebar.tsx`
-  - **Context**: Review current implementation and fix issues
-  - **Worker**: FRONTEND
-
-- [ ] `FEAT-03`: [Frontend] **Implement/Fix Skills with Template from Worktree**
-  - **Description**: Skills feature needs to be implemented or fixed. Get the skills template from worktree.
-  - **Files**: `dashboard/src/components/layout/SkillsManager.tsx`
-  - **Context**: Implement skills management system
-  - **Worker**: FRONTEND
-
-- [ ] `FEAT-04`: [Frontend] **OAuth for All Models**
-  - **Description**: Add OAuth authentication support for all AI model providers.
-  - **Files**: `dashboard/src/components/settings/`, `proxy-bridge/src/pages/api/auth/`
-  - **Context**: Implement OAuth flow for providers like Google, Anthropic, etc.
+- [ ] `FEAT-02`: [Fullstack] **Implement/Fix Automations**
+  - **Description**: Automations feature is not fully functional. Several bugs found during audit.
+  - **Files**: `dashboard/src/components/layout/AutomationDashboard.tsx`, `dashboard/src/store/useAppStore.ts`, `proxy-bridge/src/lib/db.ts`, `proxy-bridge/src/lib/CronManager.ts`, `proxy-bridge/src/pages/api/automations.ts`
+  - **Context**: Bugs found (in priority order):
+    1. **DELETE URL bug** (`useAppStore.ts:132`): `deleteAutomation` uses `${API_BASE}/automations` (missing `/api`) — should be `${API_BASE_ROUTES}/automations`. Same issue in `uninstallSkill` line 165.
+    2. **Days field not saved**: Backend `db.ts` Automation type and `automations.ts` POST handler don't include a `days` field. Frontend sends days but backend ignores them — cron never uses specific weekdays.
+    3. **Days → Cron conversion missing**: `CronManager.convertToCron` only converts `HH:MM` to daily cron. Days array (e.g., `['Mo','Tu','We','Th','Fr']`) is never used to build the weekday part of the cron (e.g., `0 9 * * 1-5`).
+    4. **No feedback on "Run Now"**: Result from `runAutomation` is only logged to console, never displayed in the UI.
+    5. **Hardcoded URL in AutomationDetailsModal** (`AutomationDashboard.tsx:625`): Uses `http://127.0.0.1:3000/api/automations` directly instead of `API_BASE`. Also calls `window.location.reload()` instead of updating state.
+    6. **Template grid hidden after first automation**: Once any automation exists, the template grid disappears. The "+ Create New" modal should optionally show templates.
   - **Worker**: FULLSTACK
 
-- [ ] `FEAT-05`: [Backend] **Fix Requests for All Models**
-  - **Description**: API requests to various models are failing or not working correctly.
-  - **Files**: `proxy-bridge/src/lib/UnifiedLLMService.ts`
-  - **Context**: Debug and fix model request handling
+- [ ] `FEAT-03`: [Fullstack] **Implement Skills as Project-Scoped SKILL.md Files**
+  - **Description**: Skills feature needs proper implementation. Current system just stores skill names in DB with no real capability. Worktrees use `.gemini/skills/<name>/SKILL.md` format that agents load as context.
+  - **Files**: `dashboard/src/components/layout/SkillsManager.tsx`, `proxy-bridge/src/pages/api/skills.ts`, `proxy-bridge/src/lib/AutonomousRunner.ts`, `proxy-bridge/src/lib/AgentSession.ts`
+  - **Template**: `worktrees/p3-01/.gemini/skills/electron-expert/SKILL.md` (frontmatter: name, description; body: markdown knowledge)
+  - **Context**: Key findings:
+    1. **Current implementation is a stub**: `skills.ts` POST just marks skills as "installed" in DB, there's no real functionality. The `available` list is hardcoded.
+    2. **The real pattern** (from worktree): Skills live in `.gemini/skills/<slug>/SKILL.md` inside the project directory. Each SKILL.md has YAML frontmatter (name, description) and a markdown knowledge base.
+    3. **Backend needed**: `GET /api/skills?projectPath=...` should scan `.gemini/skills/` for installed skills. `POST /api/skills` should create a new SKILL.md file. `DELETE /api/skills?id=...` should remove the skill dir.
+    4. **Agent integration needed**: `AutonomousRunner` or `AgentSession` should read installed skills from `.gemini/skills/` and prepend them to the system prompt when running in the context of that project.
+    5. **Frontend needed**: SkillsManager should let users create skills with a name, description, and markdown body. Skill "install" from the available list should scaffold a SKILL.md from the template. A text editor for the skill body would be ideal.
+  - **Worker**: FULLSTACK
+
+- [ ] `FEAT-04`: [Backend] **OAuth for All Models — Finish Real Implementation**
+  - **Description**: OAuth is partially set up but broken for Anthropic and OpenAI due to placeholder client IDs.
+  - **Files**: `proxy-bridge/src/lib/auth-manager.ts`, `proxy-bridge/src/pages/api/auth/login.ts`, `proxy-bridge/src/pages/api/auth/callback.ts`, `dashboard/src/components/settings/CustomizationPanel.tsx`
+  - **Context**: Key findings:
+    1. **Anthropic OAuth**: `auth-manager.ts:55` uses `client_id=official-id-here` — Anthropic doesn't expose a public OAuth API; needs to be removed or replaced with API key flow only.
+    2. **OpenAI Codex OAuth**: `auth-manager.ts:65` same placeholder — OpenAI also doesn't offer public OAuth for API access; remove.
+    3. **Google OAuth**: Properly implemented with real PKCE flow, token refresh, etc. Works.
+    4. **Qwen OAuth**: Has a real client_id (`f0304373b74a44d2b584a3fb70ca9e56`) but no token exchange/refresh implemented.
+    5. **Kimi/Moonshot**: `KimiAdapter.ts` exists but isn't registered as a provider in `UnifiedLLMService.ts`.
+    6. **Recommendation**: Remove fake OAuth for Anthropic/OpenAI (API key only). Complete Qwen token exchange. Wire up Kimi to UnifiedLLMService.
+  - **Worker**: BACKEND
+
+- [ ] `FEAT-05`: [Backend] **Fix & Complete Model Provider Support**
+  - **Description**: Some model providers are missing or broken in UnifiedLLMService.
+  - **Files**: `proxy-bridge/src/lib/UnifiedLLMService.ts`, `proxy-bridge/src/lib/providers/`, `proxy-bridge/src/lib/KimiAdapter.ts`
+  - **Context**: Key findings:
+    1. **Kimi/Moonshot not wired**: `KimiAdapter.ts` exists but is never instantiated in `UnifiedLLMService.registerProfile()` or `initFromEnv()`. Need to add a `KimiProvider` wrapper and register it for `moonshot`/`kimi` provider IDs.
+    2. **AnthropicProvider ignores custom apiBase**: `registerProfile()` calls `new AnthropicProvider(key)` without passing `profile.apiBase` — custom Anthropic-compatible endpoints (e.g. local proxies) don't work.
+    3. **Qwen/Alibaba**: No provider registered at all despite Qwen OAuth setup existing.
+    4. **chatStream auto-routing**: The model-name-based routing for streaming (`auto` mode) only checks for gemini/gpt/claude/mistral in model names — Kimi and Qwen are unhandled.
+    5. **Fix priority**: Wire KimiAdapter → OpenAI-compatible wrapper → register for `moonshot`/`kimi`. Pass `apiBase` to AnthropicProvider.
   - **Worker**: BACKEND
 
 - [ ] `FEAT-06`: [Frontend/Backend] **Deep Inspector**
-  - **Description**: Implement a deep code inspector for analyzing project structure and dependencies.
-  - **Files**: NEW `dashboard/src/components/inspector/`, `proxy-bridge/src/pages/api/inspector/`
-  - **Context**: Create comprehensive code analysis tool
+  - **Description**: Implement a deep code inspector for analyzing project structure, dependencies, and live agent state.
+  - **Files**: NEW `dashboard/src/components/inspector/DeepInspector.tsx`, `proxy-bridge/src/pages/api/inspector/index.ts`
+  - **Context**: Nothing exists yet. Suggested design:
+    - **Backend** `/api/inspector?projectPath=...` — returns: file tree with sizes, dependency graph (package.json deps), active agent sessions, cost breakdown per session, memory usage, open worktrees.
+    - **Frontend** `DeepInspector.tsx` — tabbed panel: (1) File Tree with sizes and type breakdown, (2) Dependency Graph (d3 or similar), (3) Agent Sessions (live from DiagnosticCollector), (4) Cost breakdown (from CostTracker `/api/costs`).
+    - Wire into Sidebar as a new "Inspector" view option. Consider the `DiagnosticCollector.ts` and `CostTracker.ts` already available.
   - **Worker**: FULLSTACK
 
 - [ ] `FEAT-07`: [Frontend/Backend] **QueenBee Chrome Extension**
-  - **Description**: Create a Chrome extension similar to Google Antigravity for browser integration.
-  - **Files**: NEW `chrome-extension/`
-  - **Context**: Allow QueenBee to interact with browser tabs
+  - **Description**: Create a Chrome extension for browser integration — capture pages, send to QueenBee agent.
+  - **Files**: NEW `chrome-extension/manifest.json`, `chrome-extension/popup.html`, `chrome-extension/content.js`, `chrome-extension/background.js`
+  - **Context**: Nothing exists yet. Suggested design:
+    - **Extension** (Manifest V3): popup with "Send page to QueenBee" and "Capture element" buttons. Content script that lets user click to highlight elements and extract HTML/text.
+    - **Background service worker**: POSTs captured content to `http://localhost:3000/api/browser-capture` and opens the dashboard if closed.
+    - **Backend** `proxy-bridge/src/pages/api/browser-capture.ts`: receives `{ url, title, content, elementHtml }` and creates a new message in the active session's inbox or creates a project context item.
+    - Pack with `npm run build:extension` using a simple Webpack config.
   - **Worker**: FULLSTACK
 
 - [ ] `FEAT-08`: [Frontend/Backend] **Integrated Navigator (Orchids-style)**
-  - **Description**: Add an integrated navigator like Orchids with a "select element" button to add HTML elements to the prompt context.
-  - **Files**: NEW `dashboard/src/components/navigator/`, `proxy-bridge/src/pages/api/navigator/`
-  - **Context**: Allow users to select elements from web pages and add them to context
+  - **Description**: Add an integrated web navigator with element picking — select any HTML element to add to agent context.
+  - **Files**: NEW `dashboard/src/components/navigator/BrowserPanel.tsx`, `dashboard/src/components/navigator/ElementPicker.tsx`, `proxy-bridge/src/pages/api/browser/`
+  - **Context**: Nothing exists yet. QueenBee already has `BrowserControlService.ts` and `BrowserRelay.ts` in the backend. Suggested design:
+    - **Frontend** `BrowserPanel.tsx`: embedded `<iframe>` or `<webview>` (Electron) with address bar and navigation controls. "Pick Element" button activates ElementPicker overlay.
+    - **ElementPicker**: injects a script into the iframe/webview to highlight hovered elements; on click, extracts outerHTML and sends to `onElementPicked(html)` callback which appends to the composer context.
+    - **Backend**: Leverage existing `BrowserControlService.ts` for navigation. Add `GET /api/browser/screenshot` and `GET /api/browser/dom?selector=...` for headless element extraction.
+    - Wire into Sidebar as a new "Navigator" view with split-pane layout (browser + agent chat).
   - **Worker**: FULLSTACK
+
+---
+
+## 🔵 LEOSWARM INTEGRATION
+> **Goal**: Add governance, scope isolation, autonomous error recovery, and session synthesis to the QueenBee swarm. Full implementation plan in `LEOSWARM_PLAN.md`.
+> **Research basis**: Reflexion (Shinn 2023), LATS (ICML 2024), Voyager, SWE-agent, MAST failure taxonomy (2025), Free-MAD, CP-WBFT, PLAS, AIOS Access Manager.
+
+### 🔴 HIGH PRIORITY
+
+- [x] `LS-01`: [Backend] **set_work_environment tool** — Per-task file scope isolation
+  - **Files**: `proxy-bridge/src/lib/ToolDefinitions.ts`, `proxy-bridge/src/lib/ToolExecutor.ts`, `proxy-bridge/src/lib/ProjectTaskManager.ts`
+  - **Description**: Researcher agents call this to lock which files a builder can modify. ToolExecutor validates write_file against scope, throws `SCOPE_VIOLATION` if out of bounds. Storage: `.queenbee/work-environments.json` (`{ [taskId]: { files, notes, setAt } }`). Uses glob/minimatch for pattern matching.
+  - **Key method**: `ptm.setWorkEnvironment(taskId, files[], notes?)` + `ptm.getWorkEnvironment(taskId)`
+  - **Worker**: BACKEND
+
+- [x] `LS-02`: [Backend] **write_finding / read_findings tools** — Structured research blackboard
+  - **Files**: `proxy-bridge/src/lib/ToolDefinitions.ts`, `proxy-bridge/src/lib/ToolExecutor.ts`
+  - **Description**: Agent findings stored in `.queenbee/findings.json` (separate from roundtable JSONL). Schema: `{ id, taskId, agentId, title, content, tags[], confidence, timestamp }`. Filterable by taskId/agentId/tags. Enables research lineage tracking separate from conversation.
+  - **Worker**: BACKEND
+
+- [x] `LS-03`: [Backend] **read_swarm_context tool** — Unified hierarchical brain aggregation
+  - **Files**: `proxy-bridge/src/lib/ToolDefinitions.ts`, `proxy-bridge/src/lib/ToolExecutor.ts`
+  - **Description**: Single call returns: MISSION (first 500 chars of PLAN.md), task counts (pending/inProgress/done), last 3 roundtable messages, top 5 memories by confidence, open proposals, session-summary.md snippet. Replaces 4+ separate calls for agent grounding. ~100 tokens instead of ~400.
+  - **Worker**: BACKEND
+
+- [x] `LS-04`: [Backend] **challenge_proposal / judge_proposal tools** — Free-MAD debate cycle
+  - **Files**: `proxy-bridge/src/lib/ProposalService.ts`, `proxy-bridge/src/lib/ToolDefinitions.ts`, `proxy-bridge/src/lib/ToolExecutor.ts`
+  - **Description**: Add Challenge/Judgment types to ProposalService. `challenge()` stores risks/questions/severity. `judge()` scores 0-100 → derives level → sets status. Thresholds: ≥90=ship, ≥80=approved, ≥70=mutation_required+stressor, ≥60=mutation_major+stressor, <60=rejected. `stressor` is REQUIRED if confidence < 80 (must be actionable, not vague). Judge posts roundtable message with outcome.
+  - **Worker**: BACKEND
+
+- [x] `LS-07`: [Backend] **Truly Autonomous Agent Protocol** — 4-layer minimal-HITL recovery
+  - **Files**: `proxy-bridge/src/lib/AutonomousRunner.ts`, `proxy-bridge/src/lib/AgentSession.ts`, `proxy-bridge/src/lib/ToolDefinitions.ts`, `proxy-bridge/src/lib/ToolExecutor.ts`
+  - **Description**: 4 layers of error recovery:
+    1. **Reflexion** (Shinn 2023): On 3x same error → auto-inject verbal reflection prompt. Sliding window of 3 reflections. Do NOT retry same action.
+    2. **Inter-agent escalation**: `request_help` tool broadcasts to roundtable. `escalate_to_expert` routes to specialist (UI_BEE, LOGIC_BEE, DATA_BEE, SECURITY_BEE, ARCHITECT_BEE).
+    3. **Checkpoint save/restore**: `AgentCheckpoint` schema saved after each successful tool call to `.queenbee/checkpoints/{sessionId}-step-{n}.json`. Restore on reconnect.
+    4. **System prompt enforcement**: Append autonomy protocol — "NEVER say I can't. Follow decision tree: lack knowledge→read_memory, lack tool→request_help, failed 3x→request_help with context."
+  - **Worker**: BACKEND
+
+- [x] `LS-08`: [Backend] **Byzantine Circuit Breaker** — Loop & garbage detection
+  - **Files**: NEW `proxy-bridge/src/lib/ByzantineDetector.ts`, `proxy-bridge/src/lib/AutonomousRunner.ts`
+  - **Description**: 5 fault signals: (1) Output hash repetition, (2) Action n-gram loop (window=6), (3) Stall >60s same state, (4) Low token entropy <3 bits (repetitive garbage), (5) Token explosion >3x expected. Circuit breaker: 3 failures → OPEN (30s backoff) → HALF_OPEN (probe) → CLOSED. On fault: inject recovery prompt, not crash. Based on MAST 2025 failure taxonomy.
+  - **Worker**: BACKEND
+
+### 🟠 MEDIUM PRIORITY
+
+- [x] `LS-05`: [Backend] **Task dependency enforcement** — Hard blocking on depends_on
+  - **Files**: `proxy-bridge/src/lib/ProjectTaskManager.ts`, `proxy-bridge/src/lib/ToolExecutor.ts`
+  - **Description**: Parse `(depends_on: TASK-ID, TASK-ID2)` from PLAN.md task lines. `claimTask()` checks if all dependencies are marked `[x]` (done) before allowing claim. Returns `{ success: false, blocked: true, waitingOn: ["TASK-ID"] }` if blocked. Prevents out-of-order task execution.
+  - **Worker**: BACKEND
+
+- [x] `LS-06`: [Backend] **SwarmSynthesizer — Session summary generation**
+  - **Files**: NEW `proxy-bridge/src/lib/SwarmSynthesizer.ts`, `proxy-bridge/src/lib/HeartbeatService.ts`
+  - **Description**: `synthesizeSwarmSession(projectPath)` reads: last 20 roundtable messages + last 10 findings + judged proposals + PLAN.md task status. Writes structured markdown to `.queenbee/session-summary.md` (5 sections: Completed Tasks, In-Progress, Key Findings, Proposal Outcomes, Roundtable Activity). Called at end of each heartbeat cycle. Output also read by `read_swarm_context`.
+  - **Worker**: BACKEND
+
+- [x] `LS-09`: [Backend] **Context Compression** — SWE-agent ACI pattern for long tasks
+  - **Files**: NEW `proxy-bridge/src/lib/ContextCompressor.ts`, `proxy-bridge/src/lib/AutonomousRunner.ts`
+  - **Description**: Two mechanisms: (1) **History processor** — keep last 5 messages in full, collapse older to single-line summaries, deduplicate repeated errors. (2) **Context folding** — after each subtask completes, compress full trajectory to: outcome (1 sentence) + key decisions (3 bullets) + artifacts (file list). Full trajectory discarded (~10x token reduction). Both from SWE-agent (arXiv:2405.15793) + context-folding (arXiv:2510.11967).
+  - **Worker**: BACKEND
+
+---
+
+## 🧬 PHASE 16: GROUP-EVOLVING AGENTS (GEA)
+> **Goal**: Implement the Group-Evolving Agents paradigm (UCSB, arXiv:2602.04837, Feb 2026) — agents that share evolutionary experience across sessions, reflect collectively, and self-modify their workflows without human intervention. On SWE-bench Verified, GEA achieves 71% pass rate vs 56.7% for solo evolution baselines, matching top human-designed frameworks at zero added inference cost.
+>
+> **Core idea**: Shift the unit of evolution from individual agents to *groups*. Each session, top-K agents (scored by Performance × √Novelty) pool their evolutionary traces. A Reflection LLM analyzes the pool and generates "evolution directives" — workflow changes, new tool strategies, prompt patches — that the next agent generation inherits. Beneficial discoveries never die in isolated branches.
+>
+> **Research basis**: GEA (arXiv:2602.04837), AFlow/MCTS workflow search (ICLR 2025 Oral, arXiv:2410.10762), Reflexion already in LS-07, Darwin Godel Machine (DGM).
+>
+> **What QueenBee already has**: `ByzantineDetector` (fault signals), `ContextCompressor` (history), `MemoryStore` (memory), `SwarmSynthesizer` (session summary), `Roundtable` (inter-agent comms), Reflexion in `AutonomousRunner` (LS-07). What's missing: the *cross-session evolutionary feedback loop* (Archive → Score → Select → Reflect → Evolve → Deploy).
+
+### 🔴 HIGH PRIORITY — Core Evolutionary Loop
+
+- [x] `GEA-01`: [Backend] **Experience Archive** — Persistent cross-session evolutionary trace store
+  - **Files**: NEW `proxy-bridge/src/lib/ExperienceArchive.ts`, NEW `proxy-bridge/src/pages/api/experience-archive.ts`
+  - **Storage**: `.queenbee/experience-archive.jsonl` (append-only, one JSON object per line)
+  - **Description**: Stores every completed agent session's evolutionary trace. Schema per entry:
+    ```ts
+    {
+      id: string,                   // uuid
+      agentId: string,
+      sessionId: string,
+      projectPath: string,
+      timestamp: number,
+      toolHistory: Array<{ tool: string, args: object, outcome: 'success'|'fail'|'timeout', durationMs: number }>,
+      taskOutcomes: Array<{ taskId: string, success: boolean }>,
+      successRate: number,          // 0–1
+      toolVector: number[],         // binary presence vector over all known tools (for novelty calc)
+      codePatches: string[],        // unified diffs applied during session
+      promptStrategies: string[],   // notable prompt patterns used
+      performanceScore: number,     // filled by GEA-02
+      noveltyScore: number,         // filled by GEA-02
+      combinedScore: number,        // performanceScore × √noveltyScore
+    }
+    ```
+  - **API**: `GET /api/experience-archive?projectPath=&limit=20&sortBy=combinedScore` → returns top entries. `POST /api/experience-archive` → append entry.
+  - **Class**: `ExperienceArchive.append(entry)`, `ExperienceArchive.query({ projectPath, limit, sortBy })`, `ExperienceArchive.getToolVocabulary()` (union of all tools ever seen → used to build toolVector).
+  - **Worker**: BACKEND
+
+- [x] `GEA-02`: [Backend] **Performance-Novelty Scorer** — Score agents after each session
+  - **Files**: `proxy-bridge/src/lib/AgentSession.ts`, `proxy-bridge/src/lib/AutonomousRunner.ts`, `proxy-bridge/src/lib/ExperienceArchive.ts`
+  - **Description**: Wired into `AgentSession` `onSessionEnd`. Computes two scores and persists to archive:
+    1. **Performance** = `tasksCompleted / totalTasks` (from ProjectTaskManager) OR `toolSuccessRate` if no tasks.
+    2. **Novelty** = cosine distance between this session's `toolVector` and the mean toolVector of last 20 archive entries. Measures how *different* this agent's tool usage was from the population.
+    3. **Combined** = `performance × √novelty` (GEA paper Algorithm 1). Balances exploitation (high perf) and exploration (behavioral diversity).
+  - **Emit**: `experience:scored` socket event with `{ sessionId, performance, novelty, combined }` so dashboard can show it.
+  - **Worker**: BACKEND
+
+- [x] `GEA-03`: [Backend] **Reflection Module** — Group LLM call generating cross-agent evolution directives
+  - **Files**: NEW `proxy-bridge/src/lib/GEAReflection.ts`, `proxy-bridge/src/lib/HeartbeatService.ts`
+  - **Description**: Triggered at end of each heartbeat cycle (after SwarmSynthesizer). Selects top-K (K=2 default, configurable in PolicyStore) archive entries by `combinedScore` for the current project. Aggregates their traces into a "collective experience pool":
+    - Tool invocation histories (what tools, in what order, outcome)
+    - Success patterns (tool sequences that preceded `success: true` task outcomes)
+    - Failure patterns (tool sequences preceding `fail` outcomes)
+    - Code patches applied
+  - Makes one LLM call (`claude-sonnet-4-6`) with the pool as context and this system prompt:
+    > "You are an evolution reflection engine. Analyze the collective experience traces from top agents below. Identify: (1) tool usage patterns that correlate with success, (2) failure patterns to avoid, (3) novel tools or workflows that appeared in high-novelty agents. Output evolution directives as JSON: `{ workflowDirectives: string[], toolPreferences: string[], promptPatches: string[], avoidPatterns: string[] }`. Be specific and actionable."
+  - Stores output to `.queenbee/evolution-directives.json` with timestamp and source agent IDs.
+  - **Worker**: BACKEND
+
+- [x] `GEA-04`: [Backend] **Evolution Module** — Apply directives to per-project agent config
+  - **Files**: NEW `proxy-bridge/src/lib/GEAEvolution.ts`, `proxy-bridge/src/lib/AutonomousRunner.ts`
+  - **Storage**: `.queenbee/evolved-config.json`
+  - **Description**: Reads `evolution-directives.json`, produces a patch to the agent's runtime config:
+    ```ts
+    {
+      systemPromptAppend: string,    // extra instructions derived from directives
+      toolOrderHints: string[],      // preferred tool order for this project
+      avoidPatterns: string[],       // injected as "AVOID:" warnings in system prompt
+      retryThresholdOverride?: number, // tighten/loosen circuit breaker
+      lastEvolvedAt: number,
+      sourceDirectiveIds: string[],
+    }
+    ```
+  - `AutonomousRunner.getEnhancedContext()` loads `evolved-config.json` for the session's `projectPath` and appends `systemPromptAppend` + `avoidPatterns` to the system prompt. Tool order hints fed to ToolExecutor as priority list.
+  - Versioned: keep last 5 evolved configs in `.queenbee/evolved-config-history.jsonl` for rollback.
+  - **Worker**: BACKEND
+
+### 🟠 HIGH PRIORITY — Self-Healing & Observability
+
+- [x] `GEA-05`: [Backend] **Group-Based Self-Healing** — Peer-assisted bug repair on Byzantine fault
+  - **Files**: `proxy-bridge/src/lib/ByzantineDetector.ts`, `proxy-bridge/src/lib/GEAReflection.ts`, `proxy-bridge/src/lib/AutonomousRunner.ts`
+  - **Description**: When `ByzantineDetector` transitions a session to OPEN state (3+ fault signals), trigger a group-repair cycle instead of just a backoff:
+    1. Query ExperienceArchive for the K=2 healthy agents with highest `combinedScore` from the same project.
+    2. Run a *repair reflection* LLM call: "Agent `{id}` is stuck. Fault signals: `{signals}`. Here are traces from healthy peers: `{traces}`. Diagnose the failure mode and generate a recovery directive (specific prompt patch or tool avoidance rule) to unblock the agent."
+    3. Inject the repair directive as a system message into the stuck agent's context (on HALF_OPEN probe attempt).
+    4. Track repair iterations in the fault event log. Target: ≤2 iterations (vs GEA paper's 1.4 vs DGM's 5).
+  - **Metric**: Emit `byzantine:repair_attempted` and `byzantine:repair_succeeded` events with `iterationCount`.
+  - **Worker**: BACKEND
+
+- [x] `GEA-06`: [Backend] **Evolutionary Trace Emitter** — Wire agent loop to emit structured trace events
+  - **Files**: `proxy-bridge/src/lib/ToolExecutor.ts`, `proxy-bridge/src/lib/AgentSession.ts`
+  - **Description**: Instrument the agent loop to emit fine-grained trace events consumed by ExperienceArchive:
+    - **ToolExecutor**: after each tool call, emit `trace:tool_use` event `{ tool, args (sanitized, no secrets), outcome, durationMs, sessionId }`.
+    - **AgentSession**: on session end, aggregate into `toolHistory[]`, compute `toolVector` (binary array across vocabulary), collect `codePatches` (any `write_file` diffs), collect `taskOutcomes` from ProjectTaskManager.
+    - Auto-persist to ExperienceArchive via `ExperienceArchive.append()`. No manual wiring needed after this task.
+  - **Note**: Sanitize args — strip file contents, tokens, passwords. Only keep structural metadata (file path, tool name, success/fail).
+  - **Worker**: BACKEND
+
+### 🟡 MEDIUM PRIORITY — Workflow Search (AFlow-Inspired)
+
+- [x] `GEA-07`: [Backend] **MCTS Workflow Optimizer** — Automated workflow search over operator compositions
+  - **Files**: NEW `proxy-bridge/src/lib/WorkflowOptimizer.ts`
+  - **Research**: AFlow (ICLR 2025 Oral, arXiv:2410.10762) — reformulates workflow as code-represented graph searched via MCTS. Achieves 5.7% avg improvement over SOTA, enabling smaller models to beat GPT-4o at 4.55% cost.
+  - **Description**: Implement a lightweight MCTS-style search over agentic workflow *operators* (predefined composable patterns):
+    - **Operators** (from AFlow): `Ensemble` (run prompt N times → LLM vote), `ReviewRevise` (generate → critique → refine, up to 3 rounds), `Sequential` (chain tools A→B→C), `Parallel` (fan-out then aggregate).
+    - **MCTS tree**: each node = a complete workflow configuration (operator composition + tool priority hints). UCB1 selection: `score + C × √(ln(N)/n)`.
+    - **Evaluation**: run a small test task against each candidate workflow, score by success. Successful workflows stored as candidates in ExperienceArchive.
+    - **Trigger**: run after GEA-03 reflection, during low-activity periods (HeartbeatService idle cycles). Max 5 MCTS rollouts per cycle to limit cost.
+    - **Output**: best operator composition merged into `evolved-config.json` `workflowOperators` field. `AutonomousRunner` reads and applies operator wrapping around LLM calls.
+  - **Worker**: BACKEND
+
+### 🟢 LOW PRIORITY — Frontend Observability
+
+- [x] `GEA-08`: [Frontend] **Evolution Dashboard Panel** — Visualize agent evolution history and directives
+  - **Files**: NEW `dashboard/src/components/evolution/EvolutionPanel.tsx`, `dashboard/src/components/evolution/AgentArchiveList.tsx`
+  - **Description**: New sidebar panel ("Evolution" tab) with three sections:
+    1. **Agent Archive**: table of recent sessions from `GET /api/experience-archive`, columns: Session ID, Date, Performance, Novelty, Combined Score, Tools Used count. Sortable.
+    2. **Current Directives**: renders `.queenbee/evolution-directives.json` — shows `workflowDirectives`, `toolPreferences`, `avoidPatterns` as styled lists with category badges.
+    3. **Evolved Config**: shows active `evolved-config.json` patches applied to current project — `systemPromptAppend` in a code block, tool order hints as ordered list.
+  - Wire via new socket event `experience:scored` (GEA-02) to live-update scores as sessions end.
+  - **Worker**: FRONTEND
+
+---
+
+## 🔬 PHASE 17: NEXT-GEN AGENT INTELLIGENCE
+> **Goal**: Implement the top 5 findings from a parallel research survey of 28 papers adjacent to GEA (Feb 2026). Each task is ranked by implementability × impact. Research sources: SWE-Pruner (arXiv:2601.16746), ContextEvolve (arXiv:2602.02597), Huxley-Godel Machine (arXiv:2510.21614), DecentLLMs (arXiv:2507.14928), A-MEM (arXiv:2502.12110), MAGMA (arXiv:2601.03236), MAGELLAN (arXiv:2502.07709), Self-Evolving Agents Survey (arXiv:2508.07407), ICML Position Paper (arXiv:2506.05109).
+
+### 🔴 HIGH PRIORITY
+
+- [x] `P17-01`: [Backend] **Goal-Conditioned Context Pruning** — Semantic relevance-based message pruning
+  - **Files**: `proxy-bridge/src/lib/ContextCompressor.ts`
+  - **Research**: SWE-Pruner (arXiv:2601.16746) + ContextEvolve (arXiv:2602.02597). 20–40% token reduction, <1% performance degradation.
+  - **Description**: Augment `ContextCompressor` with a goal-conditioned relevance pass after the existing positional truncation. When an agent starts a subtask, it declares a concise goal description (e.g., "Fix race condition in TaskManager.claimTask()"). The compressor scores each retained message segment against the goal using cosine similarity on lightweight embeddings (or an LLM-scored relevance call for the first N segments). Segments below threshold are replaced with `[pruned: low relevance to current goal]`. Two-pass compression: (1) existing positional/deduplication pass, (2) goal-conditioned relevance pass.
+  - **Key method**: `ContextCompressor.pruneByGoal(messages, goalDescription, threshold=0.3)` — called from `AutonomousRunner` after each subtask completion when goal can be extracted from the `<plan>` block.
+  - **Fallback**: if no goal description is available, skip goal-pass and use existing compressor unchanged.
+  - **Worker**: BACKEND
+
+- [x] `P17-02`: [Backend] **Geometric Median Consensus Aggregation** — Byzantine-robust debate scoring
+  - **Files**: `proxy-bridge/src/lib/Roundtable.ts`, `proxy-bridge/src/lib/ProposalService.ts`
+  - **Research**: DecentLLMs (arXiv:2507.14928). Geometric Median (GM) via Weiszfeld's algorithm is Byzantine-resistant with >50% honest agents (vs. classical 2/3 threshold).
+  - **Description**: Replace mean/majority aggregation in QueenBee's Free-MAD debate and Roundtable consensus with Geometric Median aggregation. When multiple evaluators score a proposal (0–100 in the existing system), aggregate using GM instead of average. Weiszfeld's algorithm converges in ~50 iterations:
+    ```
+    guess = mean of scores (init)
+    for 50 iterations:
+      weights[i] = 1 / dist(score[i], guess)   (1e10 if dist < 1e-10)
+      guess = weighted_mean(scores, weights)
+    ```
+  - Add `geometricMedian(scores: number[][]): number[]` as a utility in a new `proxy-bridge/src/lib/consensus.ts` file, wire into `ProposalService.judgeProposal()` and any Roundtable aggregation steps.
+  - **Why**: QueenBee's ByzantineDetector catches individual agent faults. GM aggregation ensures that even during partial-Byzantine conditions (e.g., 40% of evaluators are OPEN-state faulty), the consensus score is not distorted.
+  - **Worker**: BACKEND
+
+- [x] `P17-03`: [Backend] **Clade-Metaproductivity (CMP) Selection** — Lineage-aware parent agent selection
+  - **Files**: `proxy-bridge/src/lib/ExperienceArchive.ts`, `proxy-bridge/src/lib/GEAReflection.ts`
+  - **Research**: Huxley-Godel Machine (arXiv:2510.21614). HGM showed that selecting by *descendant potential* outperforms selecting by current score while using less compute.
+  - **Description**: Add a `cmBonus` field to `ArchiveEntry` (default 0). When a new session is archived and its `agentId` traces back to a parent session (via a new `parentSessionId` field), update the parent's `cmBonus` = average delta of descendant `combinedScore` vs parent's `combinedScore`. Modify `GEAReflection.reflect()` to select top-K parents using the CMP-weighted score: `0.6 × combinedScore + 0.3 × cmBonus + 0.1 × noveltyScore` instead of raw `combinedScore`. Add `parentSessionId?: string` to `ArchiveEntry` — set by `AutonomousRunner` when a session is spawned from a worker (carry `parentThreadId` through).
+  - **Expected impact**: The swarm evolves toward agents with high *future* potential, not just current performance — avoids local optima.
+  - **Worker**: BACKEND
+
+### 🟠 MEDIUM PRIORITY
+
+- [x] `P17-04`: [Backend] **Semantic Graph Memory (A-MEM / MAGMA)** — Link-aware memory store
+  - **Files**: `proxy-bridge/src/lib/MemoryStore.ts`
+  - **Research**: A-MEM (arXiv:2502.12110, NeurIPS 2025) + MAGMA (arXiv:2601.03236). A-MEM: Zettelkasten-style semantic links between memories. MAGMA: 4 orthogonal graph views (semantic, temporal, causal, entity). 45.5% higher reasoning accuracy, 95% token reduction on long-context benchmarks.
+  - **Description**: Upgrade `MemoryStore` to maintain a semantic link graph alongside the flat storage:
+    1. **On insert**: after storing a new memory entry, run a link analysis pass — LLM-generate keywords+tags, then compute cosine similarity against last 50 entries. Any entry with similarity >0.75 gets a bidirectional semantic link.
+    2. **Temporal links**: automatically link each new memory to the 3 most recent memories (temporal adjacency).
+    3. **Causal links**: if a new memory's content contains phrases like "because", "caused by", "as a result of", or references a past error, attempt to link to memories matching the referenced cause.
+    4. **Graph retrieval**: add `MemoryStore.getWithLinks(id)` → returns the memory + its linked memories (1-hop traversal). Update `read_memory` tool to use graph traversal when `depth > 0` is specified.
+  - **Schema change**: add `semanticLinks: string[]`, `temporalLinks: string[]`, `causalLinks: string[]` to the `MemoryEntry` type.
+  - **Worker**: BACKEND
+
+- [x] `P17-05`: [Backend] **Triggered Evolution + Metacognitive Planning** — Performance-adaptive evolution scheduling
+  - **Files**: NEW `proxy-bridge/src/lib/MetacognitivePlanner.ts`, `proxy-bridge/src/lib/AutonomousRunner.ts`, `proxy-bridge/src/lib/HeartbeatService.ts`
+  - **Research**: Self-Evolving Agents Survey (arXiv:2508.07407) — identifies "triggered evolution" as underexplored. ICML Position Paper (arXiv:2506.05109) — intrinsic metacognition requires second-order self-assessment. MAGELLAN (arXiv:2502.07709) — learning progress (LP) as a curriculum signal.
+  - **Description**: Add a `MetacognitivePlanner` that tracks per-task-type success rates and triggers evolution only when LP stagnates:
+    1. **Competence model**: sliding window of last 20 outcomes per task type (detected from task description keywords). Success rate = fraction succeeded. LP = delta between first-half and second-half of window.
+    2. **Trigger condition**: LP ≤ 0.05 for ≥10 attempts on a task type → emit `evolution:triggered` event with `{ taskType, stagnationRate }`.
+    3. **Focused reflection**: GEAReflection's `reflect()` accepts an optional `focusTaskType` param — when triggered, it filters the experience pool to only entries matching that task type, generating targeted directives.
+    4. **HeartbeatService integration**: currently runs reflection on every cycle. Change to: run full reflection only when `MetacognitivePlanner.hasTrigger()` returns true OR every 10 cycles regardless. This saves LLM cost on healthy projects.
+    5. **Second-order reflection**: if a task type triggers 3 times in a row without LP improvement, inject a meta-reflection: "Your reflection strategy for this task type is not working. Analyze WHY your directives are failing and suggest changes to the reflection approach itself."
+  - **Persistence**: `.queenbee/metacognitive-state.json`
+  - **Worker**: BACKEND
+
+### 📚 FURTHER RESEARCH — Future Candidates (not yet scheduled)
+
+> Papers from the Feb 2026 survey not yet assigned to phases. Ranked by future relevance.
+
+- **Agent0** (arXiv:2511.16043) — Coach-athlete co-evolution: a Curriculum agent proposes increasingly hard tasks while an Executor agent solves them. Both evolve together, no human data needed. Relevant for QueenBee's swarm spawn logic.
+- **SWE-RL** (arXiv:2512.18552, Meta FAIR) — Self-play for coding: agent injects bugs of increasing complexity, then repairs them via RL. +10.4 pts on SWE-bench Verified. No human-labeled issues. Possible QueenBee testing harness.
+- **EvoAgentX** (github.com/EvoAgentX/EvoAgentX) — Open-source framework combining AFlow MCTS + DSPy prompt optimization + auto-evaluation in one pipeline. Swap-in optimizer architecture compatible with QueenBee's WorkflowOptimizer.
+- **CP-WBFT** (arXiv:2511.10400) — LLM self-confidence as a 6th Byzantine signal: prompt-side probes (consistency across paraphrases) + decoder-side probes (token probability entropy). Directly extends QueenBee's `ByzantineDetector` with 2 new signals.
+- **EvolveR** (arXiv:2510.16079) — Distills interaction trajectories into generalized strategy principles with RL-weighted retrieval. Complements QueenBee's Reflexion (which keeps flat verbal buffer) with structured principle extraction.
+- **MAGELLAN** (arXiv:2502.07709, ICML 2025) — Learning progress prediction for curriculum agents. LP generalizes to unseen goal types via embedding similarity. Used as the mathematical foundation for P17-05.
+- **Self-Evolving Multi-Agent Networks** (OpenReview:4R71pdPBZp) — Network topology evolution: agents + edges between them are dynamically added/removed based on performance. Meta-level above GEA's fixed group structure. Future QueenBee swarm topology optimization.
+- **AWM: Agent Workflow Memory** (arXiv:2409.07429) — Induces reusable workflow routines from trajectories, stores as indexed memory. +24.6%/+51.1% on Mind2Web/WebArena. Would upgrade QueenBee's MemoryStore with procedural workflow recall.
+- **SEAL** (arXiv:2506.10943) — LLM generates its own finetuning directives (data restructuring + hyperparameters). Relevant if QueenBee integrates local model hosting.
+- **Multi-Agent Evolve** (arXiv:2510.23595) — Proposer/Solver/Judge from a single LLM in a self-play RL loop. +4.54% avg on 22 benchmarks with Qwen2.5-3B. No external data.
+---
+
+## 🐝 PHASE 18: COMPOSIO ORCHESTRATION PATTERNS
+> **Goal**: Adopt key patterns from Composio Agent Orchestrator to enhance QueenBee's agent lifecycle management, activity detection, and PR automation.
+> **Research**: Deep analysis of Composio Agent Orchestrator from `old_docs/agent-orchestrator/`
+> **Priority**: P0 (Critical) → P1 (High) → P2 (Medium)
+
+### 🔴 P0 — LIFECYCLE STATE MACHINE
+
+- [x] `CO-01`: [Backend] **Add Lifecycle States to AutonomousRunner**
+  - **Files**: MODIFY `proxy-bridge/src/lib/AutonomousRunner.ts`
+  - **Description**: Replace simple `starting | running | completed | failed` states with formal state machine from Composio:
+    ```
+    spawning → working → pr_open → ci_failed → review_pending → changes_requested → approved → mergeable → merged
+    ```
+  - **Implementation**:
+    - Add `SessionLifecycleState` enum with all states
+    - Track state transitions in session metadata
+    - Emit lifecycle events on state changes (`session.spawned`, `session.working`, `session.pr_open`, etc.)
+    - Wire into UI via socket events
+  - **Worker**: BACKEND
+  - **Estimate**: 3h
+
+- [x] `CO-02`: [Backend] **Activity Detection via JSONL Introspection**
+  - **Files**: MODIFY `proxy-bridge/src/lib/AutonomousRunner.ts`, NEW `proxy-bridge/src/lib/ActivityDetector.ts`
+  - **Description**: Implement Composio-style activity detection by reading Claude Code's JSONL session files
+  - **Implementation**:
+    - Read `~/.claude/projects/{encoded-path}/*.jsonl`
+    - Parse last entry for activity type: `user`, `tool_use`, `progress` → active; `permission_request` → waiting_input; `error` → blocked
+    - Detect `idle` when no new entries for >5 minutes
+    - States: `active`, `ready`, `idle`, `waiting_input`, `blocked`, `exited`
+    - Emit `activity_state_changed` socket events
+  - **Worker**: BACKEND
+  - **Estimate**: 4h
+
+### 🟠 P1 — REACTIONS & PR AUTOMATION
+
+- [x] `CO-03`: [Backend] **Implement Reactions System**
+  - **Files**: NEW `proxy-bridge/src/lib/ReactionsEngine.ts`, MODIFY `proxy-bridge/src/lib/PolicyStore.ts`
+  - **Description**: Composio-style automatic responses to events
+  - **Implementation**:
+    ```yaml
+    reactions:
+      ci-failed:
+        auto: true
+        action: send-to-agent
+        retries: 3
+        escalateAfter: 30m
+      changes-requested:
+        auto: true
+        action: send-to-agent
+        escalateAfter: 1h
+      approved-and-green:
+        auto: true
+        action: auto-merge
+    ```
+    - Add reactions config to PolicyStore
+    - ReactionsEngine listens to lifecycle events
+    - Actions: `send-to-agent` (forward details to worker), `notify` (alert human), `auto-merge`
+    - Escalation: after N retries or time threshold
+  - **Worker**: BACKEND
+  - **Estimate**: 4h
+
+- [x] `CO-04`: [Backend] **PR Lifecycle Polling**
+  - **Files**: MODIFY `proxy-bridge/src/lib/LifecycleManager.ts` (or new file), MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`
+  - **Description**: Track PR status, CI checks, and reviews via GitHub API
+  - **Implementation**:
+    - Poll PR state on lifecycle tick (every 30s)
+    - Track: PR exists?, CI status (passing/failing), review status (approved/changes_requested), merge readiness
+    - Update session lifecycle state based on PR state
+    - Detect when workers create PRs via PostToolUse hooks or GitHub API
+  - **Worker**: BACKEND
+  - **Estimate**: 3h
+
+- [x] `CO-05`: [Backend] **PostToolUse Metadata Auto-Update Hooks**
+  - **Files**: NEW `proxy-bridge/src/lib/MetadataHooks.ts`, MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`
+  - **Description**: Auto-update session metadata when agents run git/gh commands
+  - **Implementation**:
+    - Intercept `gh pr create` → update `pr` and `status` in metadata
+    - Intercept `git checkout -b` / `git switch -c` → update `branch`
+    - Intercept `gh pr merge` → update `status` to `merged`
+    - Store metadata in flat key=value files in session directory
+  - **Worker**: BACKEND
+  - **Estimate**: 2h
+
+### 🟡 P2 — ENHANCED ORCHESTRATION
+
+- [x] `CO-06`: [Backend] **Auto-Merge Capability**
+  - **Files**: MODIFY `proxy-bridge/src/lib/ReactionsEngine.ts`, MODIFY `proxy-bridge/src/lib/ForgeAdapter.ts`
+  - **Description**: Automatically merge PRs when approved + CI passes
+  - **Implementation**:
+    - In ReactionsEngine, when state reaches `mergeable` and reaction `approved-and-green.auto` is true
+    - Call GitHub/GitLab API to merge
+    - Emit `merge.completed` event
+    - Handle merge conflicts gracefully (notify human)
+  - **Worker**: BACKEND
+  - **Estimate**: 2h
+
+- [x] `CO-07`: [Backend] **Git Worktree Session Manager**
+  - **Files**: MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`, NEW `proxy-bridge/src/lib/SessionWorktreeManager.ts`
+  - **Description**: Adopt Composio's worktree-based isolation pattern
+  - **Implementation**:
+    - Ensure each session has isolated git worktree
+    - Hash-based directory naming to prevent collisions: `{hash}-{projectId}/worktrees/{sessionId}/`
+    - Proper cleanup on session termination
+    - Archive completed sessions
+  - **Worker**: BACKEND
+  - **Estimate**: 2h
+
+### 🟢 P3 — FUTURE ENHANCEMENTS
+
+- [ ] `CO-08`: [Backend] **Plugin Architecture (8-Slot System)**
+  - **Files**: NEW `proxy-bridge/src/lib/plugins/`
+  - **Description**: Consider adopting Composio's plugin pattern for swappable abstractions (Runtime, Agent, Workspace, Tracker, SCM, Notifier, Terminal, Lifecycle)
+  - **Note**: Lower priority — QueenBee's current tool-based approach works well. This is for future extensibility.
+  - **Worker**: BACKEND
+

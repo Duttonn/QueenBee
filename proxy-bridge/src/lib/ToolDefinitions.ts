@@ -95,14 +95,24 @@ export const AGENT_TOOLS = [
     type: 'function',
     function: {
       name: 'read_memory',
-      description: 'Read the shared project memory. Can read the whole summary or a specific category to save tokens.',
+      description: 'Read the shared project memory. Can read the whole summary or a specific category to save tokens. If you have a specific memory entry ID (e.g. from teach_agent), pass it as `id` to retrieve that entry along with its semantically, temporally, and causally linked entries.',
       parameters: {
         type: 'object',
         properties: {
-          category: { 
-            type: 'string', 
+          category: {
+            type: 'string',
             enum: ['architecture', 'conventions', 'knowledge', 'issues'],
-            description: 'Optional: filter by a specific section.' 
+            description: 'Optional: filter by a specific section (reads MEMORY.md).'
+          },
+          id: {
+            type: 'string',
+            description: 'Optional: a specific MemoryStore entry UUID. When provided, returns this entry plus its graph-linked context (semantic, temporal, causal neighbors).'
+          },
+          depth: {
+            type: 'integer',
+            minimum: 0,
+            maximum: 2,
+            description: 'Graph traversal depth when using `id`. 0 = only the entry itself, 1 = entry + direct neighbors (default). Max 2.'
           }
         }
       }
@@ -314,6 +324,153 @@ export const AGENT_TOOLS = [
           required: ['targetAgent', 'query', 'reason']
         }
       }
+    },
+
+  // ============== LS-01: Work Environment ==============
+  {
+    type: 'function',
+    function: {
+      name: 'set_work_environment',
+      description: 'Lock which files this task is allowed to modify. Call this before starting work to prevent scope drift. Other agents cannot safely write to these files while you have them scoped.',
+      parameters: {
+        type: 'object',
+        properties: {
+          taskId: { type: 'string', description: 'Task ID you are working on (e.g. "FEAT-02").' },
+          files: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'File paths or glob patterns allowed (e.g. "src/auth/**/*.ts").'
+          },
+          notes: { type: 'string', description: 'Why this scope was chosen.' }
+        },
+        required: ['taskId', 'files']
+      }
     }
+  },
+
+  // ============== LS-02: Findings Blackboard ==============
+  {
+    type: 'function',
+    function: {
+      name: 'write_finding',
+      description: 'Save a structured research finding to the project knowledge base (.queenbee/findings.json). Use this instead of chat_with_team when you want findings to be searchable and persistent.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Short title for the finding.' },
+          content: { type: 'string', description: 'The detailed finding content.' },
+          taskId: { type: 'string', description: 'Task this finding relates to.' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'Tags for filtering (e.g. ["security", "auth"]).' },
+          confidence: { type: 'number', description: 'Your confidence in this finding (0-1). Default 0.8.' }
+        },
+        required: ['title', 'content']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_findings',
+      description: 'Query the structured findings knowledge base. Filter by taskId, tags, or get all recent findings.',
+      parameters: {
+        type: 'object',
+        properties: {
+          taskId: { type: 'string', description: 'Filter by task ID.' },
+          agentId: { type: 'string', description: 'Filter by agent that wrote the finding.' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'Filter by tags (OR match).' },
+          limit: { type: 'number', description: 'Max findings to return. Default 20.' }
+        }
+      }
+    }
+  },
+
+  // ============== LS-03: Swarm Context ==============
+  {
+    type: 'function',
+    function: {
+      name: 'read_swarm_context',
+      description: 'Get a unified snapshot of the swarm state in one call: mission, task counts, recent roundtable messages, top memories, and open proposals. Use this to ground yourself at the start of a session instead of making 4+ separate calls.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+
+  // ============== LS-04: Proposal Debate ==============
+  {
+    type: 'function',
+    function: {
+      name: 'challenge_proposal',
+      description: 'Challenge a pending proposal as Devil\'s Advocate. Provide specific risks, unresolved questions, and severity. This starts the Free-MAD debate cycle before a judge finalizes the outcome.',
+      parameters: {
+        type: 'object',
+        properties: {
+          proposalId: { type: 'string', description: 'ID of the proposal to challenge.' },
+          risks: { type: 'array', items: { type: 'string' }, description: 'Specific failure modes (not vague — e.g. "XSS via localStorage").' },
+          questions: { type: 'array', items: { type: 'string' }, description: 'Unresolved assumptions that need answers.' },
+          severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'], description: 'Overall severity of the challenge.' }
+        },
+        required: ['proposalId', 'risks', 'questions', 'severity']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'judge_proposal',
+      description: 'Judge a proposal with a confidence score. Determines the outcome: ≥90=ship, ≥80=approved, ≥70=mutation_required, ≥60=mutation_major, <60=rejected. stressor is REQUIRED if confidence < 80.',
+      parameters: {
+        type: 'object',
+        properties: {
+          proposalId: { type: 'string', description: 'ID of the proposal to judge.' },
+          confidence: { type: 'number', description: 'Your confidence score 0-100.' },
+          reasoning: { type: 'string', description: 'Your reasoning for this score.' },
+          stressor: { type: 'string', description: 'REQUIRED if confidence < 80. Specific actionable concern (e.g. "No error handling on DB disconnect").' }
+        },
+        required: ['proposalId', 'confidence', 'reasoning']
+      }
+    }
+  },
+
+  // ============== LS-07: Autonomous Recovery ==============
+  {
+    type: 'function',
+    function: {
+      name: 'request_help',
+      description: 'Broadcast a help request to the roundtable when you are stuck. Use after 3 failed attempts. Teammates with the needed capability will respond. Do NOT use for first attempt.',
+      parameters: {
+        type: 'object',
+        properties: {
+          problem: { type: 'string', description: 'Exactly what you are stuck on.' },
+          context: { type: 'string', description: 'What you have already tried.' },
+          capability_needed: { type: 'string', description: 'Skill or knowledge needed (e.g. "JWT cryptography", "CSS grid").' },
+          urgency: { type: 'string', enum: ['low', 'medium', 'high'], description: 'How urgently you need help.' }
+        },
+        required: ['problem', 'capability_needed']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'escalate_to_expert',
+      description: 'Route a specific problem to a specialist agent type. Use when you need deep domain expertise beyond your current capabilities.',
+      parameters: {
+        type: 'object',
+        properties: {
+          expert_type: {
+            type: 'string',
+            enum: ['UI_BEE', 'LOGIC_BEE', 'DATA_BEE', 'SECURITY_BEE', 'ARCHITECT_BEE'],
+            description: 'Type of specialist to route to.'
+          },
+          problem: { type: 'string', description: 'Detailed description of the problem.' },
+          files_involved: { type: 'array', items: { type: 'string' }, description: 'Files relevant to the problem.' },
+          context: { type: 'string', description: 'What you have tried so far.' }
+        },
+        required: ['expert_type', 'problem']
+      }
+    }
+  }
   ];
   

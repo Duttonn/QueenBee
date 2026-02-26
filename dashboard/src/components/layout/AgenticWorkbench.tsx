@@ -22,6 +22,7 @@ import {
   Sparkles,
   Copy,
   Layers,
+  Dna,
   Eye,
   Monitor,
   X,
@@ -360,6 +361,7 @@ interface AgenticWorkbenchProps {
   onModeChange: (mode: 'local' | 'worktree' | 'cloud') => void;
   activeProject: any;
   onToggleInspector: () => void;
+  onToggleEvolution?: () => void;
   onToggleTerminal?: () => void;
   onToggleDiff?: () => void;
   onSendMessage: (content: string) => void;
@@ -533,6 +535,7 @@ interface AgenticWorkbenchProps {
   onModeChange,
   activeProject,
   onToggleInspector,
+  onToggleEvolution,
   onToggleTerminal,
   onToggleDiff,
   onSendMessage,
@@ -1089,6 +1092,14 @@ interface AgenticWorkbenchProps {
             title="Deep Inspector (React Tree)"
           >
             <Layers size={18} />
+          </button>
+
+          <button
+            onClick={onToggleEvolution}
+            className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-500 hover:text-violet-600 transition-all"
+            title="Evolution Panel (GEA)"
+          >
+            <Dna size={18} />
           </button>
 
           <button
