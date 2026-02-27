@@ -21,7 +21,9 @@ import {
   Monitor,
   Check,
   Mic,
-  File as FileIcon
+  File as FileIcon,
+  Target,
+  Command
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -60,6 +62,9 @@ import SkillsManager from './SkillsManager';
 import AutomationDashboard from './AutomationDashboard';
 import XtermTerminal from './XtermTerminal';
 import RoundtablePanel from '../agents/RoundtablePanel';
+import LearningVelocityPanel from '../evolution/LearningVelocityPanel';
+import DeepInspector from '../inspector/DeepInspector';
+import BrowserPanel from '../navigator/BrowserPanel';
 
 const MentionDropdown = ({ files, selectedIndex, onSelect }: { files: string[], selectedIndex: number, onSelect: (f: string) => void }) => {
   // QB-02: Include system commands in the dropdown
@@ -126,11 +131,36 @@ interface ComposerBarProps {
   swarmPhase?: 'plan' | 'prompts' | 'launch' | null;
 }
 
+// ─── Slash Command types ───────────────────────────────────────────────────────
+interface SlashCommand {
+  name: string;
+  description: string;
+}
+
+// ─── Element chip (from BrowserPanel picker) ──────────────────────────────────
+const ElementChip = ({ selector, onRemove }: { selector: string; onRemove: () => void }) => (
+  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-[10px] font-bold text-indigo-700 uppercase tracking-wider group">
+    <Target size={9} className="text-indigo-400" />
+    <span className="max-w-[140px] truncate font-mono normal-case">{selector}</span>
+    <button onClick={onRemove} className="p-0.5 hover:bg-indigo-100 rounded-md transition-colors">
+      <X size={9} />
+    </button>
+  </div>
+);
+
 const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onModeChange, availableModels, selectedModel, onModelSelect, composerMode, onComposerModeChange, projectFiles, onAttach, pendingFiles = [], onRemoveFile, planWaiting, onApprovePlan, onRevisePlan, swarmPhase }: ComposerBarProps) => {
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [mentionSearch, setMentionSearch] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // ── Slash command state ───────────────────────────────────────────────────
+  const [slashSearch, setSlashSearch] = useState<string | null>(null);
+  const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
+  const [slashIndex, setSlashIndex] = useState(0);
+
+  // ── Element picker chip ───────────────────────────────────────────────────
+  const [pickedElement, setPickedElement] = useState<{ selector: string; html: string } | null>(null);
 
   const filteredFiles = React.useMemo(() => {
     if (mentionSearch === null) return [];
@@ -155,6 +185,46 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
     setSelectedIndex(0);
   }, [mentionSearch]);
 
+  // ── Slash command fetch ────────────────────────────────────────────────────
+  const { selectedProjectId, projects: hiveProjects } = useHiveStore();
+  const activeProjectForSlash = hiveProjects.find((p: any) => p.id === selectedProjectId);
+
+  useEffect(() => {
+    setSlashIndex(0);
+    if (slashSearch === null) {
+      setSlashCommands([]);
+      return;
+    }
+    const projectPath = activeProjectForSlash?.path;
+    const params = new URLSearchParams({ prefix: slashSearch });
+    if (projectPath) params.set('projectPath', projectPath);
+
+    fetch(`${API_BASE}/api/slash-commands?${params.toString()}`)
+      .then(r => r.ok ? r.json() : [])
+      .then((cmds: SlashCommand[]) => setSlashCommands(cmds))
+      .catch(() => setSlashCommands([]));
+  }, [slashSearch, activeProjectForSlash?.path]);
+
+  // ── Element picker event listener ──────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { selector: string; html: string };
+      setPickedElement(detail);
+    };
+    window.addEventListener('queenbee:element-picked', handler);
+    return () => window.removeEventListener('queenbee:element-picked', handler);
+  }, []);
+
+  const handleSelectSlashCommand = (cmd: SlashCommand) => {
+    // Replace the /... prefix in the input with the full command name
+    const lastSlashIndex = value.lastIndexOf('/');
+    const newValue = value.substring(0, lastSlashIndex) + `/${cmd.name} `;
+    onChange(newValue);
+    setSlashSearch(null);
+    setSlashCommands([]);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  };
+
   const handleSelectFile = (file: string) => {
     if (mentionSearch === null) return;
     const lastAtIndex = value.lastIndexOf('@');
@@ -168,7 +238,7 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       const scrollHeight = textareaRef.current.scrollHeight;
-      const initialHeight = 44; 
+      const initialHeight = 44;
       const maxHeight = initialHeight * 3;
       textareaRef.current.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
     }
@@ -180,8 +250,19 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
 
     const cursorPosition = e.target.selectionStart;
     const textBeforeCursor = val.substring(0, cursorPosition);
+
+    // ── Slash command detection (must be at start of input or after whitespace) ──
+    // Pattern: / at start of line, or preceded by a whitespace character
+    const slashMatch = textBeforeCursor.match(/(^|\s)\/([\w-]*)$/);
+    if (slashMatch) {
+      setSlashSearch(slashMatch[2] ?? '');
+      setMentionSearch(null);
+      return;
+    }
+    setSlashSearch(null);
+
+    // ── @ mention detection ──
     const lastAtIndex = textBeforeCursor.lastIndexOf('@');
-    
     if (lastAtIndex !== -1) {
       const textAfterAt = textBeforeCursor.substring(lastAtIndex + 1);
       // Only show if @ is followed by non-whitespace and is the start of a "word"
@@ -194,6 +275,32 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Slash command navigation
+    if (slashSearch !== null && slashCommands.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSlashIndex(prev => (prev + 1) % slashCommands.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSlashIndex(prev => (prev - 1 + slashCommands.length) % slashCommands.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        handleSelectSlashCommand(slashCommands[slashIndex]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setSlashSearch(null);
+        setSlashCommands([]);
+        return;
+      }
+    }
+
+    // @ mention navigation
     if (mentionSearch !== null && filteredFiles.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -246,11 +353,41 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
 
       <div className="bg-white border border-zinc-200 rounded-3xl shadow-2xl flex flex-col relative">
         {mentionSearch !== null && filteredFiles.length > 0 && (
-          <MentionDropdown 
-            files={filteredFiles} 
-            selectedIndex={selectedIndex} 
-            onSelect={handleSelectFile} 
+          <MentionDropdown
+            files={filteredFiles}
+            selectedIndex={selectedIndex}
+            onSelect={handleSelectFile}
           />
+        )}
+
+        {/* Slash command dropdown */}
+        {slashSearch !== null && slashCommands.length > 0 && (
+          <div className="absolute bottom-full left-0 mb-2 w-72 bg-white border border-zinc-200 shadow-2xl rounded-2xl overflow-hidden z-[70] py-1">
+            <div className="px-3 py-2 text-[9px] font-black text-zinc-400 uppercase tracking-widest border-b border-zinc-50 mb-1 flex items-center gap-1.5">
+              <Command size={10} />
+              Commands
+            </div>
+            <div className="max-h-48 overflow-y-auto">
+              {slashCommands.map((cmd, idx) => (
+                <button
+                  key={cmd.name}
+                  onClick={() => handleSelectSlashCommand(cmd)}
+                  className={`w-full text-left px-3 py-2 text-xs font-medium transition-all flex items-center gap-3 ${
+                    idx === slashIndex
+                      ? 'bg-zinc-900 text-white shadow-lg'
+                      : 'text-zinc-600 hover:bg-zinc-50'
+                  }`}
+                >
+                  <span className={`font-bold font-mono ${idx === slashIndex ? 'text-blue-300' : 'text-zinc-800'}`}>
+                    /{cmd.name}
+                  </span>
+                  <span className={`text-[10px] truncate ${idx === slashIndex ? 'text-zinc-300' : 'text-zinc-400'}`}>
+                    {cmd.description}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
 
           {/* Plan Approval Bar */}
@@ -300,13 +437,19 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
 
           {/* Top: Input Area */}
         <div className="px-4 pt-4 pb-2">
-          {pendingFiles.length > 0 && (
+          {(pendingFiles.length > 0 || pickedElement) && (
             <div className="flex flex-wrap gap-2 mb-3">
+              {pickedElement && (
+                <ElementChip
+                  selector={pickedElement.selector}
+                  onRemove={() => setPickedElement(null)}
+                />
+              )}
               {pendingFiles.map(file => (
                 <div key={file.name} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-100 border border-zinc-200 text-[10px] font-bold text-zinc-600 uppercase tracking-wider group">
                   <FileIcon size={10} className="text-zinc-400" />
                   <span className="max-w-[150px] truncate">{file.name}</span>
-                  <button 
+                  <button
                     onClick={() => onRemoveFile?.(file.name)}
                     className="p-0.5 hover:bg-zinc-200 rounded-md transition-colors"
                   >
@@ -484,6 +627,9 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const [isDiffOpen, setIsDiffOpen] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [isEvolutionOpen, setIsEvolutionOpen] = useState(false);
+  const [isLearningVelocityOpen, setIsLearningVelocityOpen] = useState(false);
+  const [isDeepInspectorOpen, setIsDeepInspectorOpen] = useState(false);
+  const [isBrowserOpen, setIsBrowserOpen] = useState(false);
   const [isCommitModalOpen, setIsCommitModalOpen] = useState(false);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -1051,6 +1197,9 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                     setActiveThread={setActiveThread}
                     onToggleInspector={() => setIsInspectorOpen(prev => !prev)}
                     onToggleEvolution={() => setIsEvolutionOpen(prev => !prev)}
+                    onToggleLearningVelocity={() => setIsLearningVelocityOpen(prev => !prev)}
+                    onToggleDeepInspector={() => setIsDeepInspectorOpen(prev => !prev)}
+                    onToggleBrowser={() => setIsBrowserOpen(prev => !prev)}
                     onToggleTerminal={() => setIsTerminalOpen(prev => !prev)}
                     onToggleDiff={() => setIsDiffOpen(prev => !prev)}
                     onRun={handleRunProject}
@@ -1124,6 +1273,9 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
 
         <InspectorPanel isOpen={isInspectorOpen} onClose={() => setIsInspectorOpen(false)} />
         <EvolutionPanel isOpen={isEvolutionOpen} onClose={() => setIsEvolutionOpen(false)} />
+        <LearningVelocityPanel isOpen={isLearningVelocityOpen} onClose={() => setIsLearningVelocityOpen(false)} />
+        <DeepInspector isOpen={isDeepInspectorOpen} onClose={() => setIsDeepInspectorOpen(false)} />
+        <BrowserPanel isOpen={isBrowserOpen} onClose={() => setIsBrowserOpen(false)} />
 
         <AnimatePresence>
           {isTerminalOpen && (

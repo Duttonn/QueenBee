@@ -44,27 +44,31 @@ With QueenBee you can. Agents commit with meaningful messages, push to your bran
 
 ## How it compares
 
-| Feature | QueenBee | Codex | Cursor | Copilot | Devin | Claude Code |
-|---|---|---|---|---|---|---|
-| Runs on your machine | Yes | No — cloud sandbox, no internet | Partial | No | No — cloud only | No |
-| Session memory (remembers your codebase) | Yes — every session | No | No | No | No | No |
-| Parallel agents | Yes — multiple at once | No | No | No | No | No |
-| Predictable flat billing | Yes — no credit games | Bundled in ChatGPT | Credits (billing controversies in 2025) | Request-based | Pay-per-ACU, $9/hr+ | Rate-limited windows |
-| Agent self-recovery | Yes — auto-recovers when stuck | No | No | No | No | No |
-| Gets smarter over time | Yes — learns your codebase | No | No | No | No | No |
-| Work on 3 features at once (worktrees) | Yes — separate git branches | No | No | No | No | No |
-| Command safety controls | Yes — full policy + human approval | No | No | No | No | No |
-| Price | From $49/mo | Bundled in Plus ($20) / Pro ($200) | From $20/mo | From $10/mo | ~$9/hr (usage) | $20–$200/mo |
+| Feature | QueenBee | Cline | claude-flow | Codex | Cursor | Devin | Claude Code |
+|---|---|---|---|---|---|---|---|
+| Runs on your machine | Yes | Yes | No | No — cloud sandbox | Partial | No — cloud only | No |
+| **Agents self-evolve over time** | **Yes — GEA: every session makes agents smarter** | **No** | **No** | No | No | No | No |
+| **Cross-session experience archive** | **Yes — .qbx bundles, shareable** | **No** | **No** | No | No | No | No |
+| **Byzantine fault detection** | **Yes — 5-signal circuit breaker** | **No** | **No** | No | No | No | No |
+| **Consensus voting on risky changes** | **Yes — Weiszfeld geometric median** | **No** | **No** | No | No | No | No |
+| Parallel agents | Yes — self-healing swarms | Yes (Feb 2026) | Yes | No | No | No | No |
+| Predictable flat billing | Yes — no credit games | FREE (open source) | FREE | Bundled in ChatGPT | Credits | Pay-per-ACU, $9/hr+ | Rate-limited |
+| GUI + visual diff | Yes | VSCode only | No | No | Yes | No | No |
+| Price | From $29/mo | FREE | FREE | Bundled | From $20/mo | ~$9/hr | $20–$200/mo |
 
-**Codex (OpenAI)** runs in a cloud sandbox with the internet disabled during task execution — it can't fetch docs, hit your staging API, or do anything that requires a network call. Tasks are async, not interactive. Your code leaves your machine and you can't watch what's happening in real time.
+**The one message:** *"Cline can run agents in parallel. claude-flow can orchestrate them. QueenBee's agents learn from each other and get smarter every session — nothing else does this."*
 
-**Cursor** is a phenomenal IDE companion — but it's one agent with no memory. Every session starts cold. And in June 2025 they silently cut the effective number of requests users were getting and had to issue a public apology when the community noticed. Credit-based billing means your monthly budget is a black box.
+**Cline** (5M+ VSCode installs, free, open-source) launched native subagents in February 2026. It is the biggest free threat. QueenBee's answer: GEA self-evolution. Cline agents are stateless — every run starts cold. QueenBee's experience archive compounds. After 30 sessions your QueenBee agents are measurably better; Cline's are not.
 
-**GitHub Copilot** has deep GitHub integration and Copilot Workspace is genuinely useful for turning issues into PRs — but there's no persistent memory, no local-first option, and no autonomous multi-agent capability. Best-in-class at the IDE assistant job; that's a different job than QueenBee.
+**claude-flow** (14,886 stars, actively developed as of Feb 2026) is the closest architectural rival — multi-agent orchestration for Claude. But it has no persistent learning, no experience archive, and no evolutionary directives. It orchestrates agents; QueenBee evolves them.
 
-**Devin** is fully cloud-based. It dropped from $500/mo flat to pay-as-you-go in April 2025, which sounds better until a complex feature bills you $50–200+ in compute time. No local execution, no memory, and you're paying for cloud infrastructure on top of model costs.
+**Codex (OpenAI)** runs in a cloud sandbox with the internet disabled during task execution — it can't fetch docs, hit your staging API, or do anything that requires a network call. Tasks are async, not interactive. Your code leaves your machine.
 
-**Claude Code** has an excellent underlying model but it's a terminal-only tool with no GUI, no visual diff, and tight rate limits on the $20 plan (~45 messages per 5-hour window). It's powerful for developers who live in the terminal and work on one thing at a time. Not built for parallel autonomous work.
+**Cursor** is a phenomenal IDE companion — but it's one agent with no memory. Every session starts cold. Credit-based billing means your monthly budget is a black box.
+
+**Devin** is fully cloud-based. It dropped from $500/mo flat to pay-as-you-go. No local execution, no memory, and you're paying for cloud infrastructure on top of model costs.
+
+**Claude Code** has an excellent underlying model but it's a terminal-only tool with no GUI, no visual diff. It's powerful for developers who live in the terminal. Not built for parallel autonomous work that self-improves.
 
 ---
 

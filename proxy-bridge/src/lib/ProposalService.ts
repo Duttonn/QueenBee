@@ -281,6 +281,125 @@ export class ProposalService {
     return proposals[idx];
   }
 
+  /**
+   * P18-14: Generate-Evaluate-Revise loop.
+   * Runs up to maxRounds of LLM-based evaluation + revision before returning the final proposal.
+   * Integrity check: scores clustering within ±2 of the 90 threshold require concrete justification.
+   *
+   * @param agentId  - proposing agent identifier
+   * @param action   - initial proposal description
+   * @param providerId - LLM provider to use for evaluation
+   * @param options  - { maxRounds, apiKey, model }
+   */
+  async refineWithLoop(
+    agentId: string,
+    action: string,
+    providerId: string,
+    options: { maxRounds?: number; apiKey?: string; model?: string } = {}
+  ): Promise<Proposal> {
+    const maxRounds = options.maxRounds ?? 5;
+    const CONVERGENCE_DELTA = 5; // stop if score changes by less than 5 points
+
+    // Lazy import to avoid circular deps
+    const { unifiedLLMService } = await import('./UnifiedLLMService');
+
+    let currentAction = action;
+    let lastScore = -1;
+    let revisionCount = 0;
+
+    for (let round = 0; round < maxRounds; round++) {
+      // Evaluator LLM call
+      const evalPrompt = `You are a rigorous code proposal evaluator.
+
+Proposal to evaluate:
+${currentAction}
+
+Respond with ONLY a JSON object:
+{
+  "score": <0-100>,
+  "strengths": ["<strength1>", "<strength2>"],
+  "weaknesses": ["<weakness1>", "<weakness2>"],
+  "suggestion": "<one specific, actionable improvement>"
+}
+
+Scoring guide: 90+ = production ready, 80-89 = minor issues, 70-79 = needs work, <70 = major problems.
+Be honest. Do not cluster scores near 90.`;
+
+      let evalResult: { score: number; strengths: string[]; weaknesses: string[]; suggestion: string } | null = null;
+      try {
+        const evalResponse = await unifiedLLMService.chat(
+          providerId,
+          [{ role: 'user', content: evalPrompt }],
+          { model: options.model || 'claude-3-haiku-20240307', maxTokens: 300, temperature: 0.2, apiKey: options.apiKey }
+        );
+        if (evalResponse.content) {
+          evalResult = JSON.parse(evalResponse.content.trim());
+        }
+      } catch (err) {
+        console.warn(`[ProposalService] refineWithLoop eval failed (round ${round + 1}):`, err);
+        break;
+      }
+
+      if (!evalResult) break;
+
+      const score = Math.max(0, Math.min(100, evalResult.score));
+
+      // Integrity check: suspicious clustering near 90 threshold
+      if (Math.abs(score - 90) <= 2 && !evalResult.suggestion.trim()) {
+        console.warn(`[ProposalService] Integrity flag: score ${score} clusters near 90 threshold without concrete justification.`);
+      }
+
+      // Convergence check
+      const delta = Math.abs(score - lastScore);
+      if (lastScore >= 0 && delta < CONVERGENCE_DELTA) {
+        console.log(`[ProposalService] refineWithLoop converged at round ${round + 1} with score ${score} (delta=${delta}).`);
+        lastScore = score;
+        break;
+      }
+
+      lastScore = score;
+
+      // If already good enough (>=80), stop
+      if (score >= 80) {
+        console.log(`[ProposalService] refineWithLoop: score ${score} >= 80 at round ${round + 1}. Stopping.`);
+        break;
+      }
+
+      // Revision LLM call (only if not last round)
+      if (round < maxRounds - 1 && evalResult.suggestion) {
+        try {
+          const revisionPrompt = `You are a proposal author. Revise your proposal based on this feedback:
+
+Current proposal:
+${currentAction}
+
+Evaluator feedback (score: ${score}/100):
+- Weaknesses: ${evalResult.weaknesses.join('; ')}
+- Suggestion: ${evalResult.suggestion}
+
+Provide the revised proposal. Be concise and specific. Do NOT add padding.`;
+
+          const revResponse = await unifiedLLMService.chat(
+            providerId,
+            [{ role: 'user', content: revisionPrompt }],
+            { model: options.model || 'claude-3-haiku-20240307', maxTokens: 400, temperature: 0.3, apiKey: options.apiKey }
+          );
+          if (revResponse.content) {
+            currentAction = revResponse.content.trim();
+            revisionCount++;
+          }
+        } catch (err) {
+          console.warn(`[ProposalService] refineWithLoop revision failed (round ${round + 1}):`, err);
+          break;
+        }
+      }
+    }
+
+    // Submit the final refined proposal
+    const proposal = await this.submit(agentId, currentAction, `Refined over ${revisionCount} revision(s). Final score: ${lastScore}`, lastScore >= 0 ? lastScore : undefined);
+    return proposal;
+  }
+
   /** Returns proposals that have been challenged but not yet judged */
   async getPendingChallenges(): Promise<Proposal[]> {
     const proposals = await this.loadProposals();

@@ -134,6 +134,24 @@ export class CostTracker {
   }
 
   /**
+   * P18-05: Get total cost accumulated by a specific thread/session.
+   * Used for per-session budget enforcement in AgentSession.
+   */
+  async getSessionTotal(threadId: string): Promise<number> {
+    await this.ensureInitialized();
+    const content = await fs.readFile(this.filePath, 'utf-8');
+    const lines = content.split('\n').filter(l => l.trim() !== '');
+    let total = 0;
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line) as CostEntry;
+        if (entry.threadId === threadId) total += entry.cost;
+      } catch { /* skip malformed lines */ }
+    }
+    return total;
+  }
+
+  /**
    * Latency statistics per provider/model (p50, p95, p99).
    */
   async getLatencyStats(range?: { startDate?: string; endDate?: string }): Promise<Record<string, { p50: number; p95: number; p99: number; count: number }>> {

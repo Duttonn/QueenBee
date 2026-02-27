@@ -3,7 +3,6 @@ import path from 'path';
 import { Paths } from './Paths';
 import { AgentEvent } from './EventLog';
 import chokidar from 'chokidar';
-import { ReactionMatrix } from './ReactionMatrix';
 
 export interface Trigger {
   id: string;
@@ -17,6 +16,40 @@ export interface Trigger {
     params: any;
   };
 }
+
+/**
+ * P18-C1: Default triggers (formerly ReactionMatrix). These are always active
+ * and cannot be overridden by triggers.json — they represent system-level reactions.
+ */
+const DEFAULT_TRIGGERS: Trigger[] = [
+  {
+    id: 'default-task_completed-spawn-test',
+    eventPattern: { type: 'task_completed', agentId: 'worker-backend' },
+    reaction: {
+      type: 'spawn_worker',
+      params: {
+        targetAgent: 'worker-test',
+        instructions: 'The backend task was completed. Please run integration tests and verify the changes.',
+      },
+    },
+  },
+  {
+    id: 'default-critical_error-notify',
+    eventPattern: { type: 'critical_error' },
+    reaction: {
+      type: 'notify',
+      params: { message: 'A critical error occurred in the system. Human intervention may be needed.' },
+    },
+  },
+  {
+    id: 'default-proposal_submitted-notify',
+    eventPattern: { type: 'proposal_submitted' },
+    reaction: {
+      type: 'notify',
+      params: { message: 'A new risky action proposal is pending approval.' },
+    },
+  },
+];
 
 export class TriggerEngine {
   private projectPath: string;
@@ -108,26 +141,12 @@ export class TriggerEngine {
   }
 
   private async evaluateEvent(event: AgentEvent) {
-    // Check dynamic triggers from triggers.json
-    for (const trigger of this.triggers) {
+    // Check dynamic triggers from triggers.json + default system triggers (P18-C1)
+    const allTriggers = [...this.triggers, ...DEFAULT_TRIGGERS];
+    for (const trigger of allTriggers) {
       if (this.matches(event, trigger)) {
         await this.executeReaction(trigger, event);
       }
-    }
-
-    // Check static reactions from ReactionMatrix
-    const staticReactions = ReactionMatrix.getReactionsForEvent(event.type, event.agentId, event.data);
-    for (const reaction of staticReactions) {
-      console.log(`[TriggerEngine] Executing static reaction for event ${event.type} (Source: ${event.agentId})`);
-      // Map static reaction to Trigger-like execution
-      await this.executeReaction({
-        id: `static-${event.type}-${Date.now()}`,
-        eventPattern: {},
-        reaction: {
-          type: reaction.reactionType,
-          params: { ...reaction.params, targetAgent: reaction.targetAgent }
-        }
-      }, event);
     }
   }
 

@@ -1,6 +1,5 @@
 import type { IpcMainInvokeEvent } from 'electron';
 const { ipcMain, shell, dialog, BrowserWindow, safeStorage } = require('electron');
-const { exec } = require('child_process');
 const fs = require('fs-extra');
 const path = require('path');
 

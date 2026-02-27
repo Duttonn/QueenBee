@@ -36,11 +36,15 @@ export interface HealthSnapshot {
 
 const STUCK_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes without activity
 const QUEUE_PRESSURE_THRESHOLD = 3;
-const MAX_EVENTS = 200;
 
+/**
+ * P18-C4: Removed 200-event in-memory ring buffer. DiagnosticCollector now
+ * only tracks live session heartbeats (unique value) and delegates historical
+ * event queries to the EventLog JSONL store. recentEvents in getSnapshot()
+ * returns an empty array — callers should query EventLog directly if needed.
+ */
 class DiagnosticCollectorImpl {
   private sessions = new Map<string, SessionHeartbeat>();
-  private events: DiagnosticEvent[] = [];
   private summaryInterval: NodeJS.Timeout | null = null;
 
   /**
@@ -54,7 +58,6 @@ class DiagnosticCollectorImpl {
       startedAt: now,
       stepCount: 0,
     });
-    this.record({ type: 'session_start', threadId, timestamp: now, data: {} });
   }
 
   /**
@@ -72,16 +75,7 @@ class DiagnosticCollectorImpl {
    * Record a session ending.
    */
   sessionEnd(threadId: string): void {
-    const session = this.sessions.get(threadId);
-    if (session) {
-      this.record({
-        type: 'session_end',
-        threadId,
-        timestamp: Date.now(),
-        data: { duration: Date.now() - session.startedAt, steps: session.stepCount },
-      });
-      this.sessions.delete(threadId);
-    }
+    this.sessions.delete(threadId);
   }
 
   /**
@@ -92,7 +86,7 @@ class DiagnosticCollectorImpl {
     const now = Date.now();
     const newEvents: DiagnosticEvent[] = [];
 
-    // Stuck session detection
+    // Stuck session detection (unique value — not replaceable by store queries)
     for (const [threadId, session] of this.sessions) {
       const idleMs = now - session.lastActivityAt;
       if (idleMs > STUCK_THRESHOLD_MS) {
@@ -102,7 +96,6 @@ class DiagnosticCollectorImpl {
           timestamp: now,
           data: { idleMs, lastActivityAt: new Date(session.lastActivityAt).toISOString(), stepCount: session.stepCount },
         };
-        this.record(event);
         newEvents.push(event);
         console.warn(`[Diagnostics] STUCK SESSION detected: ${threadId} (idle ${Math.round(idleMs / 1000)}s)`);
       }
@@ -117,7 +110,6 @@ class DiagnosticCollectorImpl {
           timestamp: now,
           data: { lane, queued: stats.queued, active: stats.active },
         };
-        this.record(event);
         newEvents.push(event);
         console.warn(`[Diagnostics] QUEUE PRESSURE: lane '${lane}' has ${stats.queued} queued items`);
       }
@@ -148,7 +140,7 @@ class DiagnosticCollectorImpl {
       queueStats: getLaneStats(),
       providerHealth: unifiedLLMService.authProfileManager.getAllStats(),
       pendingApprovals: approvalBridge.getPendingCount(),
-      recentEvents: this.events.slice(-50),
+      recentEvents: [], // P18-C4: historical events now delegated to EventLog JSONL
     };
   }
 
@@ -173,12 +165,6 @@ class DiagnosticCollectorImpl {
     }
   }
 
-  private record(event: DiagnosticEvent): void {
-    this.events.push(event);
-    if (this.events.length > MAX_EVENTS) {
-      this.events = this.events.slice(-MAX_EVENTS);
-    }
-  }
 }
 
 export const diagnosticCollector = new DiagnosticCollectorImpl();

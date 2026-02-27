@@ -16,6 +16,9 @@ import { Writable } from 'stream';
 import { EventLog } from './EventLog';
 import { MemoryStore } from './MemoryStore';
 import { PolicyStore } from './PolicyStore';
+import { CompletionGate } from './CompletionGate';
+import { SkillsManager } from './SkillsManager';
+import { IntentClassifier } from './IntentClassifier';
 
 /**
  * Session Lifecycle States (from Composio Agent Orchestrator)
@@ -35,6 +38,7 @@ export enum SessionLifecycleState {
   STUCK = 'stuck',            // Agent inactive for too long
   ERRORED = 'errored',        // Agent hit an error
   KILLED = 'killed',          // Session killed
+  BUDGET_EXCEEDED = 'budget_exceeded', // P18-05: Per-session cost cap hit
 }
 
 /**
@@ -187,6 +191,9 @@ export class AutonomousRunner {
           break;
         case SessionLifecycleState.KILLED:
           this.socket.emit('session.killed', { threadId: this.threadId, timestamp: Date.now() });
+          break;
+        case SessionLifecycleState.BUDGET_EXCEEDED:
+          this.socket.emit('session.budget_exceeded', { threadId: this.threadId, timestamp: Date.now() });
           break;
       }
     }
@@ -742,6 +749,28 @@ If you finish this task, stop and wait for the next command.`;
       result = await this.session!.prompt(retryPrompt, options);
     }
 
+    // P18-02: CompletionGate — run quality checks before declaring DONE
+    // Only applies to worker/solo roles that make file changes (not pure chat turns).
+    if (this.role !== 'architect') {
+      try {
+        const gate = new CompletionGate(this.projectPath, { timeoutMs: 20_000 });
+        const gateResult = await gate.check();
+        if (!gateResult.pass) {
+          console.warn(`[CompletionGate] ${gateResult.blockers.length} blocker(s): ${gateResult.blockers.join('; ')}`);
+          this.sendEvent({
+            type: 'agent_status',
+            data: { status: 'fixing', message: `CompletionGate blockers: ${gateResult.blockers.join('; ')}` }
+          });
+          const gatePrompt = `COMPLETION GATE FAILED — resolve before finishing:\n${gateResult.blockers.map(b => `- ${b}`).join('\n')}\nFix all issues then report done.`;
+          result = await this.session!.prompt(gatePrompt, options);
+        } else {
+          console.log('[CompletionGate] All checks passed.');
+        }
+      } catch (gateErr) {
+        console.warn('[CompletionGate] Check error (non-blocking):', gateErr);
+      }
+    }
+
     return result;
   }
 
@@ -962,7 +991,18 @@ After posting the completion summary, call **report_completion(taskId, status)**
         evolvedDirectives += `\n# AVOID PATTERNS (learned from past failures)\n` +
           evolvedConfig.avoidPatterns.map((p: string) => `- AVOID: ${p}`).join('\n');
       }
+      // P18-12: Inject git history anti-patterns if available
+      if (evolvedConfig?.git_history_lessons && evolvedConfig.git_history_lessons.length > 0) {
+        evolvedDirectives += `\n# GIT HISTORY LESSONS (anti-patterns from past reverts)\n` +
+          evolvedConfig.git_history_lessons.slice(0, 5).map((l: any) => `- AVOID: ${l.antiPattern}`).join('\n');
+      }
     } catch { /* no evolved config yet — skip silently */ }
+
+    // P18-11: SkillsManager — seed defaults and inject last-matched skill if set
+    try {
+      const skillsManager = new SkillsManager(this.projectPath);
+      await skillsManager.ensureDefaults();
+    } catch { /* non-fatal */ }
 
     return `
 ${modeDirective}

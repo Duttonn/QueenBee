@@ -34,6 +34,8 @@ export interface EvolvedConfig {
   lastEvolvedAt: number;
   sourceDirectiveIds: string[];
   version: number;
+  // P18-12: Anti-patterns extracted from git history
+  git_history_lessons?: Array<{ commitHash: string; antiPattern: string; discoveredAt: string }>;
 }
 
 const DIRECTIVES_FILE    = 'evolution-directives.json';

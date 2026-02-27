@@ -19,6 +19,11 @@ export interface FoldedSubtask {
   timestamp: string;
 }
 
+/** Approximate token count: ~4 chars per token */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
 function truncateMessage(msg: LLMMessage, seenErrors: Set<string>): LLMMessage {
   if (msg.role === 'tool' || msg.role === 'user') {
     const content = String(msg.content || '');
@@ -42,6 +47,26 @@ function truncateMessage(msg: LLMMessage, seenErrors: Set<string>): LLMMessage {
   return msg;
 }
 
+/**
+ * P18-08 Pass 1 (Soft Trim): For tool results > SOFT_TRIM_CHARS, keep first HEAD + last TAIL
+ * chars with a "[...N chars omitted...]" marker in the middle.
+ * Preserves the most diagnostically useful parts without losing structural context.
+ */
+function softTrimMessage(msg: LLMMessage): LLMMessage {
+  const SOFT_TRIM_CHARS = 2000; // ~500 tokens
+  const HEAD_CHARS = 400;       // ~100 tokens
+  const TAIL_CHARS = 400;       // ~100 tokens
+
+  if (msg.role !== 'tool') return msg;
+  const content = String(msg.content || '');
+  if (content.length <= SOFT_TRIM_CHARS) return msg;
+
+  const head = content.slice(0, HEAD_CHARS);
+  const tail = content.slice(-TAIL_CHARS);
+  const omitted = content.length - HEAD_CHARS - TAIL_CHARS;
+  return { ...msg, content: `${head}\n[...${omitted} chars omitted...]\n${tail}` };
+}
+
 export class ContextCompressor {
   private foldedHistory: FoldedSubtask[] = [];
   private readonly KEEP_RECENT: number;
@@ -55,6 +80,7 @@ export class ContextCompressor {
    * - Keep last KEEP_RECENT messages in full
    * - Collapse older messages to single-line summaries
    * - Deduplicate repeated error messages
+   * - P18-08: Apply soft-trim to large tool results before collapsing
    */
   processHistory(messages: LLMMessage[]): LLMMessage[] {
     if (messages.length <= this.KEEP_RECENT) return messages;
@@ -62,10 +88,65 @@ export class ContextCompressor {
     const recent = messages.slice(-this.KEEP_RECENT);
     const old = messages.slice(0, -this.KEEP_RECENT);
 
+    // P18-08 Pass 1: soft-trim large tool outputs in older messages first
+    const softTrimmed = old.map(msg => softTrimMessage(msg));
+
     const seenErrors = new Set<string>();
-    const collapsed = old.map(msg => truncateMessage(msg, seenErrors));
+    const collapsed = softTrimmed.map(msg => truncateMessage(msg, seenErrors));
 
     return [...collapsed, ...recent];
+  }
+
+  /**
+   * P18-08 Pass 2 (Hard Clear): Replace ALL non-recent tool results with 1-line summaries.
+   * Called at >75% context pressure. Protected zone: first 3 + last KEEP_RECENT messages.
+   * Returns the compressed messages AND a compression ratio stat.
+   */
+  hardClear(messages: LLMMessage[]): { messages: LLMMessage[]; ratio: number } {
+    const PROTECT_HEAD = 3;
+    const PROTECT_TAIL = this.KEEP_RECENT;
+    const protectTailStart = Math.max(PROTECT_HEAD, messages.length - PROTECT_TAIL);
+
+    let totalChars = 0;
+    let clearedChars = 0;
+
+    const result = messages.map((msg, idx): LLMMessage => {
+      const content = String(msg.content || '');
+      totalChars += content.length;
+
+      // System messages and protected zones: never touch
+      if (msg.role === 'system' || idx < PROTECT_HEAD || idx >= protectTailStart) {
+        return msg;
+      }
+
+      // Hard-clear old tool results
+      if (msg.role === 'tool' && content.length > 100) {
+        const firstLine = content.split('\n')[0].slice(0, 80);
+        const summary = `[HARD_CLEARED: ${firstLine}]`;
+        clearedChars += content.length - summary.length;
+        return { ...msg, content: summary };
+      }
+
+      return msg;
+    });
+
+    return {
+      messages: result,
+      ratio: totalChars > 0 ? clearedChars / totalChars : 0,
+    };
+  }
+
+  /**
+   * P18-08: Estimate total token pressure across all messages.
+   * Returns a 0-1 ratio where 1.0 = estimated context limit reached.
+   * Uses 200k token max context as baseline.
+   */
+  estimateContextPressure(messages: LLMMessage[], contextLimitTokens = 200_000): number {
+    const total = messages.reduce((sum, m) => {
+      const text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content || '');
+      return sum + estimateTokens(text);
+    }, 0);
+    return Math.min(1.0, total / contextLimitTokens);
   }
 
   /**

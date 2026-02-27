@@ -18,13 +18,41 @@ export const AGENT_TOOLS = [
     type: 'function',
     function: {
       name: 'read_file',
-      description: 'Read the content of a file. If the file is large (>200 lines), it returns a summary (line count + symbol map). Use read_file_range for specific windows.',
+      description: 'Read the content of a file. If the file is large (>200 lines), it returns a summary (line count + symbol map). Use read_file_range for specific windows. Pass with_hashes:true to get per-line hashes for use with hashline_edit.',
       parameters: {
         type: 'object',
         properties: {
-          path: { type: 'string', description: 'Relative path to the file.' }
+          path: { type: 'string', description: 'Relative path to the file.' },
+          with_hashes: { type: 'boolean', description: 'If true, return each line annotated as "lineNumber|hash|content" for use with hashline_edit.' }
         },
         required: ['path']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'hashline_edit',
+      description: 'Surgically edit specific lines of a file using content-hash validation. First call read_file with with_hashes:true to get line hashes, then pass those hashes back here. If any hash does not match the current file content, the entire edit is rejected (stale file guard). Much safer than write_file for targeted changes.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Relative path to the file.' },
+          ops: {
+            type: 'array',
+            description: 'List of line edits to apply atomically.',
+            items: {
+              type: 'object',
+              properties: {
+                lineNumber: { type: 'number', description: '1-indexed line number to replace.' },
+                expectedHash: { type: 'string', description: 'The 12-char hash of the current line content (from read_file with_hashes:true).' },
+                newContent: { type: 'string', description: 'Replacement content for the line. Use empty string to delete the line.' }
+              },
+              required: ['lineNumber', 'expectedHash', 'newContent']
+            }
+          }
+        },
+        required: ['path', 'ops']
       }
     }
   },
@@ -41,6 +69,143 @@ export const AGENT_TOOLS = [
           end: { type: 'number', description: 'Ending line number (inclusive).' }
         },
         required: ['path', 'start', 'end']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'init_agents_md',
+      description: 'Generate an AGENTS.md file for a directory by analyzing its source files. Useful for documenting module conventions and context for future agents.',
+      parameters: {
+        type: 'object',
+        properties: {
+          directory: { type: 'string', description: 'Relative path to the directory (default: current directory).' }
+        },
+        required: []
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_workflows',
+      description: 'List available multi-step workflow tools (e.g. test-and-commit, lint-and-fix, full-qa). Use run_workflow to execute one.',
+      parameters: { type: 'object', properties: {}, required: [] }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'run_workflow',
+      description: 'Execute a named multi-step workflow. Use list_workflows first to discover available workflows.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Workflow name (e.g. "test-and-commit", "full-qa", "lint-and-fix").' }
+        },
+        required: ['name']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'session_search',
+      description: 'Search past agent sessions by keyword. Returns ranked excerpts from previous tool calls, results, and agent reasoning. Useful for recalling how a past problem was solved.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Search query (keywords or phrases).' },
+          limit: { type: 'number', description: 'Max results to return (default 10).' }
+        },
+        required: ['query']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_skills',
+      description: 'List all available workflow skills in .queenbee/skills/. Skills are reusable templates that guide implementation of common coding tasks.',
+      parameters: { type: 'object', properties: {}, required: [] }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'load_skill',
+      description: 'Load a specific skill by name to get its step-by-step workflow and success criteria. Use list_skills first to discover available skills.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Skill name (e.g. "add-api-endpoint", "write-unit-test").' }
+        },
+        required: ['name']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'check_comments',
+      description: 'Scan a source file for AI-generated comment slop (obvious, redundant, or self-narrating comments). Returns flagged lines with their patterns. Use mode:"strip" to automatically remove them.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Relative path to the source file to check.' },
+          mode: { type: 'string', enum: ['warn', 'strip'], description: '"warn" (default) returns flagged lines; "strip" removes them from the file.' }
+        },
+        required: ['path']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'ast_search',
+      description: 'Search for structural code patterns using AST meta-variables. Unlike regex search, this understands code structure. Use $VAR to match any single node, $$$VARS to match any sequence. E.g., "console.log($ARGS)" finds all console.log calls regardless of arguments.',
+      parameters: {
+        type: 'object',
+        properties: {
+          pattern: { type: 'string', description: 'AST pattern with optional $VAR meta-variables (e.g. "const $X = require($Y)", "async function $NAME($$$ARGS) { $$$BODY }").' },
+          language: { type: 'string', enum: ['ts', 'tsx', 'js', 'jsx', 'html', 'css'], description: 'Language to search (default: "ts").' },
+          path: { type: 'string', description: 'Optional relative sub-path to restrict search.' },
+          limit: { type: 'number', description: 'Max results (default 50).' }
+        },
+        required: ['pattern']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'ast_rewrite',
+      description: 'Structurally rewrite code by replacing an AST pattern with a replacement. Variables captured in the pattern ($VAR) can be referenced in the replacement.',
+      parameters: {
+        type: 'object',
+        properties: {
+          pattern: { type: 'string', description: 'AST pattern to match.' },
+          replacement: { type: 'string', description: 'Replacement code. Reference captured variables with $VAR.' },
+          language: { type: 'string', enum: ['ts', 'tsx', 'js', 'jsx', 'html', 'css'], description: 'Language (default: "ts").' },
+          path: { type: 'string', description: 'Optional relative sub-path to restrict changes.' }
+        },
+        required: ['pattern', 'replacement']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'git_commit',
+      description: 'Commit staged changes with atomic enforcement. If more than 3 files are staged, the commit is blocked and you are prompted to split it into smaller commits. Detects and injects project commit style from recent git log.',
+      parameters: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', description: 'Commit message.' },
+          stage_all: { type: 'boolean', description: 'If true, run git add -A before committing (default: false — stage files manually first).' }
+        },
+        required: ['message']
       }
     }
   },
@@ -469,6 +634,79 @@ export const AGENT_TOOLS = [
           context: { type: 'string', description: 'What you have tried so far.' }
         },
         required: ['expert_type', 'problem']
+      }
+    }
+  },
+
+  // ============== P19-11: Browser Control Tools ==============
+  {
+    type: 'function',
+    function: {
+      name: 'browser_navigate',
+      description: 'Navigate the connected browser to a URL. Requires an active browser CDP connection.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'The URL to navigate to (e.g. "https://example.com").' }
+        },
+        required: ['url']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'browser_screenshot',
+      description: 'Take a screenshot of the current browser page. Optionally navigate to a URL first. Returns a base64-encoded PNG.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'Optional URL to navigate to before taking the screenshot.' }
+        },
+        required: []
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'browser_click',
+      description: 'Click an element in the browser identified by a CSS selector.',
+      parameters: {
+        type: 'object',
+        properties: {
+          selector: { type: 'string', description: 'CSS selector for the element to click (e.g. "#submit-btn", ".nav-link").' }
+        },
+        required: ['selector']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'browser_type',
+      description: 'Type text into an input element in the browser identified by a CSS selector.',
+      parameters: {
+        type: 'object',
+        properties: {
+          selector: { type: 'string', description: 'CSS selector for the input element.' },
+          text: { type: 'string', description: 'The text to type into the element.' }
+        },
+        required: ['selector', 'text']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'browser_get_dom',
+      description: 'Get the outer HTML of an element in the current browser page. If no selector is provided, returns the full body.',
+      parameters: {
+        type: 'object',
+        properties: {
+          selector: { type: 'string', description: 'Optional CSS selector to target a specific element. Defaults to "body".' }
+        },
+        required: []
       }
     }
   }

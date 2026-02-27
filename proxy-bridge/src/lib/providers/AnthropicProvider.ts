@@ -18,7 +18,7 @@ export class AnthropicProvider extends LLMProvider {
 
   async chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
     const model = options?.model || 'claude-3-opus-20240229';
-    
+
     // Separate system message from others for Anthropic
     const systemMessage = messages.find(m => m.role === 'system');
     const otherMessages = messages.filter(m => m.role !== 'system').map(m => ({
@@ -26,16 +26,27 @@ export class AnthropicProvider extends LLMProvider {
       content: m.content || ''
     }));
 
+    // P18-03: Frozen Snapshot — use cache_control for prefix caching when snapshot is set
+    const systemContent = options?.systemSnapshot ?? systemMessage?.content;
+    const systemParam = systemContent
+      ? [{ type: 'text', text: systemContent, ...(options?.systemSnapshot ? { cache_control: { type: 'ephemeral' } } : {}) }]
+      : undefined;
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-api-key': this.apiKey,
+      'anthropic-version': '2023-06-01',
+    };
+    if (options?.systemSnapshot) {
+      headers['anthropic-beta'] = 'prompt-caching-2024-07-31';
+    }
+
     const response = await fetch(`${this.apiBase}/messages`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': this.apiKey,
-        'anthropic-version': '2023-06-01'
-      },
+      headers,
       body: JSON.stringify({
         model,
-        system: systemMessage?.content,
+        system: systemParam,
         messages: otherMessages,
         max_tokens: options?.maxTokens || 4096,
         temperature: options?.temperature,

@@ -11,7 +11,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     }
 
     if (req.method === 'POST') {
-        const { title, description, schedule, script, type, targetPath, allowedCommands } = req.body;
+        const { title, description, schedule, days, script, type, targetPath, allowedCommands } = req.body;
 
         // Basic validation
         if (!title) {
@@ -24,6 +24,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
             description: description || '',
             type,
             schedule: schedule || '0 0 * * *', // Default to daily if not provided
+            days: days, // Days of week for scheduling
             active: true,
             script: script || '',
             lastRun: undefined,
@@ -43,7 +44,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     }
 
     if (req.method === 'PUT') {
-        const { id, active, targetPath, ...updates } = req.body;
+        const { id, active, targetPath, days, ...updates } = req.body;
         const index = db.automations.findIndex(a => a.id === id);
 
         if (index === -1) {
@@ -57,6 +58,9 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         }
         if (typeof active === 'boolean') {
             db.automations[index].active = active;
+        }
+        if (days) {
+            db.automations[index].days = days;
         }
 
         saveDb(db);

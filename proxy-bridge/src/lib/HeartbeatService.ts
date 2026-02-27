@@ -18,6 +18,15 @@ export class HeartbeatService {
   private interval: NodeJS.Timeout | null = null;
   private isTicking = false;
 
+  // P18-C2: Track last synthesis time per project to avoid running on every heartbeat
+  private static lastSynthesisTime = new Map<string, number>();
+  private static SYNTHESIS_COOLDOWN_MS = 5 * 60 * 1000; // at most once per 5 minutes
+
+  /** P18-C2: Trigger synthesis only for significant events, not every heartbeat tick. */
+  static triggerSynthesis(projectPath: string): void {
+    HeartbeatService.lastSynthesisTime.set(projectPath, Date.now());
+  }
+
   static async start() {
     if (!this.instance) {
       this.instance = new HeartbeatService();
@@ -90,10 +99,17 @@ export class HeartbeatService {
       const distillation = new MemoryDistillation(memoryStore);
       await distillation.distillTeamChat(project.path);
 
-      // LS-06: Session synthesis — write .queenbee/session-summary.md
-      await synthesizeSwarmSession(project.path).catch(err =>
-        console.error(`[Heartbeat] Synthesis failed for ${project.name}:`, err)
-      );
+      // LS-06 / P18-C2: Session synthesis — only run if explicitly triggered or cooldown elapsed
+      const lastSynth = HeartbeatService.lastSynthesisTime.get(project.path) || 0;
+      const timeSinceLastSynth = Date.now() - lastSynth;
+      if (timeSinceLastSynth >= HeartbeatService.SYNTHESIS_COOLDOWN_MS) {
+        HeartbeatService.lastSynthesisTime.set(project.path, Date.now());
+        await synthesizeSwarmSession(project.path).catch(err =>
+          console.error(`[Heartbeat] Synthesis failed for ${project.name}:`, err)
+        );
+      } else {
+        console.log(`[Heartbeat] Skipping synthesis for ${project.name} — cooldown (${Math.round(timeSinceLastSynth / 1000)}s < ${HeartbeatService.SYNTHESIS_COOLDOWN_MS / 1000}s)`);
+      }
 
       // P17-05: MetacognitivePlanner — triggered evolution scheduling
       const planner = new MetacognitivePlanner(project.path);

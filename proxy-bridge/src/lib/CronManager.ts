@@ -12,6 +12,7 @@ export interface AutomationJob {
   type?: 'GSD_SCAN' | 'SYNC_REPOS' | 'PR_REVIEW' | 'CHANGELOG' | 'DATA_GEN' | 'CI_MONITOR' | 'RELEASE_NOTES' | 'TEST_NIGHTLY' | 'MAINTENANCE';
   title?: string;
   schedule: string; // Cron format
+  days?: string[]; // Days of week: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
   script?: string;
   projectId?: string;
   projectPath?: string;
@@ -19,6 +20,24 @@ export interface AutomationJob {
   status?: 'active' | 'paused';
   active?: boolean;
 }
+
+// Map day names to cron weekday numbers
+const DAY_MAP: Record<string, number> = {
+  'Sun': 0,
+  'Mon': 1,
+  'Tue': 2,
+  'Wed': 3,
+  'Thu': 4,
+  'Fri': 5,
+  'Sat': 6,
+  'Sunday': 0,
+  'Monday': 1,
+  'Tuesday': 2,
+  'Wednesday': 3,
+  'Thursday': 4,
+  'Friday': 5,
+  'Saturday': 6,
+};
 
 /**
  * CronManager: Manages recurring agent tasks using node-cron.
@@ -60,17 +79,40 @@ export class CronManager {
     }
   }
 
-  private convertToCron(time: string): string {
+  /**
+   * Convert schedule + days to cron expression
+   * @param time - Time in HH:MM format or full cron expression
+   * @param days - Optional array of days ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+   */
+  private convertToCron(time: string, days?: string[]): string {
+    // If it's already a valid cron expression, return as-is
     if (cron.validate(time)) return time;
     
     // Check if it's HH:MM format
     const match = time.match(/^(\d{1,2}):(\d{2})$/);
     if (match) {
-      const [_, hour, minute] = match;
-      return `${parseInt(minute)} ${parseInt(hour)} * * *`;
+      const hour = match[1];
+      const minute = match[2];
+      const minuteVal = parseInt(minute);
+      const hourVal = parseInt(hour);
+      
+      // If days are specified, convert to weekday cron format
+      if (days && days.length > 0) {
+        const dayNumbers = days.map(d => DAY_MAP[d]).filter(d => d !== undefined);
+        if (dayNumbers.length > 0) {
+          // Sort and deduplicate
+          const uniqueDays = [...new Set(dayNumbers)].sort();
+          const dayPart = uniqueDays.join(',');
+          return `${minuteVal} ${hourVal} * * ${dayPart}`;
+        }
+      }
+      
+      // Default: daily
+      return `${minuteVal} ${hourVal} * * *`;
     }
     
-    return time; // Return original and let validator handle it
+    // Return original and let validator handle it
+    return time;
   }
 
   scheduleJob(job: AutomationJob) {
@@ -78,7 +120,7 @@ export class CronManager {
       this.jobs.get(job.id)?.stop();
     }
 
-    const cronSchedule = this.convertToCron(job.schedule);
+    const cronSchedule = this.convertToCron(job.schedule, job.days);
 
     if (!cron.validate(cronSchedule)) {
       console.error(`[CronManager] Invalid schedule for job ${job.id}: ${job.schedule} (Resolved to: ${cronSchedule})`);
@@ -229,6 +271,27 @@ export class CronManager {
 
   getJobs() {
     return this.jobsData;
+  }
+
+  async triggerNow(id: string): Promise<{ success: boolean; result?: string; error?: string }> {
+    const job = this.jobsData.find(j => j.id === id);
+    if (!job) return { success: false, error: `Job ${id} not found` };
+
+    const jobType = job.type || (job.title?.toLowerCase().includes('sync') ? 'SYNC_REPOS' : 'MAINTENANCE');
+    job.lastRun = new Date().toISOString();
+    await this.saveJobs();
+
+    try {
+      switch (jobType) {
+        case 'SYNC_REPOS':  await this.handleSyncRepos(job); break;
+        case 'GSD_SCAN':    await this.handleGsdScan(job); break;
+        case 'MAINTENANCE': await this.handleMaintenance(job); break;
+        default:            await this.handleAgentJob(job); break;
+      }
+      return { success: true, result: `Job "${job.title}" completed at ${job.lastRun}` };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
   }
 }
 

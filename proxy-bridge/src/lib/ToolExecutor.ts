@@ -18,6 +18,14 @@ import { MemoryStore } from './MemoryStore';
 import { StyleScraper } from './learning/StyleScraper';
 import { fileOwnershipRegistry } from './FileOwnershipRegistry';
 import { getWorkerPrompt, WorkerType } from './prompts/workers';
+import { indexFile, applyHashlineEdits } from './HashlineIndex';
+import { CredentialScrubber } from './CredentialScrubber';
+import { SkillsManager } from './SkillsManager';
+import { SessionSearchIndex } from './SessionSearchIndex';
+import { WorkflowTool } from './WorkflowTool';
+import { AgentsmdLoader } from './AgentsmdLoader';
+import { CommentChecker } from './CommentChecker';
+import { AstSearchTool } from './tools/AstSearchTool';
 
 // Registry to track workers in this process (for the prototype)
 const workerRegistry = new Map<string, { status: string; prUrl?: string }>();
@@ -215,7 +223,15 @@ export class ToolExecutor {
 
             await fs.ensureDir(path.dirname(filePath));
             await fs.writeFile(filePath, tool.arguments.content);
-            result = { success: true, path: filePath, stats };
+
+            // P18-23: Post-write CommentChecker — warn on AI-slop comments
+            const commentChecker = new CommentChecker({ mode: 'warn' });
+            const commentResult = await commentChecker.checkFile(filePath).catch(() => null);
+            const commentWarning = commentResult?.hasSlop
+              ? CommentChecker.formatFindings(commentResult.findings)
+              : null;
+
+            result = { success: true, path: filePath, stats, ...(commentWarning ? { commentWarning } : {}) };
           }
           break;
         }
@@ -226,25 +242,32 @@ export class ToolExecutor {
           
         // ... (other cases remain same)
           
-        case 'read_file':
+        case 'read_file': {
           const readPath = this.validatePath(projectPath, tool.arguments.path);
           const stats = await fs.stat(readPath);
-          
+
           if (stats.size > 1024 * 1024) {
             result = `Error: File too large (${(stats.size / 1024 / 1024).toFixed(2)}MB). Use a more specific tool.`;
             break;
           }
 
+          // P18-01: with_hashes mode — return line content annotated with hashes for hashline_edit
+          if (tool.arguments.with_hashes) {
+            const lineEntries = await indexFile(readPath);
+            result = lineEntries.map(e => `${e.lineNumber}|${e.hash}|${e.content}`).join('\n');
+            break;
+          }
+
           const content = await fs.readFile(readPath, 'utf-8');
           const lines = content.split('\n');
-          
+
           if (lines.length > 200) {
             // Stage 1: Summary Pattern
             const symbols = lines
               .map((line, idx) => ({ line, idx: idx + 1 }))
               .filter(l => /^\s*(export\s+)?(class|function|interface|enum|const|async\s+function)\s+([a-zA-Z0-9_]+)/.test(l.line))
               .map(l => `Line ${l.idx}: ${l.line.trim()}`);
-            
+
             result = `FILE SUMMARY (Large File: ${lines.length} lines)\n\nSymbol Map:\n${symbols.join('\n') || 'No major symbols found.'}\n\nUse 'read_file_range' to read specific parts of this file.`;
           } else {
             result = content;
@@ -259,6 +282,7 @@ export class ToolExecutor {
             }
           }
           break;
+        }
 
         case 'read_file_range':
           const rangePath = this.validatePath(projectPath, tool.arguments.path);
@@ -278,6 +302,178 @@ export class ToolExecutor {
             }
           }
           break;
+
+        // P18-19: init_agents_md — generate an AGENTS.md for a directory using Haiku
+        case 'init_agents_md': {
+          const loader = new AgentsmdLoader(projectPath);
+          const targetDir = tool.arguments.directory || '.';
+          const generated = await loader.generateForDirectory(targetDir, 'auto');
+          if (generated) {
+            const targetFile = path.join(this.validatePath(projectPath, targetDir), 'AGENTS.md');
+            await fs.ensureDir(path.dirname(targetFile));
+            await fs.writeFile(targetFile, generated, 'utf-8');
+            result = { success: true, path: targetFile, content: generated };
+          } else {
+            result = { success: false, message: 'No code files found in directory to analyze.' };
+          }
+          break;
+        }
+
+        // P18-18: list_workflows — list available multi-step workflow tools
+        case 'list_workflows': {
+          const wt = new WorkflowTool(projectPath);
+          const workflows = await wt.listAll();
+          result = workflows.map(w => ({
+            name: w.name,
+            description: w.description,
+            steps: w.steps.length,
+            triggers: w.triggers || [],
+          }));
+          break;
+        }
+
+        // P18-18: run_workflow — execute a named workflow
+        case 'run_workflow': {
+          const wt = new WorkflowTool(projectPath);
+          result = await wt.execute(tool.arguments.name, this, {
+            projectPath,
+            threadId,
+            agentId: agentId || undefined,
+          });
+          break;
+        }
+
+        // P18-09: session_search — full-text search across past agent sessions
+        case 'session_search': {
+          const ssi = new SessionSearchIndex(projectPath);
+          const searchResults = await ssi.search(
+            tool.arguments.query,
+            tool.arguments.limit ?? 10
+          );
+          result = searchResults.length > 0
+            ? searchResults
+            : { message: 'No matching sessions found.' };
+          break;
+        }
+
+        // P18-11: list_skills — list available skills in .queenbee/skills/
+        case 'list_skills': {
+          const sm = new SkillsManager(projectPath);
+          const skills = await sm.loadAll();
+          result = skills.map(s => ({ name: s.name, description: s.description, triggers: s.triggers }));
+          break;
+        }
+
+        // P18-11: load_skill — load a specific skill by name
+        case 'load_skill': {
+          const sm = new SkillsManager(projectPath);
+          const skill = await sm.load(tool.arguments.name);
+          if (!skill) {
+            result = { error: `Skill '${tool.arguments.name}' not found. Use list_skills to see available skills.` };
+          } else {
+            result = { skill, formatted: SkillsManager.formatSkillContext(skill) };
+          }
+          break;
+        }
+
+        // P18-23: check_comments — scan a file for AI-slop comments
+        case 'check_comments': {
+          const ccPath = this.validatePath(projectPath, tool.arguments.path);
+          const ccMode = (tool.arguments.mode as 'warn' | 'strip') ?? 'warn';
+          const cc = new CommentChecker({ mode: ccMode });
+          const ccResult = await cc.checkFile(ccPath);
+          result = ccResult.hasSlop
+            ? { hasSlop: true, message: CommentChecker.formatFindings(ccResult.findings), findings: ccResult.findings }
+            : { hasSlop: false, message: 'No AI-slop comments detected.' };
+          break;
+        }
+
+        // P18-01: hashline_edit — surgical per-line edits with hash validation
+        case 'hashline_edit': {
+          const hlPath = this.validatePath(projectPath, tool.arguments.path);
+          const ops = tool.arguments.ops as Array<{ lineNumber: number; expectedHash: string; newContent: string }>;
+          if (!Array.isArray(ops) || ops.length === 0) {
+            result = { success: false, error: 'ops must be a non-empty array' };
+            break;
+          }
+          const editResult = await applyHashlineEdits(hlPath, ops);
+          result = editResult;
+          break;
+        }
+
+        // P18-15: ast_search — structural code search via AST node patterns
+        case 'ast_search': {
+          const ast = new AstSearchTool(projectPath);
+          const astMatches = await ast.search(
+            tool.arguments.pattern,
+            tool.arguments.language ?? 'ts',
+            tool.arguments.path,
+            tool.arguments.limit ?? 50
+          );
+          result = astMatches.length > 0
+            ? { matches: astMatches, count: astMatches.length }
+            : { matches: [], count: 0, message: 'No structural matches found.' };
+          break;
+        }
+
+        // P18-15: ast_rewrite — structural code rewrite via AST pattern → replacement
+        case 'ast_rewrite': {
+          const ast = new AstSearchTool(projectPath);
+          result = await ast.rewrite(
+            tool.arguments.pattern,
+            tool.arguments.replacement,
+            tool.arguments.language ?? 'ts',
+            tool.arguments.path
+          );
+          break;
+        }
+
+        // P18-22: git_commit — atomic commit enforcement with style detection
+        case 'git_commit': {
+          const commitMsg: string = tool.arguments.message;
+          const stageAll: boolean = tool.arguments.stage_all ?? false;
+
+          // Count staged + unstaged files that would be committed
+          const stagedOutput = await new Promise<string>((res, rej) => {
+            exec('git diff --cached --name-only', { cwd: projectPath }, (err, stdout) => {
+              if (err) rej(err); else res(stdout.trim());
+            });
+          });
+          const stagedFiles = stagedOutput ? stagedOutput.split('\n').filter(Boolean) : [];
+
+          if (stagedFiles.length > 3) {
+            // Detect commit style from recent log
+            const logOutput = await new Promise<string>((res) => {
+              exec('git log --format="%s" -20', { cwd: projectPath }, (_err, stdout) => res(stdout || ''));
+            }).catch(() => '');
+            const recentStyles = logOutput.split('\n').filter(Boolean).slice(0, 5).join(', ');
+            result = {
+              blocked: true,
+              stagedFileCount: stagedFiles.length,
+              files: stagedFiles,
+              message: `ATOMIC_COMMIT_REQUIRED: ${stagedFiles.length} files staged. Split into ≤3-file commits for atomic history. Recent commit style: ${recentStyles || 'conventional commits'}`,
+            };
+            break;
+          }
+
+          // Stage all if requested
+          if (stageAll) {
+            await new Promise<void>((res, rej) => {
+              exec('git add -A', { cwd: projectPath }, (err) => { if (err) rej(err); else res(); });
+            });
+          }
+
+          // Execute commit
+          const commitOut = await new Promise<string>((res, rej) => {
+            const safeMsg = commitMsg.replace(/"/g, '\\"').replace(/`/g, '\\`');
+            exec(`git commit -m "${safeMsg}"`, { cwd: projectPath }, (err, stdout, stderr) => {
+              if (err) rej(new Error(stderr || err.message)); else res(stdout.trim());
+            });
+          });
+          result = { success: true, output: commitOut, filesCommitted: stagedFiles };
+          break;
+        }
+
         case 'create_worktree':
           const wtName = tool.arguments.name;
           const worktreePath = path.join(Paths.getWorktreesDir(), wtName);
@@ -607,17 +803,53 @@ export class ToolExecutor {
           break;
         }
 
+        // ============== P19-11: Browser Control Tools ==============
+        case 'browser_navigate': {
+          const { mcpBrowserBridge } = await import('./MCPBrowserBridge');
+          result = await mcpBrowserBridge.navigate(tool.arguments.url);
+          break;
+        }
+
+        case 'browser_screenshot': {
+          const { mcpBrowserBridge } = await import('./MCPBrowserBridge');
+          result = await mcpBrowserBridge.screenshot(tool.arguments.url);
+          break;
+        }
+
+        case 'browser_click': {
+          const { mcpBrowserBridge } = await import('./MCPBrowserBridge');
+          result = await mcpBrowserBridge.click(tool.arguments.selector);
+          break;
+        }
+
+        case 'browser_type': {
+          const { mcpBrowserBridge } = await import('./MCPBrowserBridge');
+          result = await mcpBrowserBridge.type(tool.arguments.selector, tool.arguments.text);
+          break;
+        }
+
+        case 'browser_get_dom': {
+          const { mcpBrowserBridge } = await import('./MCPBrowserBridge');
+          result = await mcpBrowserBridge.getDom(tool.arguments.selector);
+          break;
+        }
+
         default:
           throw new Error(`Unknown tool: ${tool.name}`);
       }
-      
-      broadcast('TOOL_RESULT', { 
-        tool: tool.name, 
-        status: 'success', 
+
+      // P18-04: Scrub credentials from all tool outputs before broadcasting/logging
+      if (result !== null && result !== undefined) {
+        result = CredentialScrubber.scrubObject(result);
+      }
+
+      broadcast('TOOL_RESULT', {
+        tool: tool.name,
+        status: 'success',
         result,
         projectId,
         threadId,
-        toolCallId 
+        toolCallId
       });
 
       if (this.eventLog) {

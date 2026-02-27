@@ -37,7 +37,10 @@ import {
   Rows,
   GitBranch,
   ListChecks,
-  Download
+  Download,
+  TrendingUp,
+  Search,
+  Globe
 } from 'lucide-react';
 import { type Message, type ToolCall, getGitBranches, executeCommand, API_BASE } from '../../services/api';
 import { useAppMode } from '../../hooks/useAppMode';
@@ -362,6 +365,9 @@ interface AgenticWorkbenchProps {
   activeProject: any;
   onToggleInspector: () => void;
   onToggleEvolution?: () => void;
+  onToggleLearningVelocity?: () => void;
+  onToggleDeepInspector?: () => void;
+  onToggleBrowser?: () => void;
   onToggleTerminal?: () => void;
   onToggleDiff?: () => void;
   onSendMessage: (content: string) => void;
@@ -536,6 +542,9 @@ interface AgenticWorkbenchProps {
   activeProject,
   onToggleInspector,
   onToggleEvolution,
+  onToggleLearningVelocity,
+  onToggleDeepInspector,
+  onToggleBrowser,
   onToggleTerminal,
   onToggleDiff,
   onSendMessage,
@@ -1100,6 +1109,30 @@ interface AgenticWorkbenchProps {
             title="Evolution Panel (GEA)"
           >
             <Dna size={18} />
+          </button>
+
+          <button
+            onClick={onToggleLearningVelocity}
+            className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-500 hover:text-emerald-600 transition-all"
+            title="Learning Velocity"
+          >
+            <TrendingUp size={18} />
+          </button>
+
+          <button
+            onClick={onToggleDeepInspector}
+            className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-500 hover:text-blue-600 transition-all"
+            title="Deep Inspector"
+          >
+            <Search size={18} />
+          </button>
+
+          <button
+            onClick={onToggleBrowser}
+            className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-500 hover:text-sky-600 transition-all"
+            title="Browser Panel"
+          >
+            <Globe size={18} />
           </button>
 
           <button

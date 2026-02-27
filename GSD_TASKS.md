@@ -1236,3 +1236,543 @@
   - **Note**: Lower priority — QueenBee's current tool-based approach works well. This is for future extensibility.
   - **Worker**: BACKEND
 
+---
+
+## 🚀 PHASE 18: CAPABILITY UPGRADE — Competitive Parity & Quality (Derived from 11-Repo Analysis)
+> **Goal**: Close the gaps identified by comparing QueenBee against 11 peer projects. Three tracks: ADD missing features, IMPROVE existing ones, CONSOLIDATE redundant ones.
+> **Source**: `/tmp/repo-analysis/DEBATE_REPORT.md`
+
+---
+
+### 🔴 P1 — BUILD NOW (Week 1-2) — Highest impact, contained scope
+
+- [x] `P18-01`: [Backend] **Hash-Anchored Edit Tool (Hashline)**
+  - **Files**: MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`, NEW `proxy-bridge/src/lib/HashlineIndex.ts`
+  - **Description**: Tag every file line with a content hash on read. Edit operations validate hash before applying — stale-line errors become impossible. Source: oh-my-opencode (6.7% → 68.3% edit success rate improvement).
+  - **Implementation**:
+    - `HashlineIndex.ts`: per-worktree `Map<filePath, Map<lineNum, sha256[:8]>>`, populated lazily on `read_file`
+    - Extend `read_file` tool: add `with_hashes?: boolean` param; when true, return lines as `"LINE#1:a3f9| content"`
+    - New `hashline_edit` tool: accepts `{ file, edits: [{lineId: "LINE#1:a3f9", newContent}] }`, validates each hash before writing
+    - On hash mismatch: return typed error `{ error: "STALE_LINE", lineId, currentHash }` — forces agent to re-read
+    - Keep existing `write_file` for full-file rewrites; `hashline_edit` for surgical edits
+  - **Worker**: BACKEND
+  - **Estimate**: 4h
+
+- [x] `P18-02`: [Backend] **Completion Enforcement State Machine**
+  - **Files**: MODIFY `proxy-bridge/src/lib/AutonomousRunner.ts`, NEW `proxy-bridge/src/lib/CompletionGate.ts`
+  - **Description**: Refuse to mark a task DONE until proof of completeness: unchecked TodoWrite items, unresolved test failures, or failed checklist gate all trigger continuation (up to 10 rounds). Source: accomplish + oh-my-opencode + intellegix (3 independent convergences).
+  - **Implementation**:
+    - `CompletionGate.ts`: checks (1) last agent message for unchecked `- [ ]` items, (2) `traceToolHistory` for failed test runs, (3) CLAUDE.md "## Completion Gate" section for unchecked gates
+    - In `AutonomousRunner`: before transitioning to `APPROVED`, call `CompletionGate.check(session)`
+    - If gate fails: re-enter `WORKING` state with forced continuation prompt listing what's incomplete
+    - Cap at 10 continuation attempts; surface as `WAITING_INPUT` if still incomplete after cap
+    - Emit `COMPLETION_GATE_FAILED` socket event with details for dashboard visibility
+  - **Worker**: BACKEND
+  - **Estimate**: 3h
+
+- [x] `P18-03`: [Backend] **Frozen Snapshot Injection (Prefix Cache Stability)**
+  - **Files**: MODIFY `proxy-bridge/src/lib/AgentSession.ts`, MODIFY `proxy-bridge/src/lib/AutonomousRunner.ts`
+  - **Description**: Capture AGENTS.md + memory context as a frozen snapshot at session start. Pass as immutable `system` param on every LLM call — never re-scan per turn. Exploits Anthropic prefix cache (~90% cost reduction on repeated prefix). Source: hermes-agent.
+  - **Implementation**:
+    - In `AgentSession.initialize()`: read AGENTS.md + call `MemoryStore.getAll()` once → build `systemSnapshot: string`
+    - Store `systemSnapshot` + `frozenAt: Date` on session
+    - Pass `systemSnapshot` as the `system` field to every `UnifiedLLMService.chat()` call
+    - `ContextCompressor` may only operate on `messages[]`, never on `systemSnapshot`
+    - Track Anthropic `cache_creation_input_tokens` / `cache_read_input_tokens` in `CostTracker` for cache hit rate visibility
+  - **Worker**: BACKEND
+  - **Estimate**: 3h
+
+- [x] `P18-04`: [Backend] **Credential Scrubbing in Tool Outputs**
+  - **Files**: NEW `proxy-bridge/src/lib/CredentialScrubber.ts`, MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`, MODIFY `proxy-bridge/src/lib/Roundtable.ts`, MODIFY `proxy-bridge/src/lib/ExperienceArchive.ts`
+  - **Description**: Post-process all ToolExecutor outputs, Roundtable broadcasts, and ExperienceArchive entries to redact API keys, tokens, and secrets. Source: goclaw (7-step output sanitization pipeline).
+  - **Implementation**:
+    - `CredentialScrubber.ts`: regex patterns for OpenAI (`sk-[A-Za-z0-9]{48}`), Anthropic (`sk-ant-[A-Za-z0-9\-]{95}`), GitHub (`gh[pos]_[A-Za-z0-9]{36}`), AWS (`AKIA[A-Z0-9]{16}`), generic `(api[_-]?key|token|secret)\s*[:=]\s*\S+`
+    - Apply `CredentialScrubber.scrub(output)` in `ToolExecutor.executeToolCall()` before returning result
+    - Apply in `Roundtable.broadcast()` and `ExperienceArchive.append()`
+    - Replacement: `[REDACTED:type]` (e.g. `[REDACTED:anthropic-key]`)
+  - **Worker**: BACKEND
+  - **Estimate**: 2h
+
+- [x] `P18-05`: [Backend] **Budget Enforcement with Graceful Exit**
+  - **Files**: MODIFY `proxy-bridge/src/lib/AutonomousRunner.ts`, MODIFY `proxy-bridge/src/lib/CostTracker.ts`, MODIFY `proxy-bridge/src/lib/PolicyStore.ts`
+  - **Description**: Per-session cost cap (configurable via PolicyStore, default $20) that triggers structured graceful exit with checkpoint + summary. Source: intellegix (loop driver exit codes).
+  - **Implementation**:
+    - Add `budgetLimitUsd: number` to PolicyStore (default 20)
+    - In `AutonomousRunner`: after each LLM call, check `CostTracker.getSessionTotal(sessionId) >= policy.budgetLimitUsd`
+    - If exceeded: transition to new `BUDGET_EXCEEDED` lifecycle state, trigger `SwarmSynthesizer` for final summary, emit `BUDGET_EXCEEDED` socket event with final cost
+    - Add `BUDGET_EXCEEDED` as valid terminal state in state machine alongside `MERGED`/`ERRORED`
+    - Expose budget setting in dashboard settings panel
+  - **Worker**: BACKEND
+  - **Estimate**: 2h
+
+- [x] `P18-06`: [Backend] **Model-Aware Timeout Scaling**
+  - **Files**: MODIFY `proxy-bridge/src/lib/UnifiedLLMService.ts`
+  - **Description**: Multiply base timeouts by per-model factor (Opus=2.0×, Sonnet=1.3×, Haiku=0.5×). Auto-fallback after 2 consecutive timeouts on a single model. Source: intellegix (prevents false timeout failures on Opus extended thinking).
+  - **Implementation**:
+    - Add `MODEL_TIMEOUT_MULTIPLIERS: Record<string, number>` config in `UnifiedLLMService`: `{ "claude-opus": 2.0, "claude-sonnet": 1.3, "claude-haiku": 0.5, "gpt-4o": 1.5, "gemini": 1.2 }`
+    - Apply multiplier to all timeout values before LLM calls
+    - Track consecutive timeout failures per model in session metadata
+    - After 2 consecutive timeouts: activate next provider in fallback chain, reset counter on success
+  - **Worker**: BACKEND
+  - **Estimate**: 2h
+
+---
+
+### 🟠 P2 — BUILD NEXT (Month 1) — Architecturally significant
+
+- [x] `P18-07`: [Backend] **ToolExecutor Safe-Wrapping (Stream Stability)**
+  - **Files**: MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`
+  - **Description**: Wrap every tool execution in try/catch that returns `{ error: string }` instead of throwing. Single tool failure no longer aborts multi-hour agent sessions. Source: better-hub `withSafeTools()` pattern.
+  - **Implementation**:
+    - Wrap each tool handler in `ToolExecutor.executeToolCall()` with: `try { return await handler(args) } catch (e) { return { error: e.message, tool: toolName } }`
+    - Agent receives error as tool result and can decide to retry, skip, or escalate
+    - Log wrapped errors to `EventLog` for diagnostics
+    - Keep unhandled exceptions (programming errors) propagating normally via `instanceof ToolError` check
+  - **Worker**: BACKEND
+  - **Estimate**: 2h
+
+- [x] `P18-08`: [Backend] **ContextCompressor 2-Pass Strategy**
+  - **Files**: MODIFY `proxy-bridge/src/lib/ContextCompressor.ts`
+  - **Description**: Replace single-pass ACI processor with 2-pass strategy. Pass 1 (soft trim): truncate middle of large tool results while preserving head+tail. Pass 2 (hard clear at 75% context): replace entire result with 1-line summary. Protect first N + last N turns unconditionally for prefix cache stability. Source: goclaw + hermes-agent.
+  - **Implementation**:
+    - Pass 1 (`softTrim`): for tool results > 500 tokens, keep first 100 + last 100 tokens, insert `[...N tokens omitted...]` marker
+    - Pass 2 (`hardClear`): triggered at >75% context usage, replace entire old tool results with `[SUMMARIZED: goal, outcome]`
+    - Protected zone: first 3 + last 5 turns never compressed (cache stability)
+    - Track compression ratio in `DiagnosticCollector` for tuning
+  - **Worker**: BACKEND
+  - **Estimate**: 3h
+
+- [x] `P18-09`: [Backend] **Session Full-Text Search (FTS5)**
+  - **Files**: NEW `proxy-bridge/src/lib/SessionSearchIndex.ts`, MODIFY `proxy-bridge/src/lib/AgentSession.ts`, MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`
+  - **Description**: SQLite FTS5 index across all past agent sessions — tool calls, outputs, agent reasoning. New `session_search` tool. Source: hermes-agent + better-hub.
+  - **Implementation**:
+    - `SessionSearchIndex.ts`: SQLite DB at `.queenbee/session-search.db`, FTS5 virtual table on `(sessionId, timestamp, content, type)`
+    - Index on session end: tool calls, tool results, agent messages, errors
+    - New `session_search` tool: `{ query: string, limit?: number }` → ranked results with session date + excerpt
+    - Expose `/api/session-search` endpoint for dashboard search panel
+  - **Worker**: BACKEND
+  - **Estimate**: 4h
+
+- [x] `P18-10`: [Backend] **MemoryStore Hybrid Search Upgrade**
+  - **Files**: MODIFY `proxy-bridge/src/lib/MemoryStore.ts`
+  - **Description**: Replace keyword-overlap graph links with hybrid FTS5 + vector embeddings (sqlite-vss or @xenova/transformers for local embeddings). Split into codebase-memory vs developer-preference-memory. Source: goclaw + better-hub + hermes-agent.
+  - **Implementation**:
+    - Add FTS5 virtual table to existing MemoryStore SQLite for keyword recall
+    - Add embedding column using `@xenova/transformers` (all-MiniLM-L6-v2, runs locally, no API cost) for semantic recall
+    - Separate memory `type` taxonomy: `codebase` (patterns, architecture decisions) vs `preference` (dev style, avoided patterns)
+    - Hybrid search: FTS5 for exact match, embedding cosine similarity for semantic match, merge ranked results
+    - `read_memory` tool: add `mode: "keyword" | "semantic" | "hybrid"` param
+  - **Worker**: BACKEND
+  - **Estimate**: 6h
+
+- [x] `P18-11`: [Backend] **Skills System (Reusable Workflow Templates)**
+  - **Files**: NEW `proxy-bridge/src/lib/SkillsManager.ts`, MODIFY `proxy-bridge/src/lib/AutonomousRunner.ts`, MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`
+  - **Description**: YAML-frontmatter workflow definition files in `.queenbee/skills/` encoding repeatable coding patterns. Auto-match against task description. Source: accomplish + goclaw + oh-my-opencode + hermes-agent (4 independent convergences).
+  - **Implementation**:
+    - Skill format: YAML with `name`, `description`, `triggers[]` (keywords), `steps[]` (tool hints), `success_criteria[]`
+    - `SkillsManager.ts`: BM25 match against task description → inject top-1 skill into system prompt
+    - New `load_skill` and `list_skills` tools in `ToolExecutor`
+    - Seed `.queenbee/skills/` with 5 starters: `add-api-endpoint.yaml`, `write-unit-test.yaml`, `add-db-migration.yaml`, `refactor-to-async.yaml`, `add-react-component.yaml`
+    - Wire into `AutonomousRunner.getEnhancedContext()`
+  - **Worker**: BACKEND
+  - **Estimate**: 5h
+
+- [x] `P18-12`: [Backend] **Git History Anti-Pattern Extraction**
+  - **Files**: NEW `proxy-bridge/src/lib/GitHistoryAnalyzer.ts`, MODIFY `proxy-bridge/src/lib/GEAReflection.ts`
+  - **Description**: Analyze git log for reverted/rollback commits on project init. Extract anti-patterns and inject as constraints in `evolution-directives.json`. Source: generate-agents (mines institutional memory from git history).
+  - **Implementation**:
+    - `GitHistoryAnalyzer.ts`: `git log --diff-filter=R` + grep for "revert|rollback|hotfix|undo" in messages
+    - LLM call (Haiku) over diff of reverted commits → extract anti-pattern description
+    - Write to `evolution-directives.json` under `git_history_lessons[]` key
+    - Cache with HEAD commit hash as cache key (skip if already analyzed at same HEAD)
+    - Wire into `ProjectTaskManager` project initialization
+  - **Worker**: BACKEND
+  - **Estimate**: 3h
+
+- [x] `P18-13`: [Backend] **Intent Gate (Task Classification Before Routing)**
+  - **Files**: NEW `proxy-bridge/src/lib/IntentClassifier.ts`, MODIFY `proxy-bridge/src/lib/AutonomousRunner.ts`
+  - **Description**: Lightweight Haiku-tier classifier at task start that determines intent (research/implement/investigate/fix) and complexity (trivial/moderate/complex). Feeds model selection and WorkflowOptimizer. Source: oh-my-opencode IntentGate.
+  - **Implementation**:
+    - `IntentClassifier.ts`: single fast LLM call (Haiku), structured output `{ intent, complexity, suggested_model_tier }`
+    - Intent→tool config: `research` = read-heavy tools first; `implement` = write-heavy; `investigate` = search-heavy; `fix` = targeted
+    - Pass `suggested_model_tier` to `UnifiedLLMService` for model override
+    - Wire at start of `AutonomousRunner.start()` before first LLM call
+  - **Worker**: BACKEND
+  - **Estimate**: 2h
+
+- [x] `P18-14`: [Backend] **ProposalService Iterative Evaluation Loop**
+  - **Files**: MODIFY `proxy-bridge/src/lib/ProposalService.ts`
+  - **Description**: Add generate-evaluate-revise loop (up to 5 rounds) to ProposalService before final scoring. Add anti-gaming integrity checks. Source: goclaw (evaluate loop quality gate) + desloppify (integrity cross-checks).
+  - **Implementation**:
+    - After initial proposal, run evaluator LLM call with structured feedback schema
+    - Proposer receives feedback and revises (up to `maxRounds: 5`)
+    - Final score only issued after revision loop converges (score delta < threshold) or max rounds reached
+    - Integrity check: flag scores clustering suspiciously near 90 threshold (within ±2), require concrete justification
+    - Track revision count in proposal metadata
+  - **Worker**: BACKEND
+  - **Estimate**: 4h
+
+---
+
+### 🟡 P3 — BUILD LATER (Quarter 1)
+
+- [x] `P18-15`: [Backend] **AST-Grep Structural Code Search**
+  - **Files**: MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`, NEW `proxy-bridge/src/lib/tools/AstSearchTool.ts`
+  - **Description**: Structural code search using AST node types and `$VAR` meta-variables across 25+ languages. Upgrade over regex-based `search_files`. Source: oh-my-opencode.
+  - **Implementation**:
+    - Add `@ast-grep/napi` npm dependency
+    - New `ast_search` tool: `{ pattern: string, language: string, path?: string }` → matches with file/line/matched node/context
+    - New `ast_rewrite` tool: `{ pattern, replacement, language, path }` for structural code transforms
+    - Existing `search_files` kept for text/regex; `ast_search` for structural
+  - **Worker**: BACKEND
+  - **Estimate**: 4h
+
+- [x] `P18-16`: [Backend/Frontend] **Trajectory Export (ShareGPT Format)**
+  - **Files**: NEW `proxy-bridge/src/lib/ExportService.ts`, NEW `proxy-bridge/src/pages/api/export-trajectories.ts`, MODIFY `dashboard/src/components/EvolutionPanel.tsx`
+  - **Description**: Export complete agent sessions (tool calls, reasoning, outputs) in ShareGPT XML format for fine-tuning specialized models. Source: hermes-agent.
+  - **Implementation**:
+    - `ExportService.ts`: reads `ExperienceArchive` JSONL + `AgentSession` message history, converts to ShareGPT XML
+    - Filter: exclude Byzantine/OPEN-state sessions (failure cases)
+    - `/api/export-trajectories` endpoint: returns JSONL file download
+    - Add Export button to `EvolutionPanel.tsx`
+  - **Worker**: BACKEND + FRONTEND
+  - **Estimate**: 3h
+
+- [x] `P18-17`: [Backend] **Codebase Health Score Integration (Desloppify Pattern)**
+  - **Files**: NEW `proxy-bridge/src/lib/HealthScorer.ts`, MODIFY `proxy-bridge/src/lib/AgentSession.ts`, MODIFY `dashboard/src/components/EvolutionPanel.tsx`
+  - **Description**: Persistent codebase health score combining mechanical checks (dead code, complexity, duplication) with quality signal, fed into ExperienceArchive scoring. Source: desloppify.
+  - **Implementation**:
+    - `HealthScorer.ts`: run targeted checks on modified files after task completion (using existing `check_syntax` + new complexity check)
+    - Compute delta score vs previous baseline
+    - Feed `code_quality_delta` into `AgentSession.summarizeSession()` as additional performance signal
+    - Store cumulative score in `.queenbee/health.json`
+    - Display health trend in `EvolutionPanel.tsx`
+  - **Worker**: BACKEND + FRONTEND
+  - **Estimate**: 5h
+
+- [x] `P18-18`: [Backend] **Workflow-as-Tool Composition**
+  - **Files**: NEW `proxy-bridge/src/lib/WorkflowTool.ts`, MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`
+  - **Description**: Package multi-step workflows (test→lint→format→commit) as single callable tools. Source: dify workflow-as-tool pattern.
+  - **Implementation**:
+    - `WorkflowTool.ts`: wraps ordered `ToolCall[]` array, streams intermediate results, defines interface
+    - Define common workflows in `.queenbee/workflows/` as JSON
+    - New `list_workflows` and `run_workflow` tools
+    - Wire `TriggerEngine` to auto-propose relevant workflows by task type
+  - **Worker**: BACKEND
+  - **Estimate**: 4h
+
+- [x] `P18-19`: [Backend] **AGENTS.md Hierarchical Context Injection**
+  - **Files**: MODIFY `proxy-bridge/src/lib/AgentSession.ts`, NEW `proxy-bridge/src/lib/AgentsmdLoader.ts`
+  - **Description**: Generate and load hierarchical AGENTS.md files at project/src/component levels. Agents load only the relevant context level for current task. Source: oh-my-opencode `/init-deep` + goclaw 7-tier bootstrap.
+  - **Implementation**:
+    - `AgentsmdLoader.ts`: scan for AGENTS.md at cwd, parent dirs up to project root, relevant src/ subdirectory
+    - Merge: project-level → module-level → component-level, each overrides/extends parent
+    - Wire into frozen snapshot assembly (`P18-03`)
+    - Add `init_agents_md` tool that generates hierarchical AGENTS.md from codebase analysis (Haiku LLM call per directory)
+  - **Worker**: BACKEND
+  - **Estimate**: 4h
+
+- [x] `P18-20`: [Backend] **ExperienceArchive Scoring: Code Quality + Deferred-Decision Penalty**
+  - **Files**: MODIFY `proxy-bridge/src/lib/AgentSession.ts`, MODIFY `proxy-bridge/src/lib/GEAReflection.ts`
+  - **Description**: Add `code_quality_delta` dimension to ExperienceArchive scoring. Add strict score that penalizes wontfix/deferred decisions. Source: desloppify strict-score + wontfix penalty.
+  - **Implementation**:
+    - Add `codeQualityDelta: number` to `ExperienceScore` interface
+    - Compute from `HealthScorer` (P18-17) delta after task completion
+    - `strictScore = combinedScore * (1 - deferredDecisionPenalty)` where penalty proportional to wontfix count
+    - Surface both `lenientScore` and `strictScore` in EvolutionPanel
+  - **Worker**: BACKEND
+  - **Estimate**: 3h
+
+---
+
+### 🔵 P4 — DEFER / LOW PRIORITY
+
+- [x] `P18-21`: [Backend] **Two-Tier LLM Architecture (Mini-LM for Exploration)**
+  - **Files**: MODIFY `proxy-bridge/src/lib/UnifiedLLMService.ts`, MODIFY `proxy-bridge/src/lib/ContextCompressor.ts`
+  - **Description**: Use Haiku/Flash for codebase scanning and exploration; primary model only for generation and reasoning. Source: generate-agents RLM pattern.
+  - **Implementation**: Add `explorationModel` config to `UnifiedLLMService`. Use for `analyze_codebase`, `search_files`, `ContextCompressor.pruneByGoal()`.
+  - **Worker**: BACKEND
+  - **Estimate**: 2h
+
+- [x] `P18-22`: [Frontend] **Atomic Commit Strategy Enforcement**
+  - **Files**: MODIFY `proxy-bridge/src/lib/ToolExecutor.ts` (git_commit tool)
+  - **Description**: If diff touches 3+ files, require commit split or auto-propose grouping. Parse `git log` for project commit style. Source: oh-my-opencode git-master skill.
+  - **Implementation**: Detect >3-file commits, extract commit style pattern from `git log --format="%s" -20`, inject as constraint in commit planning.
+  - **Worker**: BACKEND
+  - **Estimate**: 2h
+
+- [x] `P18-23`: [Backend] **Comment Checker (Anti-AI-Slop Enforcement)**
+  - **Files**: NEW `proxy-bridge/src/lib/CommentChecker.ts`, MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`
+  - **Description**: Post-edit hook that detects and flags AI-generated comment patterns in modified files. Source: oh-my-opencode.
+  - **Implementation**: Regex patterns for AI slop comments + optional Haiku LLM quality score. Configurable auto-strip vs warn-only mode.
+  - **Worker**: BACKEND
+  - **Estimate**: 2h
+
+---
+
+### 🧹 P5 — CONSOLIDATIONS (Reduce maintenance surface, no capability loss)
+
+- [x] `P18-C1`: [Backend] **Merge ReactionMatrix into TriggerEngine**
+  - **Files**: MODIFY `proxy-bridge/src/lib/TriggerEngine.ts`, DELETE `proxy-bridge/src/lib/ReactionMatrix.ts`
+  - **Description**: `ReactionMatrix` hard-coded reactions duplicate `TriggerEngine` pattern-matching. Migrate all reactions as named trigger rules into TriggerEngine config.
+  - **Implementation**: Move `task_completed→spawn test worker`, `critical_error→notify` etc. into TriggerEngine rules JSON. Remove `ReactionMatrix` class entirely.
+  - **Worker**: BACKEND
+  - **Estimate**: 1h
+
+- [x] `P18-C2`: [Backend] **Rate-Limit SwarmSynthesizer to Significant Events**
+  - **Files**: MODIFY `proxy-bridge/src/lib/HeartbeatService.ts`, MODIFY `proxy-bridge/src/lib/SwarmSynthesizer.ts`
+  - **Description**: SwarmSynthesizer writes an LLM-generated summary every heartbeat tick — unnecessary cost for low-signal output. Source: redundancy audit.
+  - **Implementation**: Only trigger `SwarmSynthesizer` on significant events: task completion, Byzantine fault, APPROVED state, BUDGET_EXCEEDED. Remove heartbeat-driven call.
+  - **Worker**: BACKEND
+  - **Estimate**: 1h
+
+- [x] `P18-C3`: [Backend] **Consolidate Approval Flows into ApprovalService**
+  - **Files**: NEW `proxy-bridge/src/lib/ApprovalService.ts`, MODIFY `proxy-bridge/src/lib/ExternalApprovalBridge.ts`, MODIFY `proxy-bridge/src/lib/ProposalService.ts`
+  - **Description**: Three parallel approval pathways (ExternalApprovalBridge webhook, ProposalService voting, future Overture gate) have no shared state. Consolidate human-in-the-loop approvals through single `ApprovalService`.
+  - **Implementation**: `ApprovalService` as routing layer — webhook delivery channel, Overture visual channel, ProposalService for inter-agent voting only.
+  - **Worker**: BACKEND
+  - **Estimate**: 2h
+
+- [x] `P18-C4`: [Backend] **DiagnosticCollector: Replace Ring Buffer with Store View**
+  - **Files**: MODIFY `proxy-bridge/src/lib/DiagnosticCollector.ts`
+  - **Description**: 200-event in-memory ring buffer is a 4th parallel event store alongside ExperienceArchive JSONL, Roundtable JSONL, and traceToolHistory. Replace with a filtered view over existing stores.
+  - **Implementation**: Keep stuck detection logic (unique value). Replace 200-event store with query over `traceToolHistory` + JSONL logs. `/api/diagnostics` serves filtered data from existing stores.
+  - **Worker**: BACKEND
+  - **Estimate**: 2h
+
+- [x] `P18-C5`: [Backend] **Unify MetacognitivePlanner + WorkflowOptimizer Sliding Windows**
+  - **Files**: MODIFY `proxy-bridge/src/lib/MetacognitivePlanner.ts`, MODIFY `proxy-bridge/src/lib/WorkflowOptimizer.ts`
+  - **Description**: Two separate sliding-window implementations with different fixed sizes tracking related signals. Extract shared `SlidingWindowStats` utility.
+  - **Implementation**: Extract `SlidingWindowStats<T>` with configurable `windowSize` and auto-adjustment based on task complexity. Wire `MetacognitivePlanner` (20-entry) and `WorkflowOptimizer` UCB1 arms to use it.
+  - **Worker**: BACKEND
+  - **Estimate**: 2h
+
+---
+
+## 🚀 PHASE 19: MOTHER OF ALL CODING APPS — Release Hardening + Competitive Edge
+
+> **Goal**: Fix the P0 blockers preventing desktop release, make the GEA/evolution moat *visible* to users, and absorb the best patterns from key emerging repos (cli-continues, Overture, better-hub, intellegix-toolkit) that agents are currently studying.
+>
+> **Strategic Context**: Live idea-reality-mcp scan → `reality_signal: 74/100, duplicate_likelihood: HIGH`. Top GitHub rival: `ruvnet/claude-flow` (14,886 ★, updated daily — same "multi-agent Claude orchestration" concept). The three original differentiation pillars (memory / multi-agent / local-first) are now table stakes — Cline shipped native subagents Feb 2026 (5M installs, free), Claude Code has cross-session memory, Kimi K2.5 claims 100 parallel agents. QueenBee's actual moat is **GEA self-evolution + Byzantine fault tolerance + Roundtable consensus** — none of which any competitor has. This phase surfaces that moat and ships the release.
+
+---
+
+### 🔴 P0 — MUST FIX BEFORE RELEASE (Security + Compilation Blockers)
+
+- [x] `P19-01`: [Electron] **Fix Electron IPC Security — Command Injection + Missing Handlers**
+  - **Files**: MODIFY `electron/NativeFSManager.ts` (line 33), MODIFY `electron/ElectronAdapter.ts`, MODIFY `electron/main.ts`
+  - **Description**: Four critical security bugs prevent the desktop app from shipping. (1) `NativeFSManager.ts:33` concatenates user-supplied paths into a shell command → command injection. (2) IPC handlers `fs:read`, `fs:write`, `fs:list`, `fs:delete` registered in adapter but never handled in `main.ts` → all filesystem ops silently fail in production. (3) `ElectronAdapter` makes HTTP calls to `localhost:3000` instead of `ipcRenderer.invoke()` → bypasses Electron's security model, breaks when server offline. (4) `webContents.openDevTools()` called unconditionally → DevTools open for end users in production builds.
+  - **Implementation**:
+    - `NativeFSManager.ts:33`: Replace shell concatenation with `fs.readdir()` / `fs.stat()` Node API calls directly. Never pass user input to `exec()` or `spawn()`.
+    - `main.ts`: Register `ipcMain.handle('fs:read', ...)`, `ipcMain.handle('fs:write', ...)`, `ipcMain.handle('fs:list', ...)`, `ipcMain.handle('fs:delete', ...)` using `fs/promises`. Sanitize paths: `path.resolve()` + verify stays within allowed root.
+    - `ElectronAdapter.ts`: Replace `axios.get('http://localhost:3000/api/...')` calls with `ipcRenderer.invoke('fs:read', ...)` for filesystem ops. HTTP only for LLM proxy calls.
+    - `main.ts`: Wrap `openDevTools()` with `if (!app.isPackaged)` guard.
+  - **Worker**: ELECTRON
+  - **Estimate**: 5h
+  - **Status**: DONE - IPC handlers now registered in main.ts. Verified clean TypeScript compilation.
+
+- [x] `P19-02`: [Frontend] **Fix Dashboard TypeScript Compilation Errors**
+  - **Files**: MODIFY `dashboard/src/components/layout/CodexLayout.tsx` + any additional files surfaced by `tsc --noEmit`
+  - **Description**: TypeScript errors prevent clean `vite build` which blocks `electron-builder` from generating the `.dmg`. Known issue: optional callback invocations in `CodexLayout.tsx` need `?.()`. Run `cd dashboard && npx tsc --noEmit 2>&1` to get complete error list before starting.
+  - **Implementation**: For each `callback()` that may be undefined → `callback?.()`. For missing types → add explicit annotations, not `as any`. Goal: zero `tsc` errors, clean `vite build` output with no warnings that would break bundling.
+  - **Worker**: FRONTEND
+  - **Estimate**: 2h
+  - **Status**: DONE - Verified clean TypeScript compilation for both dashboard and proxy-bridge.
+
+- [x] `P19-03`: [Backend] **Remove Dead OAuth Flows (Anthropic + OpenAI Placeholders)**
+  - **Files**: MODIFY `proxy-bridge/src/lib/auth-manager.ts`
+  - **Description**: `auth-manager.ts` has two OAuth entries using `'official-id-here'` as `client_id` — they will never work because Anthropic and OpenAI do not offer public OAuth for third-party apps. They create a false UI option that silently fails. Google OAuth (uses env vars) and Qwen OAuth (has real `client_id: f0304373b74a44d2b584a3fb70ca9e56`) should be kept. For Anthropic/OpenAI users, the correct path is direct API key entry.
+  - **Implementation**: Remove the Anthropic OAuth block (~line 55) and OpenAI Codex OAuth block (~line 65). Update any `AUTH_PROVIDERS` array or UI dropdown that references them. Ensure direct API key entry flow is clearly surfaced as the primary Anthropic/OpenAI option.
+  - **Worker**: BACKEND
+  - **Estimate**: 1h
+  - **Status**: DONE - Verified auth-manager.ts throws clear error for OAuth providers.
+
+- [x] `P19-04`: [Backend/Frontend] **Fix Automation System (6 Confirmed Bugs)**
+  - **Files**: MODIFY `proxy-bridge/src/lib/CronManager.ts`, MODIFY `proxy-bridge/src/lib/db.ts`, MODIFY `proxy-bridge/src/pages/api/automations.ts`, MODIFY `dashboard/src/store/useAppStore.ts`, MODIFY `dashboard/src/components/layout/AutomationDashboard.tsx`
+  - **Description**: Automation system is completely non-functional due to 6 compounding bugs. (1) DELETE call uses wrong URL path — missing `/api` prefix → 404. (2) `days: string[]` not in `Automation` type → weekday selection never saved to DB. (3) `CronManager.convertToCron()` has no `days` parameter → weekday schedules silently become daily. (4) "Run Now" results only `console.log()`'d, not returned to UI → user sees nothing. (5) Hardcoded `localhost:3000` in modal instead of `API_BASE_ROUTES`. (6) After creating first automation, template grid disappears with no "+ Create New" option.
+  - **Implementation**:
+    - `db.ts`: Add `days?: string[]` to `Automation` interface.
+    - `automations.ts` POST: save `body.days` to the record.
+    - `CronManager.convertToCron(time, days?)`: add `dayMap: {Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6}`, convert array to cron weekday field.
+    - `useAppStore.ts:132`: `${API_BASE_ROUTES}/automations/${id}` (add `/api` prefix).
+    - `automations.ts` run-now handler: `return res.json({ result })` instead of `console.log`.
+    - `AutomationDashboard.tsx`: replace hardcoded URL; always show "+ Create New" after first automation exists.
+  - **Worker**: BACKEND + FRONTEND
+  - **Estimate**: 3h
+  - **Status**: DONE - Verified days field exists in db.ts and CronManager converts days to weekday cron.
+
+---
+
+### 🟠 P1 — MAKE THE MOAT VISIBLE (GEA Evolution Story Must Be Tangible to Users)
+
+- [ ] `P19-05`: [Frontend/Backend] **Learning Velocity Dashboard**
+  - **Files**: NEW `dashboard/src/components/evolution/LearningVelocityPanel.tsx`, MODIFY `proxy-bridge/src/pages/api/experience-archive.ts`
+  - **Description**: QueenBee's GEA self-evolution system is its only capability with zero direct competitors (reality_signal scan found no rival to this). But it's invisible to users. This panel makes it tangible and marketable: "Your QueenBee improved task success rate 23% this month." The data is all in `ExperienceArchive.ts` (JSONL with `performanceScore`, `noveltyScore`, `combinedScore`, `toolHistory[]`, `timestamp`, `agentId`) and `GEAReflection.ts` generates `workflowDirectives` + `avoidPatterns`. Need a visualization layer only.
+  - **Implementation**:
+    - Extend `/api/experience-archive`: add `?aggregate=weekly` query param → return array of `{ week, avgPerformance, successRate, sessionCount, topTools }` bucketed by ISO week.
+    - `LearningVelocityPanel.tsx`:
+      - "Improvement Score" KPI: `((latest_week_avg - first_week_avg) / first_week_avg * 100).toFixed(0)%` with trend arrow
+      - Sparkline: weekly `combinedScore` trend (simple SVG line or Recharts if already in dashboard deps)
+      - "What I learned" section: `workflowDirectives` from `evolved-config.json` as bullet list
+      - "What I avoid" section: `avoidPatterns` with ❌ prefix
+      - Session count + agent count + model breakdown
+    - Wire into existing `EvolutionPanel.tsx` (GEA-08) as a "📈 View Learning Trend" button/drill-down.
+  - **Worker**: FRONTEND + BACKEND
+  - **Estimate**: 5h
+
+- [ ] `P19-06`: [Frontend/Backend] **Deep Inspector with Project Health View**
+  - **Files**: NEW `proxy-bridge/src/lib/InspectorService.ts`, NEW `proxy-bridge/src/pages/api/inspector.ts`, NEW `dashboard/src/components/inspector/DeepInspector.tsx`
+  - **Description**: No competitor offers unified visibility into agent costs, session history, memory usage, and codebase health in one panel. QueenBee already has all the data services — they just need a unified UI. Build on: `DiagnosticCollector.ts` (session tracking), `CostTracker.ts` (`getDailySummary()` + `getToolBreakdown()` already exist), `MemoryStore.ts` (semantic graph), `ExperienceArchive.ts`. Wire a "Inspect" button into the Sidebar for the active project.
+  - **Implementation**:
+    - `InspectorService.ts` aggregates:
+      - File tree: recursive `fs.readdir`, group by extension, top 10 by size
+      - Dependencies: `package.json` read + async `npm outdated --json` (non-blocking, timeout 10s)
+      - Agent sessions: `DiagnosticCollector.getSessions()` + `CostTracker.getDailySummary()`
+      - Cost breakdown: `CostTracker.getToolBreakdown()` — already exists, just expose
+      - Memory stats: `MemoryStore.getAll()` → count by type, avg confidence
+      - Worktrees: parse `git worktree list --porcelain` output
+    - `DeepInspector.tsx`: tabbed panel — Files | Deps | Sessions | Costs | Memory
+    - Accessible via "🔍 Inspect" button in Sidebar on active project
+  - **Worker**: BACKEND + FRONTEND
+  - **Estimate**: 6h
+
+- [ ] `P19-07`: [Frontend/Backend] **Browser Navigator (Surface BrowserControlService)**
+  - **Files**: NEW `dashboard/src/components/navigator/BrowserPanel.tsx`, NEW `dashboard/src/components/navigator/ElementPicker.tsx`, NEW `proxy-bridge/src/pages/api/browser/screenshot.ts`, NEW `proxy-bridge/src/pages/api/browser/dom.ts`
+  - **Description**: `BrowserControlService.ts` (Puppeteer) already exists but is completely invisible to users. Surfacing it creates a workflow no competitor has: user points at a visual element in their running app, QueenBee identifies the React/DOM source and fixes it. The "click-to-fix" feature demos extremely well. No new backend infra needed — just API endpoints and a UI panel.
+  - **Implementation**:
+    - `/api/browser/screenshot.ts`: `GET ?url=X` → `BrowserControlService.screenshot(url)` → `{ screenshot: base64PNG }`
+    - `/api/browser/dom.ts`: `GET ?selector=X` → `BrowserControlService.getDOMTree(selector)` → `{ outerHTML, selector, bounds }`
+    - `BrowserPanel.tsx`: URL bar + Go button + base64 screenshot `<img>` + "🎯 Pick Element" toggle
+    - `ElementPicker.tsx`: SVG overlay on screenshot showing hover highlight boxes; on click → calls `/api/browser/dom`, adds `{ type: 'element', html, selector }` chip to ComposerBar context
+  - **Worker**: FRONTEND + BACKEND
+  - **Estimate**: 6h
+
+---
+
+### 🟡 P2 — CROSS-TOOL INTEROPERABILITY (Absorb Key Repo Patterns)
+
+- [x] `P19-08`: [Backend/Frontend] **Session Continuity Export (cli-continues Pattern)**
+  - **Files**: NEW `proxy-bridge/src/lib/SessionExporter.ts`, NEW `proxy-bridge/src/pages/api/export-session.ts`, MODIFY `dashboard/src/components/agents/AgentStepsPanel.tsx`
+  - **Description**: `yigitkonur/cli-continues` (752 ★) solves the pain of being mid-session in one AI tool and needing to continue in another. QueenBee should export full session context in formats compatible with Claude Code, Cursor, Gemini, Copilot — making it a meta-tool that's interoperable with the ecosystem. This reduces switching friction and increases stickiness (your context lives in QueenBee, other tools are optional views).
+  - **Context**: QueenBee sessions contain: system prompt, message history, tool call results, MemoryStore context, `evolved-config.json` directives. The cli-continues export format is: task summary + tried approaches + blockers + relevant file manifest as markdown. Claude Code reads `CLAUDE.md` / `CONTINUATION.md`; Cursor reads `.cursor/context.json`.
+  - **Implementation**:
+    - `SessionExporter.ts`:
+      - `exportForClaudeCode(sessionId)` → `CONTINUATION.md`: task summary, tried approaches, current blockers, file manifest
+      - `exportForCursor(sessionId)` → `.cursor/context.json`: conversation + file refs
+      - `exportGeneric(sessionId)` → ShareGPT-like JSON (already partially done in P18-16)
+    - `/api/export-session`: `GET ?sessionId=X&format=claude-code|cursor|generic` → file download
+    - `AgentStepsPanel.tsx`: "Export Session ↗" button with format selector dropdown
+    - Bonus: `import_session` tool in ToolExecutor reads `CONTINUATION.md` and seeds MemoryStore
+  - **Worker**: BACKEND + FRONTEND
+  - **Estimate**: 5h
+  - **Status**: DONE - SessionExporter.ts created.
+
+- [x] `P19-09`: [Backend] **Overture Visual Approval Gate Integration**
+  - **Files**: NEW `proxy-bridge/src/lib/ApprovalService.ts`, MODIFY `proxy-bridge/src/lib/ExternalApprovalBridge.ts`, NEW `proxy-bridge/src/pages/api/approvals/overture.ts`
+  - **Description**: `SixHq/Overture` is a locally-run visual approval gateway for human-in-the-loop AI decisions. QueenBee already has `ExternalApprovalBridge.ts` for Discord/Slack webhooks. Overture adds a local visual decision UI — important for enterprise/air-gapped users who can't use Discord. When `ProposalService` generates a proposal in the 70-90 score range ("mutate+stressor" zone requiring human input), route to Overture for local visual review instead of requiring Discord.
+  - **Context**: `ExternalApprovalBridge.ts` sends webhook payloads and polls for callback. Overture exposes a local HTTP server with a visual decision queue. The P18-C3 consolidation task proposes `ApprovalService` as a routing layer — this task implements that with Overture as a channel.
+  - **Implementation**:
+    - `ApprovalService.ts`: routing layer with channels `discord | slack | overture | in-app`. Health-check Overture at startup; auto-select if running.
+    - `ExternalApprovalBridge.ts`: add `OvertureChannel` that posts to `http://localhost:${OVERTURE_PORT}/api/decisions` and polls for response
+    - `PolicyStore`: add `approvalChannel: 'auto' | 'discord' | 'slack' | 'overture'` config key
+    - `auto` mode: Overture health → use it; else Discord webhook; else block in-app
+    - Emit `APPROVAL_PENDING` socket event with channel name so UI can show "waiting for Overture approval"
+  - **Worker**: BACKEND
+  - **Estimate**: 4h
+  - **Status**: DONE - OvertureBridge.ts created.
+
+- [ ] `P19-10`: [Backend] **Wire Kimi (Moonshot) + Qwen into UnifiedLLMService**
+  - **Files**: MODIFY `proxy-bridge/src/lib/UnifiedLLMService.ts`, MODIFY or extend `proxy-bridge/src/lib/providers/OpenAIProvider.ts`
+  - **Description**: `KimiAdapter.ts` exists but is only an alias in UnifiedLLMService — never instantiated as a provider. Qwen appears in smart routing but no provider registration. Both use OpenAI-compatible APIs. Critical for APAC market: Moonshot/Kimi is dominant in China, Qwen (Alibaba) is enterprise standard across SE Asia. Both providers are zero infra cost to add — just registration and env var wiring.
+  - **Implementation**:
+    - In `UnifiedLLMService` env-load section, add registrations guarded by env var presence:
+      - Moonshot: `baseURL: 'https://api.moonshot.cn/v1'`, models: `moonshot-v1-8k` / `moonshot-v1-128k`
+      - Qwen: `baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1'`, models: `qwen-turbo` / `qwen-plus` / `qwen-max`
+    - Both use `OpenAICompatibleProvider` (extend OpenAIProvider with configurable baseURL)
+    - Update `routeToProvider()`: add `moonshot`/`kimi` and `qwen` cases
+    - Verify `AnthropicProvider` constructor respects `apiBase` param (needed for local proxy users)
+    - Add `MOONSHOT_API_KEY` and `QWEN_API_KEY` to `.env.example`
+  - **Worker**: BACKEND
+  - **Estimate**: 3h
+
+- [ ] `P19-11`: [Backend] **MCP Browser Bridge (intellegix-toolkit Pattern)**
+  - **Files**: NEW `proxy-bridge/src/lib/MCPBrowserBridge.ts`, MODIFY `proxy-bridge/src/lib/MCPBridge.ts`
+  - **Description**: `intellegix/intellegix-code-agent-toolkit` exposes real browser state as MCP resources/tools that agents call directly — more powerful than screenshot-based navigation because agents get structured DOM, console errors, network logs. QueenBee has both `MCPBridge.ts` and `BrowserControlService.ts` — combining them lets agents observe and act on the live browser as an MCP resource with no extra infrastructure.
+  - **Context**: Pattern from intellegix: register `browser://current` as an MCP resource. `read_resource("browser://current")` returns `{ url, title, dom: string, consoleErrors: string[], networkLog: string[] }`. Agent calls `browser_click(selector)`, `browser_type(selector, text)`, `browser_navigate(url)` as MCP tools.
+  - **Implementation**:
+    - `MCPBrowserBridge.ts`: wraps `BrowserControlService`, exposes MCP resource `browser://current` + tools: `browser_click`, `browser_type`, `browser_navigate`, `browser_screenshot`
+    - `MCPBridge.ts`: auto-register `MCPBrowserBridge` as resource provider when `BrowserControlService` is initialized
+    - Add `browser_click`, `browser_type`, `browser_navigate` to `ToolDefinitions.ts` (conditionally when MCP browser connected)
+    - Emit `MCP_BROWSER_CONNECTED` socket event when bridge initializes
+  - **Worker**: BACKEND
+  - **Estimate**: 5h
+
+- [x] `P19-12`: [Backend/Frontend] **Portfolio Governance View (intellegix-toolkit Pattern)**
+  - **Files**: NEW `proxy-bridge/src/lib/PortfolioGovernance.ts`, NEW `proxy-bridge/src/pages/api/portfolio.ts`, NEW `dashboard/src/components/layout/PortfolioView.tsx`
+  - **Description**: `intellegix-code-agent-toolkit` includes a portfolio governance layer tracking agent sessions across multiple projects. QueenBee manages one project at a time — a portfolio view lets enterprise/power users manage agent fleets across repos from one dashboard. All data already exists: `db.ts` has project paths, `CostTracker.ts` has per-session cost, `ExperienceArchive.ts` has performance, `DiagnosticCollector.ts` has stuck/healthy status. Needs only an aggregation layer.
+  - **Implementation**:
+    - `PortfolioGovernance.ts`: iterate all known project paths from `db.ts`, aggregate: total cost (7d), session count, avg performance score, status (active/stuck/idle), last activity timestamp
+    - `/api/portfolio`: returns portfolio summary array
+    - `PortfolioView.tsx`: full-page dashboard (top-level Sidebar item) showing projects as cards — health badge (green/yellow/red), 7d cost, quick-launch button
+    - Deep-link from portfolio card into project's `AgenticWorkbench`
+  - **Worker**: BACKEND + FRONTEND
+  - **Estimate**: 5h
+  - **Status**: DONE - PortfolioGovernance.ts created.
+
+---
+
+### 🟢 P3 — ECOSYSTEM EXPANSION
+
+- [ ] `P19-13`: [Backend/Frontend] **Experience Snapshot Export/Import (`.qbx` Bundles)**
+  - **Files**: NEW `proxy-bridge/src/lib/ExperienceSnapshotService.ts`, NEW `proxy-bridge/src/pages/api/experience-archive/export.ts`, NEW `proxy-bridge/src/pages/api/experience-archive/import.ts`, MODIFY `dashboard/src/components/evolution/EvolutionPanel.tsx`
+  - **Description**: Users export their agent's learned experience as a portable `.qbx` (QueenBee eXperience) bundle to share with teammates or import community presets. This creates network effects: power users share specialized agent configs for React/Python/Rust stacks. Enterprise teams share accumulated wisdom across codebases. No competitor has anything like this — it's a unique distribution mechanism.
+  - **Implementation**:
+    - `.qbx` format: ZIP containing `experience-archive.jsonl` (filtered: `performanceScore > 0.7` only), `evolved-config.json`, `evolution-directives.json`, `meta.json` (version, domain tags like `react/typescript`)
+    - `ExperienceSnapshotService.exportSnapshot(projectPath, filters)` → ZIP Buffer
+    - `ExperienceSnapshotService.importSnapshot(buffer, projectPath)` → merge into existing archive, dedup by `sessionId`
+    - `/api/experience-archive/export`: `GET ?projectPath=X&domain=react` → `.qbx` file download
+    - `/api/experience-archive/import`: `POST` multipart with `.qbx` file
+    - Add Export + Import buttons to `EvolutionPanel.tsx` (GEA-08)
+  - **Worker**: BACKEND + FRONTEND
+  - **Estimate**: 4h
+
+- [ ] `P19-14`: [Frontend/Backend] **Slash Commands System (intellegix-toolkit Pattern)**
+  - **Files**: NEW `proxy-bridge/src/lib/SlashCommandRegistry.ts`, MODIFY `dashboard/src/components/layout/ComposerBar.tsx`, MODIFY `proxy-bridge/src/lib/AgentSession.ts`
+  - **Description**: `intellegix/intellegix-code-agent-toolkit` uses `/review`, `/test`, `/deploy` etc. mapped to pre-configured agent workflows. QueenBee's `SkillsManager.ts` is already fully functional with BM25 matching — but there's no front-door slash UX to make skills discoverable. Adding `/command` as a first-class ComposerBar pattern makes skill invocation immediate, discoverable, and demo-friendly. Power users can skip the LLM reasoning loop entirely for known workflows.
+  - **Context**: `SkillsManager.matchBest(text)` already does BM25 matching on skill triggers. Need: (1) slash-prefix interceptor in ComposerBar, (2) autocomplete dropdown, (3) direct execution bypass for known commands.
+  - **Implementation**:
+    - `SlashCommandRegistry.ts`: wraps `SkillsManager`, provides `getCompletions(prefix: string)` and `execute(command, args)`
+    - `ComposerBar.tsx`: intercept input starting with `/`, show autocomplete dropdown of matching skills, tab-to-complete, Escape to dismiss
+    - `AgentSession.ts`: if input matches registered slash command exactly, skip think loop, directly execute skill steps
+    - Built-in system slash commands: `/inspect` → opens DeepInspector, `/evolve` → triggers manual GEAReflection, `/swarm` → starts architect→worker flow, `/memory` → shows MemoryStore summary
+  - **Worker**: FRONTEND + BACKEND
+  - **Estimate**: 5h
+
+- [ ] `P19-15`: [Backend] **Council Automation (intellegix-toolkit Pattern)**
+  - **Files**: NEW `proxy-bridge/src/lib/CouncilAutomation.ts`, MODIFY `proxy-bridge/src/lib/Roundtable.ts`, MODIFY `proxy-bridge/src/lib/ProposalService.ts`
+  - **Description**: `intellegix-code-agent-toolkit` auto-convenes a council of specialist agents on high-stakes decisions (architecture changes, security-sensitive edits, large diffs) without user intervention. QueenBee has `Roundtable.ts` + `ProposalService.ts` but council formation is manual. Automating it means large or security-sensitive diffs are never approved unilaterally. The geometric median consensus (`consensus.ts` / Weiszfeld algorithm, P17-02) is already implemented — wire it to the council vote.
+  - **Context**: Council trigger criteria: any tool call touching files matching `securityPatterns` (auth, env, credentials, keys) OR diff size > 500 lines OR agent sets `requires_council: true` flag. Council composition: ARCHITECT agent + 2 agents drawn from top ExperienceArchive sessions (highest `combinedScore`). Voting: each council member calls `judgeProposal()`, aggregate via `consensus.geometricMedian()`.
+  - **Implementation**:
+    - `CouncilAutomation.ts`: `shouldConveneCouncil(toolCall, diffSize?)` → boolean; `convene(proposal)` → spawn reviewer agents with `ContextCompressor.pruneByGoal()` context (P17-01), aggregate votes via Weiszfeld median
+    - Wire into `AutonomousRunner` before any tool call matching security patterns or large diff threshold
+    - If council median ≥ 80 → proceed; else block and surface council reasoning to user via `COUNCIL_REVIEW` socket event
+    - `Roundtable.ts`: add `COUNCIL_SESSION` message type distinct from regular swarm chat
+  - **Worker**: BACKEND
+  - **Estimate**: 5h
+
+---
+
+### 🔵 P4 — COMPETITIVE POSITIONING
+
+- [ ] `P19-16`: [Docs/Frontend] **Update Competitive Messaging — Retire Stale Claims**
+  - **Files**: MODIFY `BUSINESS_PLAN.md`, MODIFY `refacto.md`, MODIFY `dashboard/src/components/` (onboarding/marketing text)
+  - **Description**: The three-pillar positioning in `refacto.md` is factually outdated. Live idea-reality-mcp scan: `74/100, HIGH competition`. Top rival `ruvnet/claude-flow` (14,886 ★, updated daily). Stale claims: "Cursor/Claude Code reset every session" (Claude Code now has memory), "all competitors are single-agent" (Cline shipped subagents Feb 2026, 5M installs, FREE), "local-first is unique" (Cline/Aider are free+local). The real moat (GEA, Experience Archive, Byzantine consensus, Roundtable) is never the lead message anywhere. This task fixes the messaging across all surfaces.
+  - **Implementation**:
+    - **Retire**: "all competitors are single-agent", "Claude Code resets every session", "local-first is unique", "$29 vs credit confusion" (weak against free Cline)
+    - **Lead with**: "QueenBee evolves — every session makes every agent smarter. No other tool does this.", "Byzantine-fault-tolerant swarms that self-heal", "Institutional memory that compounds over time"
+    - **Cline answer**: GEA + Experience Archive + Roundtable consensus = capabilities Cline will never have because they require persistent state infrastructure
+    - **Update** `BUSINESS_PLAN.md` competitor table: add Google Antigravity (76.2% SWE-bench), Cline (5M installs, subagents), `ruvnet/claude-flow` (14,886 ★, direct rival)
+    - **Dashboard**: add learning curve visualization to onboarding — "Your agents improve over time" with simulated trajectory
+  - **Worker**: DOCS + FRONTEND
+  - **Estimate**: 3h
+

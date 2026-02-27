@@ -21,6 +21,7 @@ export interface Automation {
     description: string;
     type?: 'GSD_SCAN' | 'SYNC_REPOS' | 'PR_REVIEW' | 'CHANGELOG' | 'DATA_GEN' | 'CI_MONITOR' | 'RELEASE_NOTES' | 'TEST_NIGHTLY' | 'MAINTENANCE';
     schedule: string; // cron expression or simple text
+    days?: string[]; // Days of week: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
     active: boolean;
     script?: string;
     lastRun?: string;

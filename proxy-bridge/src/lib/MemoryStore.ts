@@ -3,7 +3,15 @@ import path from 'path';
 import { Paths } from './Paths';
 import { v4 as uuidv4 } from 'uuid';
 
-export type MemoryType = 'insight' | 'pattern' | 'lesson' | 'preference' | 'style';
+/**
+ * P18-10: Extended memory type taxonomy.
+ * - codebase: architectural decisions, module patterns, API contracts
+ * - preference: developer style, avoided patterns, naming conventions
+ * - Original types preserved for backward compatibility.
+ */
+export type MemoryType = 'insight' | 'pattern' | 'lesson' | 'preference' | 'style' | 'codebase';
+
+export type MemorySearchMode = 'keyword' | 'bm25' | 'hybrid';
 
 export interface MemoryEntry {
   id: string;
@@ -297,13 +305,104 @@ export class MemoryStore {
   // Existing methods (unchanged)
   // -------------------------------------------------------------------------
 
+  /** Original keyword search (substring match). */
   async search(query: string): Promise<MemoryEntry[]> {
+    return this.hybridSearch(query, 20, 'keyword');
+  }
+
+  /**
+   * P18-10: Hybrid search over memories.
+   * - keyword: simple substring match (original behavior)
+   * - bm25: BM25-style TF-IDF ranking over tokenized memories
+   * - hybrid: merge keyword exact matches with BM25-ranked results
+   *
+   * @param query - search query
+   * @param limit - max results (default 20)
+   * @param mode  - search mode (default 'hybrid')
+   */
+  async hybridSearch(
+    query: string,
+    limit = 20,
+    mode: MemorySearchMode = 'hybrid'
+  ): Promise<MemoryEntry[]> {
     const memories = await this.getAll();
+    if (memories.length === 0) return [];
+
+    if (mode === 'keyword') {
+      const lowQuery = query.toLowerCase();
+      return memories
+        .filter(m => m.content.toLowerCase().includes(lowQuery) || m.type.toLowerCase().includes(lowQuery))
+        .slice(0, limit);
+    }
+
+    // Tokenize query
+    const queryTokens = query
+      .toLowerCase()
+      .split(/[\s\W]+/)
+      .filter(w => w.length > 2 && !STOPWORDS.has(w));
+
+    if (queryTokens.length === 0) return memories.slice(0, limit);
+
+    // BM25 scoring
+    const k1 = 1.5, b = 0.75;
+    const avgLen = memories.reduce((s, m) => s + m.content.split(/\s+/).length, 0) / memories.length;
+
+    const scored = memories.map(mem => {
+      const tokens = mem.content.toLowerCase().split(/[\s\W]+/).filter(w => w.length > 2);
+      const freqMap = new Map<string, number>();
+      for (const t of tokens) freqMap.set(t, (freqMap.get(t) || 0) + 1);
+
+      let score = 0;
+      for (const term of queryTokens) {
+        const tf = freqMap.get(term) || 0;
+        if (tf === 0) continue;
+        const idf = Math.log(1 + memories.length / (1 + memories.filter(m => m.content.toLowerCase().includes(term)).length));
+        const num = tf * (k1 + 1);
+        const den = tf + k1 * (1 - b + b * (tokens.length / avgLen));
+        score += idf * (num / den);
+      }
+
+      // Confidence boost for high-confidence memories
+      score *= (0.5 + mem.confidence * 0.5);
+
+      return { mem, score };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    const bm25Results = scored.filter(s => s.score > 0).map(s => s.mem);
+
+    if (mode === 'bm25') return bm25Results.slice(0, limit);
+
+    // Hybrid: merge exact matches first, then BM25
     const lowQuery = query.toLowerCase();
-    return memories.filter(m =>
-      m.content.toLowerCase().includes(lowQuery) ||
-      m.type.toLowerCase().includes(lowQuery)
+    const exactIds = new Set(
+      memories
+        .filter(m => m.content.toLowerCase().includes(lowQuery))
+        .map(m => m.id)
     );
+
+    const merged: MemoryEntry[] = [];
+    const seenIds = new Set<string>();
+
+    // Exact matches first
+    for (const m of memories) {
+      if (exactIds.has(m.id)) {
+        merged.push(m);
+        seenIds.add(m.id);
+        if (merged.length >= limit) break;
+      }
+    }
+
+    // Then BM25 results
+    for (const m of bm25Results) {
+      if (!seenIds.has(m.id)) {
+        merged.push(m);
+        seenIds.add(m.id);
+        if (merged.length >= limit) break;
+      }
+    }
+
+    return merged.slice(0, limit);
   }
 
   async prune(minConfidence: number = 0.5): Promise<void> {

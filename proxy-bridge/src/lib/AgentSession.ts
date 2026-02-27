@@ -16,7 +16,12 @@ import { diagnosticCollector } from './DiagnosticCollector';
 import { Roundtable } from './Roundtable';
 import { ExperienceArchive, TraceToolUse } from './ExperienceArchive';
 import { MetacognitivePlanner } from './MetacognitivePlanner';
+import { HealthScorer } from './HealthScorer';
+import { ContextCompressor } from './ContextCompressor';
+import { SessionSearchIndex } from './SessionSearchIndex';
+import { AgentsmdLoader } from './AgentsmdLoader';
 import { broadcast } from './socket-instance';
+import { CouncilAutomation } from './CouncilAutomation';
 import fs from 'fs-extra';
 import path from 'path';
 
@@ -49,6 +54,8 @@ export class AgentSession extends EventEmitter {
       public mainProjectPath: string | undefined; // Main project root for roundtable (not worktree)
       private lastSeenRoundtableTs: string = ''; // Track last roundtable message we've seen
   public parentSessionId?: string; // CMP: session that spawned this one (for lineage)
+  private systemSnapshot?: string; // P18-03: frozen system prompt for Anthropic prefix cache
+  private contextCompressor = new ContextCompressor(6); // P18-08: 2-pass compression
 
   constructor(projectPath: string, options: {
     systemPrompt?: string,
@@ -94,6 +101,27 @@ export class AgentSession extends EventEmitter {
 
     if (options.systemPrompt) {
       this.messages.push({ role: 'system', content: options.systemPrompt });
+      // P18-03: Capture frozen snapshot for Anthropic prefix caching.
+      // P18-19: Augment snapshot with hierarchical AGENTS.md context.
+      this.initSystemSnapshot(options.systemPrompt).catch(err =>
+        console.warn('[AgentSession] Failed to init system snapshot:', err)
+      );
+    }
+  }
+
+  /** P18-03 + P18-19: Build frozen system snapshot with AGENTS.md context. */
+  private async initSystemSnapshot(basePrompt: string): Promise<void> {
+    try {
+      const loader = new AgentsmdLoader(this.projectPath);
+      const { content: agentsMd, sources } = await loader.load();
+      if (agentsMd) {
+        this.systemSnapshot = `${basePrompt}\n\n## Project Agent Context (AGENTS.md)\n${agentsMd}`;
+        console.log(`[AgentSession] System snapshot built with AGENTS.md from ${sources.length} source(s).`);
+      } else {
+        this.systemSnapshot = basePrompt;
+      }
+    } catch {
+      this.systemSnapshot = basePrompt;
     }
   }
 
@@ -145,11 +173,18 @@ export class AgentSession extends EventEmitter {
 
               stepCount++;
 
-            // Context Pressure Check
-            const estimatedTokens = this.estimateTokens();
-            if (estimatedTokens > 80000) {
-              console.log(`[AgentSession] Context pressure: ~${estimatedTokens} tokens. Pruning old messages.`);
-              this.pruneMessages();
+            // P18-08: 2-Pass Context Pressure Check
+            const pressure = this.contextCompressor.estimateContextPressure(this.messages);
+            if (pressure > 0.75) {
+              // Pass 2: hard clear — replace old tool results with 1-line summaries
+              const { messages: cleared, ratio } = this.contextCompressor.hardClear(this.messages);
+              this.messages = cleared;
+              console.log(`[AgentSession] P2 HardClear at ${(pressure * 100).toFixed(0)}% pressure. Cleared ${(ratio * 100).toFixed(0)}% of content.`);
+              this.emit('event', { type: 'context_pruned', data: { pass: 2, pressureRatio: pressure, clearedRatio: ratio } });
+            } else if (pressure > 0.4) {
+              // Pass 1: soft trim old tool results
+              this.messages = this.contextCompressor.processHistory(this.messages);
+              console.log(`[AgentSession] P1 SoftTrim at ${(pressure * 100).toFixed(0)}% pressure.`);
             }
 
         this.emit('event', { type: 'step_start', data: { step: stepCount, status: 'thinking' } });
@@ -163,14 +198,16 @@ export class AgentSession extends EventEmitter {
         const response: LLMResponse = await unifiedLLMService.chat(this.providerId, this.messages, {
           ...options,
           apiKey: this.apiKey || undefined,
-          tools: sanitizedTools as any
+          tools: sanitizedTools as any,
+          // P18-03: Pass frozen snapshot so AnthropicProvider can use prefix caching
+          systemSnapshot: this.systemSnapshot,
         });
         
         console.log(`[AgentSession] LLM Response: content length=${response.content?.length || 0}, tool_calls=${response.tool_calls?.length || 0}`);
 
         if (response.usage) {
           const cost = CostTracker.calculateCost(response.model || 'unknown', response.usage.prompt_tokens, response.usage.completion_tokens);
-          this.costTracker.log({
+          await this.costTracker.log({
             agentId: this.threadId || 'unknown',
             threadId: this.threadId || 'unknown',
             model: response.model || 'unknown',
@@ -179,6 +216,32 @@ export class AgentSession extends EventEmitter {
             cost,
             latencyMs: Date.now() - llmStartTime,
           }).catch(err => console.error('[AgentSession] Failed to log cost:', err));
+
+          // P18-05: Budget Enforcement — abort if per-session spend exceeds cap
+          if (this.policyStore && this.threadId) {
+            try {
+              const budgetLimit: number = await this.policyStore.get('budget_limit_usd') ?? 0;
+              if (budgetLimit > 0) {
+                const sessionTotal = await this.costTracker.getSessionTotal(this.threadId);
+                if (sessionTotal >= budgetLimit) {
+                  console.warn(`[AgentSession] Budget exceeded: $${sessionTotal.toFixed(4)} >= $${budgetLimit} limit for session ${this.threadId}`);
+                  this.emit('event', {
+                    type: 'agent_status',
+                    data: {
+                      status: 'budget_exceeded',
+                      message: `Session cost $${sessionTotal.toFixed(4)} has exceeded the $${budgetLimit} budget limit. Stopping.`,
+                      sessionTotal,
+                      budgetLimit,
+                    }
+                  });
+                  throw new Error(`BUDGET_EXCEEDED: Session cost $${sessionTotal.toFixed(4)} exceeded $${budgetLimit} limit.`);
+                }
+              }
+            } catch (budgetErr: any) {
+              if (budgetErr.message?.startsWith('BUDGET_EXCEEDED')) throw budgetErr;
+              console.error('[AgentSession] Budget check failed:', budgetErr);
+            }
+          }
         }
 
         if (this.eventLog) {
@@ -235,6 +298,43 @@ export class AgentSession extends EventEmitter {
 
             this.emit('event', { type: 'tool_start', data: { toolName, args, toolCallId: toolCall.id } });
             const toolCallStart = Date.now(); // GEA-06: timing
+
+            // P19-15: Council Automation pre-execution gate
+            // Estimate diff size from content length (1 line ≈ 60 chars heuristic)
+            const councilContentLen = typeof (args as any).content === 'string'
+              ? (args as any).content.length
+              : 0;
+            const councilDiffLines = Math.ceil(councilContentLen / 60);
+            if (CouncilAutomation.shouldConvene(toolName, args as Record<string, any>, councilDiffLines)) {
+              const proposalSummary = `Tool: ${toolName}\nFile: ${(args as any).path || (args as any).file || 'unknown'}\nEstimated size: ~${councilDiffLines} lines`;
+              const contextSummary  = `Thread: ${this.threadId || 'unknown'} | Project: ${this.projectPath}`;
+
+              try {
+                const councilResult = await CouncilAutomation.convene(
+                  proposalSummary,
+                  contextSummary,
+                  { providerId: this.providerId, apiKey: this.apiKey || undefined }
+                );
+
+                if (!councilResult.approved) {
+                  const rejectionMsg = `[COUNCIL GATE] Operation blocked by council review (score: ${councilResult.score}/100). Reasoning: ${councilResult.reasoning}`;
+                  this.emit('event', { type: 'tool_error', data: { toolName, error: rejectionMsg, toolCallId: toolCall.id } });
+                  this.traceToolHistory.push({ tool: toolName, outcome: 'fail', durationMs: Date.now() - toolCallStart });
+                  return {
+                    id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    role: 'tool',
+                    tool_call_id: toolCall.id,
+                    name: toolName,
+                    content: JSON.stringify({ error: rejectionMsg })
+                  } as LLMMessage;
+                }
+
+                console.log(`[CouncilAutomation] Operation approved (score: ${councilResult.score}/100).`);
+              } catch (councilErr: any) {
+                // Council failure is non-fatal — log and proceed
+                console.warn('[CouncilAutomation] Council convene failed (proceeding):', councilErr.message);
+              }
+            }
 
             try {
               const result = await this.executor.execute({
@@ -315,6 +415,14 @@ export class AgentSession extends EventEmitter {
 
       // OP-03: End session tracking
       if (this.threadId) diagnosticCollector.sessionEnd(this.threadId);
+
+      // P18-09: Index session for full-text search
+      try {
+        const searchIndex = new SessionSearchIndex(this.projectPath);
+        await searchIndex.indexSession(this.threadId || `session-${Date.now()}`, this.messages);
+      } catch (e) {
+        console.warn('[AgentSession] Session search indexing failed (non-fatal):', e);
+      }
 
       // Memory Flush: Capture technical changes AND conversational instructions
       await this.summarizeSession();
@@ -463,10 +571,26 @@ export class AgentSession extends EventEmitter {
         }
       }
 
+      // P18-17/20: Compute code quality delta from HealthScorer
+      let codeQualityDelta = 0;
+      if (this.sessionFiles.size > 0) {
+        try {
+          const healthScorer = new HealthScorer(this.projectPath);
+          const absolutePaths = [...this.sessionFiles].map(f => path.resolve(this.projectPath, f));
+          const healthSnapshot = await healthScorer.scoreFiles(absolutePaths);
+          codeQualityDelta = await healthScorer.computeDeltaAndSave(healthSnapshot);
+        } catch (healthErr) {
+          console.warn('[AgentSession] HealthScorer failed:', healthErr);
+        }
+      }
+
       // Compute novelty vs recent population
       const recentEntries = await archive.query({ limit: 20, sortBy: 'timestamp' });
       const noveltyScore  = archive.computeNovelty(toolVector, recentEntries);
-      const performanceScore = Math.max(0, Math.min(1, successRate));
+      // P18-20: lenientScore = base performance; strictScore penalises health degradation
+      const lenientScore     = Math.max(0, Math.min(1, successRate));
+      const healthPenalty    = codeQualityDelta < 0 ? Math.abs(codeQualityDelta) / 100 * 0.1 : 0;
+      const performanceScore = Math.max(0, lenientScore - healthPenalty);
       const combinedScore    = ExperienceArchive.combinedScore(performanceScore, noveltyScore);
 
       const entry = await archive.append({
@@ -495,11 +619,13 @@ export class AgentSession extends EventEmitter {
 
       // Broadcast score to dashboard
       broadcast('EXPERIENCE_SCORED', {
-        sessionId:    entry.sessionId,
-        performance:  performanceScore,
-        novelty:      noveltyScore,
-        combined:     combinedScore,
-        projectPath:  this.projectPath,
+        sessionId:       entry.sessionId,
+        performance:     performanceScore,
+        lenientScore,
+        novelty:         noveltyScore,
+        combined:        combinedScore,
+        codeQualityDelta,
+        projectPath:     this.projectPath,
       });
 
       console.log(`[GEA] Session trace archived — perf=${performanceScore.toFixed(2)} novelty=${noveltyScore.toFixed(2)} combined=${combinedScore.toFixed(3)}`);

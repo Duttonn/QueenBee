@@ -44,6 +44,10 @@ export interface LLMProviderOptions {
   tools?: any[];
   composerMode?: 'code' | 'chat' | 'plan';
   sessionId?: string;
+  /** P18-03: Frozen snapshot of the system prompt captured at session init.
+   *  When set, AnthropicProvider will send it as a cached prefix block
+   *  (cache_control: ephemeral) for ~90% token savings on repeated calls. */
+  systemSnapshot?: string;
 }
 
 export interface ILLMProvider {

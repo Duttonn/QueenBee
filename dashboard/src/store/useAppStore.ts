@@ -129,7 +129,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     },
 
     deleteAutomation: async (id) => {
-        const res = await fetch(`${API_BASE}/automations?id=${id}`, {
+        const res = await fetch(`${API_BASE_ROUTES}/automations?id=${id}`, {
             method: 'DELETE'
         });
         if (res.ok) {
@@ -145,7 +145,8 @@ export const useAppStore = create<AppState>((set, get) => ({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ command: script, allowedCommands })
         });
-        return await res.json();
+        const result = await res.json();
+        return result;
     },
 
     installSkill: async (skill) => {
@@ -162,7 +163,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     },
 
     uninstallSkill: async (id) => {
-        const res = await fetch(`${API_BASE}/skills?id=${id}`, {
+        const res = await fetch(`${API_BASE_ROUTES}/skills?id=${id}`, {
             method: 'DELETE'
         });
         if (res.ok) {

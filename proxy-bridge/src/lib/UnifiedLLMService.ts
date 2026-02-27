@@ -37,6 +37,40 @@ const PRICING_REGISTRY: Record<string, Record<string, { input: number; output: n
 const GLOBAL_DEFAULT_PRICE = { input: 0.002, output: 0.002 };
 
 /**
+ * P18-06: Model-aware timeout multipliers.
+ * Base timeout is 120s. Heavier/slower models get a longer budget.
+ * Match is done by checking if the model name contains the key.
+ */
+const MODEL_TIMEOUT_MULTIPLIERS: Array<{ pattern: string; multiplier: number }> = [
+  { pattern: 'opus',    multiplier: 2.0 },
+  { pattern: 'o1',      multiplier: 2.0 },
+  { pattern: 'sonnet',  multiplier: 1.3 },
+  { pattern: 'gpt-4',   multiplier: 1.3 },
+  { pattern: 'haiku',   multiplier: 0.5 },
+  { pattern: 'flash',   multiplier: 0.5 },
+  { pattern: 'mini',    multiplier: 0.5 },
+];
+const BASE_TIMEOUT_MS = 120_000;
+
+function getModelTimeout(model?: string): number {
+  if (!model) return BASE_TIMEOUT_MS;
+  const lower = model.toLowerCase();
+  for (const { pattern, multiplier } of MODEL_TIMEOUT_MULTIPLIERS) {
+    if (lower.includes(pattern)) return Math.round(BASE_TIMEOUT_MS * multiplier);
+  }
+  return BASE_TIMEOUT_MS;
+}
+
+/** Wrap a promise with a timeout that rejects with a descriptive error. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`LLM timeout after ${ms}ms (${label})`)), ms);
+    promise.then(val => { clearTimeout(timer); resolve(val); })
+           .catch(err => { clearTimeout(timer); reject(err); });
+  });
+}
+
+/**
  * Configurable fallback chains per composerMode.
  * Each chain is an ordered list of provider IDs to try in sequence.
  */
@@ -54,12 +88,33 @@ const DEFAULT_FALLBACK_CHAINS: FallbackChainConfig = {
   default: ['gemini', 'openai', 'anthropic', 'mistral', 'ollama'],
 };
 
+/**
+ * P18-21: Two-tier LLM architecture.
+ * The exploration tier (Haiku/Flash) is used for cheap scan/explore operations.
+ * getExplorationOptions() returns options that force the exploration model.
+ */
+export const EXPLORATION_MODELS: Record<string, string> = {
+  anthropic: 'claude-haiku-4-5-20251001',
+  openai:    'gpt-4o-mini',
+  google:    'gemini-2.0-flash',
+};
+
 export class UnifiedLLMService {
   private providers: Map<string, LLMProvider> = new Map();
   public ready: Promise<void>;
   private usageStats: any[] = [];
   public readonly authProfileManager = new AuthProfileManager();
   private fallbackChains: FallbackChainConfig = { ...DEFAULT_FALLBACK_CHAINS };
+
+  /** P18-21: Return LLMProviderOptions with the exploration-tier model for a given provider. */
+  getExplorationOptions(providerId: string, baseOptions?: LLMProviderOptions): LLMProviderOptions {
+    const normalizedId = providerId.toLowerCase();
+    let explorationModel: string | undefined;
+    for (const [key, model] of Object.entries(EXPLORATION_MODELS)) {
+      if (normalizedId.includes(key)) { explorationModel = model; break; }
+    }
+    return { ...baseOptions, ...(explorationModel ? { model: explorationModel } : {}) };
+  }
 
   private calculateCost(providerId: string, model: string, usage: any): number {
     if (!usage) return 0;
@@ -118,7 +173,11 @@ export class UnifiedLLMService {
     'gemini': 'google',
     'claude': 'anthropic',
     'codex': 'openai-codex',
-    'kimi': 'moonshot'
+    'kimi': 'moonshot',
+    'moonshot-v1': 'moonshot',
+    'qwen-turbo': 'qwen',
+    'qwen-plus': 'qwen',
+    'qwen-max': 'qwen',
   };
 
   constructor() {
@@ -172,6 +231,16 @@ export class UnifiedLLMService {
     if (nvidiaKey) {
       this.providers.set('nvidia', new OpenAIProvider('nvidia', nvidiaKey, 'https://integrate.api.nvidia.com/v1'));
     }
+
+    const moonshotKey = process.env.MOONSHOT_API_KEY;
+    if (moonshotKey) {
+      this.providers.set('moonshot', new OpenAIProvider('moonshot', moonshotKey, 'https://api.moonshot.cn/v1'));
+    }
+
+    const qwenKey = process.env.QWEN_API_KEY;
+    if (qwenKey) {
+      this.providers.set('qwen', new OpenAIProvider('qwen', qwenKey, 'https://dashscope.aliyuncs.com/compatible-mode/v1'));
+    }
   }
 
   private initFromProfile(profile: any) {
@@ -194,6 +263,13 @@ export class UnifiedLLMService {
         break;
       case 'mistral':
         this.providers.set(id, new MistralProvider(key));
+        break;
+      case 'moonshot':
+      case 'kimi':
+        this.providers.set(id, new OpenAIProvider(id, key, profile.apiBase || 'https://api.moonshot.cn/v1'));
+        break;
+      case 'qwen':
+        this.providers.set(id, new OpenAIProvider(id, key, profile.apiBase || 'https://dashscope.aliyuncs.com/compatible-mode/v1'));
         break;
     }
   }
@@ -234,10 +310,16 @@ export class UnifiedLLMService {
       );
     }
 
-    console.log(`[LLMService] Chat with provider: ${providerId}, model: ${options?.model || 'default'}`);
+    const timeoutMs = getModelTimeout(options?.model);
+    console.log(`[LLMService] Chat with provider: ${providerId}, model: ${options?.model || 'default'}, timeout: ${timeoutMs}ms`);
 
     try {
-      const response = await provider.chat(messages, options);
+      // P18-06: Apply model-aware timeout
+      const response = await withTimeout(
+        provider.chat(messages, options),
+        timeoutMs,
+        `${providerId}/${options?.model || 'default'}`
+      );
       this.authProfileManager.markSuccess(providerId);
       this.recordUsage(providerId, response.model || 'unknown', response.usage);
       return response;
@@ -261,6 +343,8 @@ export class UnifiedLLMService {
       else if (modelName.includes('gpt') || modelName.includes('o1-')) bestId = 'openai';
       else if (modelName.includes('claude')) bestId = 'anthropic';
       else if (modelName.includes('mistral')) bestId = 'mistral';
+      else if (modelName.includes('moonshot') || modelName.includes('kimi')) bestId = 'moonshot';
+      else if (modelName.includes('qwen')) bestId = 'qwen';
 
       if (bestId) {
         const p = await this.getOrLoadProvider(bestId, options);

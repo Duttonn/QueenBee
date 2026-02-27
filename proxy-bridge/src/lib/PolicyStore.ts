@@ -13,6 +13,8 @@ const DEFAULT_POLICIES: Policies = {
   max_parallel_agents: 4,
   stale_task_timeout_minutes: 30,
   max_parallel_launches: 3,
+  // P18-05: Per-session budget cap (USD). Set to 0 to disable.
+  budget_limit_usd: 20,
 };
 
 export class PolicyStore {

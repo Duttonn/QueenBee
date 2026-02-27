@@ -1,4 +1,3 @@
-
 import { AuthProfile, AuthProfileStore } from './auth-profile-store';
 import { v4 as uuidv4 } from 'uuid';
 import open from 'open';
@@ -22,6 +21,8 @@ export class AuthManager {
 
     /**
      * Start OAuth flow for a provider
+     * Note: Anthropic and OpenAI do not offer public OAuth for third-party apps.
+     * Use direct API key entry for these providers instead.
      */
     static async initiateOAuth(provider: string, mode: 'electron' | 'web' = 'web'): Promise<{ url: string; state: string; codeVerifier?: string }> {
         if (provider === 'google') {
@@ -33,37 +34,14 @@ export class AuthManager {
         if (provider === 'google-gemini-cli') {
             return this.initiateGeminiCliOAuth(mode);
         }
-        if (provider === 'openai-codex') {
-            return this.initiateOpenAICodexOAuth(mode);
-        }
         if (provider === 'qwen-portal') {
             return this.initiateQwenPortalOAuth(mode);
         }
-        if (provider === 'anthropic' || provider === 'anthropic-oauth') {
-            return this.initiateAnthropicOAuth(mode);
+        // Anthropic and OpenAI do not support OAuth - throw clear error
+        if (provider === 'anthropic' || provider === 'anthropic-oauth' || provider === 'openai-codex') {
+            throw new Error(`${provider} does not support OAuth. Please enter your API key directly in Settings.`);
         }
         throw new Error(`Provider ${provider} not supported for OAuth initiation`);
-    }
-
-    /**
-     * Anthropic OAuth implementation (Claude Code)
-     */
-    private static async initiateAnthropicOAuth(mode: 'electron' | 'web' = 'web') {
-        const stateRaw = { p: 'anthropic', n: uuidv4(), mode: mode };
-        const state = Buffer.from(JSON.stringify(stateRaw)).toString('base64');
-        // Anthropic uses claude.ai for authorize
-        const url = `https://claude.ai/oauth/authorize?client_id=official-id-here&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=openid%20profile%20email&state=${state}&response_type=code`;
-        return { url, state };
-    }
-
-    /**
-     * OpenAI Codex OAuth implementation
-     */
-    private static async initiateOpenAICodexOAuth(mode: 'electron' | 'web' = 'web') {
-        const stateRaw = { p: 'openai-codex', n: uuidv4(), mode: mode };
-        const state = Buffer.from(JSON.stringify(stateRaw)).toString('base64');
-        const url = `https://auth.openai.com/oauth/authorize?client_id=official-id-here&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=openid%20profile%20email&state=${state}&response_type=code`;
-        return { url, state };
     }
 
     /**
@@ -270,7 +248,7 @@ export class AuthManager {
     }
 
     /**
-     * Add Static Token (Gemini CLI / Claude Setup Token)
+     * Add Static Token (API Key)
      */
     static async addStaticToken(provider: string, token: string, alias: string = 'default', sessionId?: string) {
         const profile: AuthProfile = {
