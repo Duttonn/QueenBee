@@ -1,9 +1,35 @@
 import fs from 'fs-extra';
 import path from 'path';
 
+/* ─── Types ─────────────────────────────────────────────────────────── */
+
+/**
+ * Rich dependency types (inspired by ruflo TaskEngine):
+ * - finish_to_start (f2s): B cannot start until A finishes (default)
+ * - start_to_start  (s2s): B cannot start until A starts
+ * - finish_to_finish (f2f): B cannot finish until A finishes
+ */
+export type DependencyType = 'finish_to_start' | 'start_to_start' | 'finish_to_finish';
+
+export interface TaskDependency {
+  taskId: string;
+  type: DependencyType;
+}
+
+export interface TaskCheckpoint {
+  taskId: string;
+  step: number;
+  state: 'pending' | 'in_progress' | 'completed' | 'failed';
+  data?: Record<string, unknown>;
+  timestamp: string;
+}
+
+/* ─── ProjectTaskManager ────────────────────────────────────────────── */
+
 /**
  * ProjectTaskManager: Manages the internal PLAN.md for user projects.
  * Implements the "Vertical Slicing" philosophy.
+ * Enhanced with rich dependency types and task checkpointing.
  */
 export class ProjectTaskManager {
   private projectPath: string;
@@ -41,6 +67,12 @@ Génère le contenu pour un fichier PLAN.md avec :
 - Phase 1: Short-Term (Now)
 - Phase 2: Mid-Term (Next)
 - Phase 3: Long-Term (Future)
+
+## DEPENDENCY TYPES
+When declaring task dependencies, you may use:
+- \`(depends_on: TASK-ID)\` — finish-to-start (default): B cannot start until A finishes
+- \`(starts_with: TASK-ID)\` — start-to-start: B cannot start until A has started
+- \`(finishes_with: TASK-ID)\` — finish-to-finish: B cannot finish until A finishes
 `;
   }
 
@@ -65,9 +97,89 @@ Génère le contenu pour un fichier PLAN.md avec :
       .map(line => line.replace('- [ ]', '').trim());
   }
 
+  /* ─── Rich Dependency Checking ───────────────────────────────────── */
+
   /**
-   * LS-05: Check if all depends_on tasks for a given taskId are done.
-   * Format in PLAN.md: `- [ ] FEAT-02: ... (depends_on: FEAT-01, FEAT-03)`
+   * Parse all dependencies from a task line.
+   * Supports:
+   *   (depends_on: FEAT-01, FEAT-03)  → finish_to_start
+   *   (starts_with: FEAT-02)           → start_to_start
+   *   (finishes_with: FEAT-04)         → finish_to_finish
+   */
+  parseDependencies(taskLine: string): TaskDependency[] {
+    const deps: TaskDependency[] = [];
+
+    // finish_to_start: (depends_on: ...)
+    const f2sMatch = taskLine.match(/\(depends_on:\s*([^)]+)\)/);
+    if (f2sMatch) {
+      for (const id of f2sMatch[1].split(',').map(d => d.trim()).filter(Boolean)) {
+        deps.push({ taskId: id, type: 'finish_to_start' });
+      }
+    }
+
+    // start_to_start: (starts_with: ...)
+    const s2sMatch = taskLine.match(/\(starts_with:\s*([^)]+)\)/);
+    if (s2sMatch) {
+      for (const id of s2sMatch[1].split(',').map(d => d.trim()).filter(Boolean)) {
+        deps.push({ taskId: id, type: 'start_to_start' });
+      }
+    }
+
+    // finish_to_finish: (finishes_with: ...)
+    const f2fMatch = taskLine.match(/\(finishes_with:\s*([^)]+)\)/);
+    if (f2fMatch) {
+      for (const id of f2fMatch[1].split(',').map(d => d.trim()).filter(Boolean)) {
+        deps.push({ taskId: id, type: 'finish_to_finish' });
+      }
+    }
+
+    return deps;
+  }
+
+  /**
+   * Check if a specific dependency is satisfied given the dependency task's line.
+   */
+  isDependencySatisfied(dep: TaskDependency, depTaskLine: string | undefined): boolean {
+    if (!depTaskLine) return true; // Unknown task — don't block
+
+    const isDone = /- \[(?:x|DONE)\]/.test(depTaskLine);
+    const isInProgress = /- \[IN PROGRESS/.test(depTaskLine);
+
+    switch (dep.type) {
+      case 'finish_to_start':
+        // Dep must be done before we can start
+        return isDone;
+
+      case 'start_to_start':
+        // Dep must be at least started (in progress or done)
+        return isInProgress || isDone;
+
+      case 'finish_to_finish':
+        // Dep must be done before we can finish (not before we start)
+        // For start-ability check, this is always satisfied
+        return true;
+    }
+  }
+
+  /**
+   * Check if a task can finish, considering finish_to_finish deps.
+   */
+  isFinishAllowed(deps: TaskDependency[], lines: string[]): { allowed: boolean; waitingOn: string[] } {
+    const waitingOn: string[] = [];
+
+    for (const dep of deps) {
+      if (dep.type !== 'finish_to_finish') continue;
+      const depLine = lines.find(l => l.includes(`\`${dep.taskId}\``));
+      const isDone = depLine ? /- \[(?:x|DONE)\]/.test(depLine) : true;
+      if (!isDone) waitingOn.push(dep.taskId);
+    }
+
+    return { allowed: waitingOn.length === 0, waitingOn };
+  }
+
+  /**
+   * LS-05: Check if all dependencies for a given taskId are satisfied for starting.
+   * Enhanced with rich dependency types.
    */
   async checkDependencies(taskId: string, projectPath?: string): Promise<{
     blocked: boolean;
@@ -81,18 +193,16 @@ Génère le contenu pour un fichier PLAN.md avec :
     const taskLine = lines.find(l => l.includes(`\`${taskId}\``));
     if (!taskLine) return { blocked: false, waitingOn: [] };
 
-    const match = taskLine.match(/\(depends_on:\s*([^)]+)\)/);
-    if (!match) return { blocked: false, waitingOn: [] };
+    const deps = this.parseDependencies(taskLine);
+    if (deps.length === 0) return { blocked: false, waitingOn: [] };
 
-    const deps = match[1].split(',').map(d => d.trim()).filter(Boolean);
     const waitingOn: string[] = [];
 
     for (const dep of deps) {
-      const depLine = lines.find(l => l.includes(`\`${dep}\``));
-      if (!depLine) continue;
-      // Done if marked [x] or [DONE]
-      const isDone = /- \[(?:x|DONE)\]/.test(depLine);
-      if (!isDone) waitingOn.push(dep);
+      const depLine = lines.find(l => l.includes(`\`${dep.taskId}\``));
+      if (!this.isDependencySatisfied(dep, depLine)) {
+        waitingOn.push(`${dep.taskId} (${dep.type})`);
+      }
     }
 
     return { blocked: waitingOn.length > 0, waitingOn };
@@ -167,6 +277,18 @@ Génère le contenu pour un fichier PLAN.md avec :
     const targetFile = projectPath ? path.join(projectPath, 'PLAN.md') : this.tasksFile;
     if (!(await fs.pathExists(targetFile))) return false;
     let content = await fs.readFile(targetFile, 'utf-8');
+    const lines = content.split('\n');
+
+    // Check finish_to_finish dependencies before allowing completion
+    const taskLine = lines.find(l => l.includes(`\`${taskId}\``));
+    if (taskLine) {
+      const deps = this.parseDependencies(taskLine);
+      const finishCheck = this.isFinishAllowed(deps, lines);
+      if (!finishCheck.allowed) {
+        console.warn(`[TaskManager] Cannot complete ${taskId} — finish_to_finish deps not met: ${finishCheck.waitingOn.join(', ')}`);
+        return false;
+      }
+    }
 
     const safeTaskId = taskId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const pattern = `- \\[IN PROGRESS: ${agentId}\\] \`${safeTaskId}\``;
@@ -193,7 +315,7 @@ Génère le contenu pour un fichier PLAN.md avec :
     }
     let content = await fs.readFile(targetFile, 'utf-8');
     const newTaskLine = `- [ ] \`${taskId}\`: ${description}`;
-    
+
     // Normalize phase name for matching
     const phaseHeader = phase.startsWith('##') ? phase : `## ${phase}`;
     if (content.includes(phaseHeader)) {
@@ -201,7 +323,47 @@ Génère le contenu pour un fichier PLAN.md avec :
     } else {
       content += `\n\n${phaseHeader}\n${newTaskLine}`;
     }
-    
+
     await fs.writeFile(targetFile, content);
+  }
+
+  /* ─── Task Checkpointing ──────────────────────────────────────────── */
+
+  /**
+   * Save a checkpoint for a task step (enables rollback).
+   */
+  async saveCheckpoint(taskId: string, step: number, data?: Record<string, unknown>, projectPath?: string): Promise<void> {
+    const base = projectPath || this.projectPath;
+    const cpPath = path.join(base, '.queenbee', 'checkpoints.json');
+    await fs.ensureDir(path.dirname(cpPath));
+
+    const checkpoints: TaskCheckpoint[] = await fs.readJson(cpPath).catch(() => []);
+    checkpoints.push({
+      taskId,
+      step,
+      state: 'completed',
+      data,
+      timestamp: new Date().toISOString(),
+    });
+    await fs.writeJson(cpPath, checkpoints, { spaces: 2 });
+  }
+
+  /**
+   * Get all checkpoints for a task (for rollback inspection).
+   */
+  async getCheckpoints(taskId: string, projectPath?: string): Promise<TaskCheckpoint[]> {
+    const base = projectPath || this.projectPath;
+    const cpPath = path.join(base, '.queenbee', 'checkpoints.json');
+    const checkpoints: TaskCheckpoint[] = await fs.readJson(cpPath).catch(() => []);
+    return checkpoints.filter(cp => cp.taskId === taskId);
+  }
+
+  /**
+   * Get the last successful checkpoint for a task (for resume after failure).
+   */
+  async getLastCheckpoint(taskId: string, projectPath?: string): Promise<TaskCheckpoint | null> {
+    const cps = await this.getCheckpoints(taskId, projectPath);
+    const completed = cps.filter(cp => cp.state === 'completed');
+    return completed.length > 0 ? completed[completed.length - 1] : null;
   }
 }

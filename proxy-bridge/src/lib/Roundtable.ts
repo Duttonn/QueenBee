@@ -3,6 +3,7 @@ import path from 'path';
 import { Paths } from './Paths';
 import { broadcast } from './socket-instance';
 import { aggregateScores } from './consensus';
+import { TopologyManager } from './TopologyManager';
 
 export interface TeamMessage {
   id: string;
@@ -19,10 +20,13 @@ export interface TeamMessage {
 /**
  * Roundtable: The shared communication channel for the agent swarm.
  * Enables cross-agent interaction and guidance.
+ * Enhanced with topology-aware message routing.
  */
 export class Roundtable {
   private projectPath: string;
   private chatPath: string;
+  /** Optional topology manager for structured communication */
+  private topology: TopologyManager | null = null;
 
   constructor(projectPath: string) {
     this.projectPath = projectPath;
@@ -32,7 +36,21 @@ export class Roundtable {
   }
 
   /**
-   * Post a message to the shared team channel
+   * Attach a topology manager to enable structured communication routing.
+   * When set, messages are filtered to only reach topologically-connected agents.
+   */
+  setTopology(topology: TopologyManager): void {
+    this.topology = topology;
+  }
+
+  getTopology(): TopologyManager | null {
+    return this.topology;
+  }
+
+  /**
+   * Post a message to the shared team channel.
+   * If topology is set and type != flat, the broadcast event includes
+   * reachability info so the frontend can render routing.
    */
   async postMessage(agentId: string, role: string, content: string, metadata: { threadId?: string; taskId?: string; targetAgentId?: string; swarmId?: string } = {}) {
     const message: TeamMessage = {
@@ -45,37 +63,56 @@ export class Roundtable {
     };
 
     await fs.appendFile(this.chatPath, JSON.stringify(message) + '\n');
-    
+
+    // Build reachability info for topology-aware routing
+    let reachableAgents: string[] | undefined;
+    if (this.topology && this.topology.getType() !== 'flat') {
+      reachableAgents = this.topology.getReachableAgents(agentId);
+    }
+
     // Notify UI and other active listeners
-    broadcast('TEAM_CHAT_MESSAGE', message);
-    
+    broadcast('TEAM_CHAT_MESSAGE', {
+      ...message,
+      ...(reachableAgents ? { reachableAgents } : {}),
+    });
+
     return message;
   }
 
   /**
-   * Get recent messages from the channel for context injection
+   * Get recent messages from the channel for context injection.
+   * If topology is set, filters to only messages from topologically-reachable agents.
    */
-  async getRecentMessages(limit = 10, swarmId?: string): Promise<TeamMessage[]> {
+  async getRecentMessages(limit = 10, swarmId?: string, forAgentId?: string): Promise<TeamMessage[]> {
     if (!(await fs.pathExists(this.chatPath))) return [];
-    
+
     const content = await fs.readFile(this.chatPath, 'utf-8');
     const lines = content.trim().split('\n').filter(Boolean);
-    
+
     let messages = lines.map(line => JSON.parse(line) as TeamMessage);
-    
+
     if (swarmId) {
       // Include messages for this swarm OR messages with no swarmId (global broadcasts)
       messages = messages.filter(m => m.swarmId === swarmId || !m.swarmId);
     }
-    
+
+    // Topology-aware filtering: only show messages from reachable agents
+    if (forAgentId && this.topology && this.topology.getType() !== 'flat') {
+      const reachable = new Set(this.topology.getReachableAgents(forAgentId));
+      reachable.add(forAgentId); // Agent can see its own messages
+      // Always allow SYSTEM messages through
+      messages = messages.filter(m => reachable.has(m.agentId) || m.agentId === 'SYSTEM');
+    }
+
     return messages.slice(-limit);
   }
 
   /**
-   * Format messages for inclusion in an agent's system prompt
+   * Format messages for inclusion in an agent's system prompt.
+   * Topology-aware: only shows messages from connected agents.
    */
-  async getFormattedContext(limit = 5, swarmId?: string): Promise<string> {
-    const messages = await this.getRecentMessages(limit, swarmId);
+  async getFormattedContext(limit = 5, swarmId?: string, forAgentId?: string): Promise<string> {
+    const messages = await this.getRecentMessages(limit, swarmId, forAgentId);
     if (messages.length === 0) return "No team coordination messages yet.";
 
     return messages

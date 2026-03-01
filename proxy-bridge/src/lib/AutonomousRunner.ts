@@ -17,6 +17,7 @@ import { EventLog } from './EventLog';
 import { MemoryStore } from './MemoryStore';
 import { PolicyStore } from './PolicyStore';
 import { CompletionGate } from './CompletionGate';
+import { JudgeInput } from './LLMJudge';
 import { SkillsManager } from './SkillsManager';
 import { IntentClassifier } from './IntentClassifier';
 
@@ -403,12 +404,12 @@ export class AutonomousRunner {
 Your next task: Generate a SEPARATE .md file for each worker agent using the write_file tool.
 
 IMPORTANT — file naming convention:
-- Name each file after the worker in lowercase with no underscores: e.g. uibee.md, logicbee.md, testbee.md
+- Name each file after the worker in lowercase with no underscores: e.g. uibee.md, dbbee.md, apibee.md (use whatever specialist names fit the task)
 - Write them into the project root directory.
 
 Each .md file should contain:
 - A top-level heading with the worker name (e.g. # UI Bee)
-- **Type**: The worker type (UI_BEE, LOGIC_BEE, TEST_BEE, etc.)
+- **Type**: The worker type — use ANY descriptive name (e.g. UI_BEE, LOGIC_BEE, TEST_BEE, DB_BEE, API_BEE, DEPLOY_BEE, SECURITY_BEE). You are NOT limited to predefined types — invent the right specialist for the task.
 - **Files to create/modify**: Full file paths
 - **Instructions**: Detailed step-by-step instructions — what to build, patterns to follow, acceptance criteria
 - **Dependencies**: Any other workers this one depends on (or "None")
@@ -422,7 +423,7 @@ After writing all the files, ask the user to review and approve the agent prompt
                     content: `The user has approved your agent prompts. spawn_worker is now UNBLOCKED.
 
 For each worker, call spawn_worker with:
-- taskId: Use the worker name as the ID (e.g. "UI_BEE", "LOGIC_BEE", "TEST_BEE"). Do NOT use REQ-XX IDs.
+- taskId: Use the worker name as the ID (e.g. "UI_BEE", "DB_BEE", "API_BEE" — any descriptive name). Do NOT use REQ-XX IDs.
 - instructions: Copy the full content of the worker's .md file you wrote earlier.
 
 Call spawn_worker ONCE per worker. Do NOT re-present the plan or prompts. After spawning all workers, output a brief confirmation message listing who was launched.`
@@ -751,23 +752,63 @@ If you finish this task, stop and wait for the next command.`;
 
     // P18-02: CompletionGate — run quality checks before declaring DONE
     // Only applies to worker/solo roles that make file changes (not pure chat turns).
+    // Enhanced: retry loop with max 10 continuation attempts before force-passing.
     if (this.role !== 'architect') {
-      try {
-        const gate = new CompletionGate(this.projectPath, { timeoutMs: 20_000 });
-        const gateResult = await gate.check();
-        if (!gateResult.pass) {
-          console.warn(`[CompletionGate] ${gateResult.blockers.length} blocker(s): ${gateResult.blockers.join('; ')}`);
-          this.sendEvent({
-            type: 'agent_status',
-            data: { status: 'fixing', message: `CompletionGate blockers: ${gateResult.blockers.join('; ')}` }
-          });
-          const gatePrompt = `COMPLETION GATE FAILED — resolve before finishing:\n${gateResult.blockers.map(b => `- ${b}`).join('\n')}\nFix all issues then report done.`;
-          result = await this.session!.prompt(gatePrompt, options);
-        } else {
-          console.log('[CompletionGate] All checks passed.');
+      const MAX_GATE_RETRIES = 10;
+      let gateAttempt = 0;
+      let gatePassed = false;
+
+      // Build judge input from session context for LLM-as-Judge (P20-01)
+      const resultContent = typeof result === 'string'
+        ? result
+        : (result as any)?.content || (result as any)?.choices?.[0]?.message?.content || 'Task completed';
+      const judgeInput: JudgeInput = {
+        taskDescription: userPrompt || 'Agent task',
+        agentOutput: resultContent,
+        filesChanged: [], // Populated by CompletionGate via filesystem checks
+        userRequest: userPrompt,
+      };
+
+      while (gateAttempt < MAX_GATE_RETRIES && !gatePassed) {
+        try {
+          const gate = new CompletionGate(this.projectPath, { timeoutMs: 20_000 });
+          const gateResult = await gate.check(undefined, judgeInput);
+
+          if (gateResult.pass) {
+            console.log(`[CompletionGate] All checks passed (attempt ${gateAttempt + 1}).`);
+            gatePassed = true;
+          } else {
+            gateAttempt++;
+            console.warn(`[CompletionGate] Attempt ${gateAttempt}/${MAX_GATE_RETRIES} — ${gateResult.blockers.length} blocker(s): ${gateResult.blockers.join('; ')}`);
+
+            this.sendEvent({
+              type: 'COMPLETION_GATE_FAILED',
+              data: {
+                attempt: gateAttempt,
+                maxAttempts: MAX_GATE_RETRIES,
+                blockers: gateResult.blockers,
+              }
+            });
+            this.sendEvent({
+              type: 'agent_status',
+              data: { status: 'fixing', message: `CompletionGate blockers (attempt ${gateAttempt}): ${gateResult.blockers.join('; ')}` }
+            });
+
+            if (gateAttempt >= MAX_GATE_RETRIES) {
+              console.warn('[CompletionGate] Max retries exhausted. Proceeding with blockers.');
+              break;
+            }
+
+            // Re-enter WORKING state for continuation
+            this.transitionState(SessionLifecycleState.WORKING);
+
+            const gatePrompt = `COMPLETION GATE FAILED (attempt ${gateAttempt}/${MAX_GATE_RETRIES}) — resolve before finishing:\n${gateResult.blockers.map(b => `- ${b}`).join('\n')}\nFix all issues then report done.`;
+            result = await this.session!.prompt(gatePrompt, options);
+          }
+        } catch (gateErr) {
+          console.warn('[CompletionGate] Check error (non-blocking):', gateErr);
+          gatePassed = true; // Don't block on gate infrastructure errors
         }
-      } catch (gateErr) {
-        console.warn('[CompletionGate] Check error (non-blocking):', gateErr);
       }
     }
 
@@ -890,7 +931,7 @@ You are the strategic lead of a swarm. Think like a senior tech lead briefing yo
 ### Phase 2: AGENT PROMPTS (after user approves the plan)
 When the user approves, you will receive a system instruction to generate agent prompts.
 - For each worker, write a detailed AGENTS.md-style document with:
-  - Worker name and type (UI_BEE, LOGIC_BEE, TEST_BEE)
+  - Worker name and type (any descriptive name — UI_BEE, LOGIC_BEE, DB_BEE, API_BEE, SECURITY_BEE, etc.)
   - Exact files to create/modify
   - Patterns to follow, acceptance criteria
   - Dependencies between workers

@@ -1776,3 +1776,261 @@
   - **Worker**: DOCS + FRONTEND
   - **Estimate**: 3h
 
+---
+
+## 🧬 PHASE 20: RUFLO PATTERNS + COMPETITIVE INTELLIGENCE (Feb 2026 Research Sweep)
+
+> **Goal**: Implement patterns discovered from 25+ competitor analysis (ruflo, lobehub, oh-my-opencode, dify, metaswarm, Composio, AgentScope, fcn06/swarm, Puzld.ai, ClawSwarm, etc.) that QueenBee does NOT already have. Also documents what was already implemented from ruflo patterns (TopologyManager, TruthScorer, parallel spawn, rich deps, capabilities model).
+>
+> **Source**: Competitive research session Feb 2026. Repos cloned to `/tmp/queenbee-research/`.
+>
+> **Already Done (Ruflo Pattern Port)**: TopologyManager.ts (NEW), CompletionGate.ts (enhanced with 5-checkpoint pipeline + TruthScorer), AutonomousRunner.ts (retry loop max 10), ToolExecutor.ts (batchSpawnWorkers + topology wiring + capability enforcement), ProjectTaskManager.ts (f2s/s2s/f2f deps + checkpointing), prompts/workers/index.ts (WorkerCapabilities interface).
+
+---
+
+### 🔴 P1 — HIGH PRIORITY (Biggest competitive gaps)
+
+- [ ] `P20-01`: [Backend] **LLM-as-Judge Verification Loop**
+  - **Files**: MODIFY `proxy-bridge/src/lib/CompletionGate.ts`, NEW `proxy-bridge/src/lib/LLMJudge.ts`, MODIFY `proxy-bridge/src/lib/AutonomousRunner.ts`
+  - **Description**: After an agent claims to be done, a separate LLM call (different model or provider) evaluates the quality of the solution — not just "does it compile" but "is this a good solution?" fcn06/swarm calls this "LLM-as-a-Judge" with self-correcting loops that regenerate plans on failure. metaswarm does cross-model adversarial review (Codex reviews Claude's output). QueenBee's CompletionGate checks filesystem/compilation but never judges solution quality.
+  - **Context files**: `/tmp/queenbee-research/fcn06-swarm/` (evaluation service), `/tmp/queenbee-research/metaswarm/` (adversarial review phase)
+  - **Implementation**:
+    - `LLMJudge.ts`: class with `judge(taskDescription, agentOutput, filesChanged[])` → `{ score: 0-100, passed: boolean, feedback: string }`
+    - Uses a different model tier than the worker (if worker used Sonnet, judge uses Opus or vice versa via `WeightedModelDispatcher`)
+    - Wire as checkpoint 6 in `CompletionGate.check()` after TruthScorer
+    - If judge score < 60, inject feedback as continuation prompt in AutonomousRunner retry loop
+    - Emit `LLM_JUDGE_RESULT` socket event with score + feedback for UI
+  - **Worker**: BACKEND
+  - **Estimate**: 3h
+
+- [ ] `P20-02`: [Backend] **Parallel Comparison Mode (Multi-LLM Side-by-Side)**
+  - **Files**: NEW `proxy-bridge/src/lib/ComparisonRunner.ts`, MODIFY `proxy-bridge/src/pages/api/compare.ts`, MODIFY `proxy-bridge/src/lib/UnifiedLLMService.ts`
+  - **Description**: Puzld.ai runs the same prompt through multiple LLMs simultaneously and shows results side-by-side. QueenBee has UnifiedLLMService with multi-provider but no "give same task to Claude AND GPT AND Gemini, compare outputs" mode. High value for users evaluating providers or wanting best-of-N selection.
+  - **Context files**: `/tmp/queenbee-research/puzld-ai/` (comparison mode implementation)
+  - **Implementation**:
+    - `ComparisonRunner.ts`: `compareAcrossProviders(prompt, providers[], options)` → `Promise.allSettled` across providers, returns `{ provider, response, latencyMs, tokenCount }[]`
+    - New API endpoint `/api/compare` accepting `{ prompt, providers: string[] }`
+    - Frontend: new comparison view in dashboard showing responses side-by-side with latency/cost metrics
+    - Emit `COMPARISON_RESULT` socket event for live streaming
+  - **Worker**: BACKEND + FRONTEND
+  - **Estimate**: 4h
+
+- [ ] `P20-03`: [Backend] **Agent Discovery Service (Runtime Capability Registry)**
+  - **Files**: NEW `proxy-bridge/src/lib/AgentDiscoveryService.ts`, MODIFY `proxy-bridge/src/lib/SubHiveRegistry.ts`, MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`
+  - **Description**: fcn06/swarm has an Agent Discovery Service where agents self-register capabilities at runtime and others query the registry before delegating. AgentScope supports A2A protocol for agent-to-agent discovery. QueenBee's SubHiveRegistry has static contracts but no runtime self-registration or capability querying. This enables dynamic swarms where agents discover each other on-the-fly.
+  - **Context files**: `/tmp/queenbee-research/fcn06-swarm/` (discovery service), `/tmp/queenbee-research/agentscope/` (A2A agent support)
+  - **Implementation**:
+    - `AgentDiscoveryService.ts`: `register(agentId, capabilities, tools[])`, `discover(requiredCapabilities)` → matching agents sorted by reliability score
+    - Integrate with `WorkerCapabilities` from `prompts/workers/index.ts` — workers self-register on spawn
+    - `SubHiveRegistry.assignTask()` queries discovery service instead of static capability lookup
+    - TTL-based registration (agents deregister after heartbeat timeout)
+    - Emit `AGENT_REGISTERED` / `AGENT_DEREGISTERED` socket events
+  - **Worker**: BACKEND
+  - **Estimate**: 3h
+
+- [ ] `P20-04`: [Backend] **Training Data Export (DPO Fine-Tuning)**
+  - **Files**: NEW `proxy-bridge/src/lib/TrainingDataExporter.ts`, MODIFY `proxy-bridge/src/lib/ExperienceArchive.ts`
+  - **Description**: Puzld.ai logs all agent interactions and exports them as DPO (Direct Preference Optimization) fine-tuning data. QueenBee's ExperienceArchive logs tool history, outcomes, and scores but doesn't format them for model training. This opens the door to users fine-tuning their own models on their agents' successful trajectories.
+  - **Context files**: `/tmp/queenbee-research/puzld-ai/` (training data generation), `proxy-bridge/src/lib/ExperienceArchive.ts`
+  - **Implementation**:
+    - `TrainingDataExporter.ts`: `exportDPO(minScore?, maxEntries?)` → generates JSONL in DPO format: `{ prompt, chosen (high-score response), rejected (low-score response) }`
+    - Filter ExperienceArchive entries by `combinedScore` — chosen = top 20%, rejected = bottom 20%
+    - Include tool call chains as structured reasoning traces
+    - New API endpoint `/api/training-export` for downloading datasets
+    - Support OpenAI fine-tuning format and Anthropic format
+  - **Worker**: BACKEND
+  - **Estimate**: 3h
+
+- [ ] `P20-05`: [Backend] **Runtime Agent Factory (On-Demand Specialization)**
+  - **Files**: NEW `proxy-bridge/src/lib/AgentFactory.ts`, MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`, MODIFY `proxy-bridge/src/lib/prompts/workers/index.ts`
+  - **Description**: fcn06/swarm has an Agent Factory that creates specialized agents at runtime based on task needs, rather than pre-configured types. Currently QueenBee workers are limited to UI_BEE/LOGIC_BEE/TEST_BEE. A factory pattern would generate custom worker prompts + capabilities on-the-fly from task descriptions (e.g., "need a database migration specialist" → generates DB_BEE with SQL tools).
+  - **Context files**: `/tmp/queenbee-research/fcn06-swarm/` (agent factory pattern)
+  - **Implementation**:
+    - `AgentFactory.ts`: `createAgent(taskDescription, requiredCapabilities)` → generates `{ prompt, capabilities, workerType }` using LLM to synthesize a specialized system prompt
+    - Cache generated agent configs in `.queenbee/agent-templates/` for reuse
+    - Register in `WorkerCapabilities` registry automatically
+    - Wire into `ToolExecutor.handleSpawnWorker()` — if role doesn't match UI_BEE/LOGIC_BEE/TEST_BEE, invoke factory
+    - Cap factory LLM calls via PolicyStore `max_factory_calls_per_session`
+  - **Worker**: BACKEND
+  - **Estimate**: 4h
+
+---
+
+### 🟠 P2 — MEDIUM PRIORITY (Strong patterns worth absorbing)
+
+- [ ] `P20-06`: [Backend] **OpenTelemetry (OTel) Observability Integration**
+  - **Files**: NEW `proxy-bridge/src/lib/OTelTracer.ts`, MODIFY `proxy-bridge/src/lib/AutonomousRunner.ts`, MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`, MODIFY `proxy-bridge/src/lib/AgentSession.ts`
+  - **Description**: AgentScope has native OpenTelemetry support for production monitoring. QueenBee has DiagnosticCollector (OP-03) for session tracking but doesn't emit standard OTel traces that plug into Grafana, Datadog, Jaeger, etc. Enterprise users expect this.
+  - **Context files**: `/tmp/queenbee-research/agentscope/` (OTel integration)
+  - **Implementation**:
+    - `OTelTracer.ts`: wrapper around `@opentelemetry/sdk-node` that creates spans for: session lifecycle, tool execution, LLM calls, CompletionGate checks
+    - Span attributes: `agent.id`, `agent.role`, `tool.name`, `llm.provider`, `llm.model`, `tokens.input`, `tokens.output`, `cost.usd`
+    - Optional — disabled by default, enabled via PolicyStore `otel_enabled: true` + `otel_endpoint`
+    - Zero-overhead when disabled (no-op tracer)
+  - **Worker**: BACKEND
+  - **Estimate**: 4h
+
+- [ ] `P20-07`: [Backend] **Knowledge Artifact Synthesis (Orchestrator-Directed Discovery)**
+  - **Files**: MODIFY `proxy-bridge/src/lib/AutonomousRunner.ts`, NEW `proxy-bridge/src/lib/KnowledgeArtifactStore.ts`, MODIFY `proxy-bridge/src/lib/Roundtable.ts`
+  - **Description**: Danau5tin's multi-agent-coding-system (#13 on Stanford TerminalBench) has a key innovation: the orchestrator explicitly tells subagents what knowledge artifacts to return, then synthesizes and reuses those artifacts across tasks. QueenBee workers post free-form summaries to Roundtable. Structured artifacts (typed JSON with `filesDiscovered`, `patternsFound`, `dependenciesIdentified`) would dramatically improve cross-worker coordination.
+  - **Context files**: `/tmp/queenbee-research/danau5tin-macs/` (knowledge artifact pattern, context sharing)
+  - **Implementation**:
+    - `KnowledgeArtifactStore.ts`: typed artifacts `{ type: 'discovery'|'implementation'|'test_result', data: {}, agentId, taskId }`
+    - Architect system prompt updated to request specific artifacts from workers (e.g., "Return a `discovery` artifact listing all API endpoints found")
+    - Workers post artifacts to Roundtable with `artifactType` metadata
+    - Subsequent workers' context injection includes relevant artifacts filtered by type
+    - Persist to `.queenbee/artifacts.jsonl`
+  - **Worker**: BACKEND
+  - **Estimate**: 4h
+
+- [ ] `P20-08`: [Backend] **Declarative Reaction Rules (Event → Auto-Action)**
+  - **Files**: MODIFY `proxy-bridge/src/lib/TriggerEngine.ts`, MODIFY `proxy-bridge/src/lib/ReactionMatrix.ts`, NEW config `.queenbee/reactions.yaml`
+  - **Description**: ComposioHQ agent-orchestrator has a clean declarative reaction system: `ci-failed: auto: true` triggers auto-fix, `approved-and-green: auto: false` notifies for merge. QueenBee has TriggerEngine + ReactionMatrix (P7-07) but they're code-configured, not user-configurable YAML rules. Making reactions declarative lets users customize automation without code.
+  - **Context files**: `/tmp/queenbee-research/composio-ao/` (reaction system), `proxy-bridge/src/lib/TriggerEngine.ts`, `proxy-bridge/src/lib/ReactionMatrix.ts`
+  - **Implementation**:
+    - `reactions.yaml` schema: `{ event: string, condition?: string, action: string, auto: boolean }`
+    - TriggerEngine loads rules from YAML on startup and watches for changes
+    - Built-in events: `ci-failed`, `tests-passed`, `pr-approved`, `completion-gate-failed`, `worker-stuck`, `budget-exceeded`
+    - Built-in actions: `auto-fix`, `notify-user`, `spawn-worker`, `pause-session`, `escalate`
+    - Validate YAML on load, emit `REACTION_FIRED` socket event
+  - **Worker**: BACKEND
+  - **Estimate**: 3h
+
+- [ ] `P20-09`: [Backend] **Parallel Design Review Gate (Multi-Specialist Review)**
+  - **Files**: NEW `proxy-bridge/src/lib/DesignReviewGate.ts`, MODIFY `proxy-bridge/src/lib/AutonomousRunner.ts`
+  - **Description**: metaswarm runs 5 parallel specialist reviewers (PM, Architect, Designer, Security, CTO) on every design before execution, with a 3-iteration cap before human escalation. QueenBee's ProposalService handles single-reviewer approval. A multi-specialist parallel review would catch more issues before expensive execution.
+  - **Context files**: `/tmp/queenbee-research/metaswarm/` (design review gate)
+  - **Implementation**:
+    - `DesignReviewGate.ts`: `review(plan, reviewerRoles[])` → spawns lightweight LLM calls in parallel, each with a specialist system prompt (security, performance, architecture, UX, maintainability)
+    - Each reviewer returns `{ approved: boolean, concerns: string[], score: 0-100 }`
+    - Aggregate via geometric median (reuse `consensus.ts` Weiszfeld algorithm)
+    - If median < 70 or any reviewer flags critical concern → block and iterate (max 3 iterations)
+    - Wire into architect flow before Phase 3 (LAUNCH) in AutonomousRunner
+    - Emit `DESIGN_REVIEW_RESULT` socket event
+  - **Worker**: BACKEND
+  - **Estimate**: 4h
+
+---
+
+### 🟡 P3 — LOWER PRIORITY (Nice to have, can wait)
+
+- [ ] `P20-10`: [Backend] **Unified Multi-Channel Ingest Gateway**
+  - **Files**: NEW `proxy-bridge/src/lib/ChannelGateway.ts`, MODIFY `proxy-bridge/src/pages/api/ingest.ts`
+  - **Description**: ClawSwarm has a unified gRPC/HTTP gateway normalizing messages from Telegram, Discord, WhatsApp into one API. GoClaw supports 5 channels. QueenBee's ExternalApprovalBridge sends webhooks OUT but doesn't receive commands IN from messaging platforms. This would let users trigger agent tasks from Discord/Slack/Telegram.
+  - **Context files**: `/tmp/queenbee-research/clawswarm/` (gateway pattern)
+  - **Implementation**:
+    - `ChannelGateway.ts`: HTTP endpoint accepting normalized messages from platform webhooks
+    - Adapters for Discord (webhook), Slack (Events API), Telegram (Bot API)
+    - Parse incoming commands (e.g., `/queenbee fix issue #42`) → create agent session
+    - Reply back through same channel with progress updates
+  - **Worker**: BACKEND
+  - **Estimate**: 6h
+
+- [ ] `P20-11`: [Backend] **Agentic RL Fine-Tuning Pipeline**
+  - **Files**: NEW `proxy-bridge/src/lib/AgenticRL.ts`, MODIFY `proxy-bridge/src/lib/ExperienceArchive.ts`
+  - **Description**: AgentScope includes Trinity-RFT for reinforcement learning on agent trajectories (math agent accuracy 75%→85%, win rates 50%→80%). QueenBee's GEA does evolutionary selection but not gradient-based RL. This is research-grade and complex but would be a massive differentiator.
+  - **Context files**: `/tmp/queenbee-research/agentscope/` (Trinity-RFT integration)
+  - **Implementation**:
+    - `AgenticRL.ts`: formats ExperienceArchive trajectories as RL training data
+    - Reward signal derived from `combinedScore` + TruthScorer results
+    - Export in format compatible with TRL (Hugging Face) or custom RL training loops
+    - NOT training in-process — export only, user runs training externally
+  - **Worker**: BACKEND
+  - **Estimate**: 5h
+
+- [ ] `P20-12`: [Backend] **Markdown-File Persistent Memory with RAG Fallback**
+  - **Files**: MODIFY `proxy-bridge/src/lib/MemoryStore.ts`
+  - **Description**: ClawSwarm persists agent conversations as timestamped markdown (agent_memory.md), falling back to RAG embeddings when memory exceeds context limits. Simpler and more debuggable than JSON stores. QueenBee's MemoryStore uses structured JSON which is powerful but hard for users to inspect/edit manually.
+  - **Context files**: `/tmp/queenbee-research/clawswarm/` (markdown memory)
+  - **Implementation**:
+    - Add `exportAsMarkdown()` method to MemoryStore for human-readable dumps
+    - Add `MEMORY_FORMAT` policy: `json` (default) or `markdown`
+    - When markdown mode: append to `agent_memory.md` with timestamps and categories
+    - RAG fallback: when memory file exceeds configurable threshold, older entries get embedded and moved to `.queenbee/memory-archive/`
+  - **Worker**: BACKEND
+  - **Estimate**: 3h
+
+---
+
+## 📚 APPENDIX: COMPETITIVE RESEARCH SOURCES (Feb 2026)
+
+> Classified by relevancy to QueenBee. Repos cloned to `/tmp/queenbee-research/` for code inspection.
+
+---
+
+### 🟢 TIER 1 — USEFUL REPOS (Patterns adopted or planned)
+
+#### Patterns we ALREADY COPIED:
+
+| Repo | URL | What we copied | QueenBee file(s) |
+|------|-----|----------------|------------------|
+| **ruflo** (ruvnet) | https://github.com/ruvnet/ruflo | TopologyManager (flat/star/hierarchical/ring/mesh), TruthScorer (filesystem claim validation), parallel session forking (Promise.allSettled batch), rich task dependency types (f2s/s2s/f2f), agent capabilities/permission model, CompletionGate retry loop (max 10) | `TopologyManager.ts` (NEW), `CompletionGate.ts`, `AutonomousRunner.ts`, `ToolExecutor.ts`, `ProjectTaskManager.ts`, `prompts/workers/index.ts` |
+| **oh-my-opencode** (code-yeongyu) | https://github.com/code-yeongyu/oh-my-opencode | Hash-anchored edit tool (Hashline), comment checker, intent classification, progressive token disclosure | `HashlineIndex.ts`, `CommentChecker.ts`, `IntentClassifier.ts` |
+| **intellegix-toolkit** | https://github.com/intellegix/intellegix-code-agent-toolkit | Council automation pattern (auto-convene specialist reviewers on high-stakes decisions) | `P19-15` planned (CouncilAutomation.ts) |
+| **Composio agent-orchestrator** | https://github.com/ComposioHQ/agent-orchestrator | Session lifecycle state machine (SPAWNING→WORKING→PR_OPEN→...→MERGED) | `AutonomousRunner.ts` SessionLifecycleState enum |
+
+#### Patterns we PLAN TO COPY (Phase 20 tasks):
+
+| Repo | URL | What we plan to copy | Task ID |
+|------|-----|---------------------|---------|
+| **fcn06/swarm** | https://github.com/fcn06/swarm | LLM-as-Judge verification, Agent Discovery Service, Runtime Agent Factory | `P20-01`, `P20-03`, `P20-05` |
+| **Puzld.ai** | https://github.com/MedChaouch/Puzld.ai | Parallel comparison mode (multi-LLM side-by-side), DPO training data export | `P20-02`, `P20-04` |
+| **AgentScope** (modelscope) | https://github.com/modelscope/agentscope | OpenTelemetry observability, agentic RL pipeline (Trinity-RFT) | `P20-06`, `P20-11` |
+| **metaswarm** (dsifry) | https://github.com/dsifry/metaswarm | Parallel design review gate (5 specialists), cross-model adversarial review, self-learning JSONL knowledge base | `P20-09`, `P20-01` |
+| **Danau5tin multi-agent-coding-system** | https://github.com/Danau5tin/multi-agent-coding-system | Knowledge artifact synthesis (orchestrator-directed discovery, #13 TerminalBench) | `P20-07` |
+| **Composio agent-orchestrator** | https://github.com/ComposioHQ/agent-orchestrator | Declarative reaction rules (YAML event→action) | `P20-08` |
+| **ClawSwarm** | https://github.com/The-Swarm-Corporation/ClawSwarm | Multi-channel ingest gateway, markdown persistent memory with RAG fallback | `P20-10`, `P20-12` |
+| **LangGraph Swarm** | https://github.com/langchain-ai/langgraph-swarm-py | Active agent memory (resume with last active agent pattern) — may inform Roundtable improvements | Backlog |
+
+#### Patterns we looked at but ALREADY HAD:
+
+| Repo | URL | What they have | Our existing equivalent |
+|------|-----|---------------|----------------------|
+| **lobehub** | https://github.com/lobehub/lobe-chat | Agent marketplace, MCP integration, scheduled tasks, personal memory | `ExperienceSnapshotService.ts` (.qbx bundles), `MCPBridge.ts`, `CronManager.ts`, `MemoryStore.ts` |
+| **dify** | https://github.com/langgenius/dify | Visual workflow builder, RAG, multi-model integration, observability | `SkillsManager.ts` (YAML workflows), `MemoryDistillation.ts`, `UnifiedLLMService.ts`, `DiagnosticCollector.ts` |
+| **hermes-agent** | https://github.com/NousResearch/hermes-agent | Skill persistence, subagent spawning, persistent memory, multi-platform messaging | `SkillsManager.ts`, `ToolExecutor.ts` (spawn_worker), `MemoryStore.ts`, `ExternalApprovalBridge.ts` |
+| **goclaw** | https://github.com/nextlevelbuilder/goclaw | Multi-agent delegation, quality gates, 5 messaging channels | `SubHiveRegistry.ts`, `CompletionGate.ts`, `ExternalApprovalBridge.ts` |
+| **VRSEN/agency-swarm** | https://github.com/VRSEN/agency-swarm | Directional communication flows, role-based agents, cost tracking | `TopologyManager.ts`, `WorkerCapabilities`, `CostTracker.ts` |
+| **swarms** (kyegomez) | https://github.com/kyegomez/swarms | Sequential/concurrent/graph workflows, AutoSwarmBuilder, MoA | `AutonomousRunner.ts` (recursive loop), `SubHiveRegistry.ts` (hive hierarchies), `GEAReflection.ts` |
+| **CrewAI** | https://github.com/crewAIInc/crewAI | Role-playing agents, flows + crews, sequential/hierarchical orchestration | `prompts/workers/` (role specialization), `AutonomousRunner.ts` (architect workflow) |
+| **awslabs/agent-squad** | https://github.com/awslabs/agent-squad | Intelligent routing, SupervisorAgent, conversation context management | `WeightedModelDispatcher.ts`, `IntentClassifier.ts`, `Roundtable.ts` |
+| **wshobson/agents** | https://github.com/wshobson/agents | 112 agents, 146 skills, progressive disclosure, three-tier model strategy | `SkillsManager.ts`, `WeightedModelDispatcher.ts` — their breadth (112 agents) exceeds ours but architecture is similar |
+| **OpenAgentsControl** | https://github.com/darrenhinde/OpenAgentsControl | Plan-first approval, context-aware code generation, multi-language | `ApprovalService.ts`, `StyleScraper.ts` (context loading), agent prompts |
+
+---
+
+### 🔴 TIER 2 — REPOS NOT USED (and why)
+
+| Repo | URL | Stars | Why skipped |
+|------|-----|-------|-------------|
+| **simstudioai/sim** | https://github.com/simstudioai/sim | ~500 | Visual workflow builder — different product category (no-code), not relevant to QueenBee's developer-facing CLI/desktop approach |
+| **block/goose** | https://github.com/block/goose | ~15k | Rust single-agent framework — no multi-agent swarm, no orchestration. Good MCP support but we already have MCPBridge |
+| **microsoft/semantic-kernel** | https://github.com/microsoft/semantic-kernel | 27k | C#/Python SDK — different ecosystem entirely (Azure/Copilot). Sequential/concurrent patterns already covered by our AutonomousRunner |
+| **github/gh-aw** | https://github.com/github/gh-aw | new | GitHub Actions-based — fundamentally different execution model (cloud CI), not local agent orchestration |
+| **desloppify** | https://github.com/peteromallet/desloppify | 729 | Code quality scoring only — no multi-agent orchestration. Interesting T1-T4 scoring model but our CompletionGate + TruthScorer covers similar ground |
+| **cli-continues** | https://github.com/yigitkonur/cli-continues | 835 | Session resume utility — single-purpose tool, not an orchestration framework. QueenBee already has session persistence |
+| **better-hub** | https://github.com/better-auth/better-hub | 872 | Code collaboration platform — different category (GitHub alternative), not agent orchestration |
+| **ChromeDevTools MCP** | https://github.com/nichochar/chrome-devtools-mcp | 27k | Browser DevTools MCP server — useful as a tool but not an orchestration pattern. Our MCPBrowserBridge already covers browser integration |
+| **mnemox-ai/idea-reality-mcp** | https://github.com/mnemox-ai/idea-reality-mcp | 202 | Pre-build reality check — cool concept (scan GitHub/HN/npm for duplicates) but not agent orchestration. Could be a useful MCP tool to add later |
+| **Orion** (AshishKumar4) | https://github.com/AshishKumar4/Orion | ~50 | Declarative DSL for multi-agent — interesting RolePolicy concept but too small/early, Python-only, and our WorkerCapabilities + TopologyManager covers similar ground |
+| **Swarm-Squad** | https://github.com/Swarm-Squad/Swarm-Squad | ~200 | Simulation framework — designed for testing/validating swarm behavior before deployment, not production orchestration. Could be useful for testing QueenBee swarms in the future |
+| **Water** (manthanguptaa) | https://github.com/manthanguptaa/water | ~100 | Framework-agnostic orchestration layer — too generic, no coding-specific features. Our architecture is already more sophisticated |
+| **AOP-Paper** (Swarm Corp) | https://github.com/The-Swarm-Corporation/AOP-Paper | — | Protocol specification paper — interesting for cross-org agent discovery but premature for QueenBee's current stage |
+| **CodeAgents** (arXiv) | https://arxiv.org/abs/2507.03254 | — | Academic paper on token-efficient multi-agent reasoning via pseudocode plans — interesting research but no usable codebase |
+| **AgentOrchestra** (TEA protocol) | https://arxiv.org/abs/2506.12508 | — | Academic framework — Tool-Environment-Agent protocol with versioning. Interesting concepts but no production-ready code to port |
+| **Equilateral Agents** | https://github.com/JamesFord-HappyHippo/equilateral-agents-open-core | ~100 | Agent-oriented dev workflows — too early/small, Python CLI-only, focused on code review not full orchestration |
+| **OpenAI Swarm** (daveshap) | https://github.com/daveshap/OpenAI_Agent_Swarm | ~12k | HAAS (Hierarchical Autonomous Agent Swarm) — interesting concept but largely theoretical/educational, not production code |
+| **desplega-ai/agent-swarm** | https://github.com/desplega-ai/agent-swarm | — | Docker-isolated lead/worker swarm — good patterns (persistent identity, memory embeddings) but Docker isolation is not our deployment model (we use git worktrees) |
+
+---
+
+### 🔵 TIER 3 — WATCH LIST (Not useful now, may become relevant)
+
+| Repo | URL | Why watching |
+|------|-----|-------------|
+| **Swarm-Squad** | https://github.com/Swarm-Squad/Swarm-Squad | If we need to stress-test swarm topologies at scale, this simulation framework could help |
+| **mnemox-ai/idea-reality-mcp** | https://github.com/mnemox-ai/idea-reality-mcp | Reality-check MCP tool could be valuable when we add project-level intelligence |
+| **github/gh-aw** | https://github.com/github/gh-aw | If QueenBee adds CI/CD integration, GitHub Agentic Workflows could be a deployment target |
+| **AOP-Paper** | https://github.com/The-Swarm-Corporation/AOP-Paper | Cross-org agent discovery protocol — relevant if QueenBee agents ever need to collaborate across projects/orgs |
+| **AgentScope** | https://github.com/modelscope/agentscope | Their Trinity-RFT agentic RL training is the most advanced agent improvement system in open source — worth deep study for Phase 20-11 |
+

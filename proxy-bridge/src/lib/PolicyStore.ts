@@ -15,6 +15,8 @@ const DEFAULT_POLICIES: Policies = {
   max_parallel_launches: 3,
   // P18-05: Per-session budget cap (USD). Set to 0 to disable.
   budget_limit_usd: 20,
+  // P20-05: Max factory calls per session for runtime agent specialization
+  max_factory_calls_per_session: 10,
 };
 
 export class PolicyStore {

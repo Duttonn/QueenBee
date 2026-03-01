@@ -626,8 +626,7 @@ export const AGENT_TOOLS = [
         properties: {
           expert_type: {
             type: 'string',
-            enum: ['UI_BEE', 'LOGIC_BEE', 'DATA_BEE', 'SECURITY_BEE', 'ARCHITECT_BEE'],
-            description: 'Type of specialist to route to.'
+            description: 'Type of specialist to route to. Use any descriptive name (e.g. UI_BEE, LOGIC_BEE, DB_BEE, SECURITY_BEE, DEPLOY_BEE, API_BEE — any type works, the system will auto-generate a specialist if the type is new).'
           },
           problem: { type: 'string', description: 'Detailed description of the problem.' },
           files_involved: { type: 'array', items: { type: 'string' }, description: 'Files relevant to the problem.' },

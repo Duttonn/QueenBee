@@ -17,7 +17,7 @@ import { approvalBridge } from './ExternalApprovalBridge';
 import { MemoryStore } from './MemoryStore';
 import { StyleScraper } from './learning/StyleScraper';
 import { fileOwnershipRegistry } from './FileOwnershipRegistry';
-import { getWorkerPrompt, WorkerType } from './prompts/workers';
+import { getWorkerPrompt, getWorkerCapabilities, isToolAllowed, isKnownWorkerType, registerWorkerType, WorkerType, WorkerCapabilities } from './prompts/workers';
 import { indexFile, applyHashlineEdits } from './HashlineIndex';
 import { CredentialScrubber } from './CredentialScrubber';
 import { SkillsManager } from './SkillsManager';
@@ -26,6 +26,10 @@ import { WorkflowTool } from './WorkflowTool';
 import { AgentsmdLoader } from './AgentsmdLoader';
 import { CommentChecker } from './CommentChecker';
 import { AstSearchTool } from './tools/AstSearchTool';
+import { TopologyManager } from './TopologyManager';
+import { agentDiscovery } from './AgentDiscoveryService';
+import { AgentFactory } from './AgentFactory';
+import { KnowledgeArtifactStore } from './KnowledgeArtifactStore';
 
 // Registry to track workers in this process (for the prototype)
 const workerRegistry = new Map<string, { status: string; prUrl?: string }>();
@@ -33,6 +37,8 @@ const workerRegistry = new Map<string, { status: string; prUrl?: string }>();
 const spawnLocks = new Map<string, Promise<any>>();
 // Track workers per swarm for completion detection
 const swarmWorkerTracker = new Map<string, { total: number; completed: number; failed: number; projectPath: string; summaries: Map<string, string> }>();
+// Topology manager per swarm for structured communication
+const swarmTopologyRegistry = new Map<string, TopologyManager>();
 
 /**
  * ToolExecutor: Parses and executes tool calls from the LLM.
@@ -163,6 +169,18 @@ export class ToolExecutor {
     }
     
     try {
+      // Capability enforcement: if the agent has a known worker type, check tool permissions
+      if (agentId && agentId !== 'unknown') {
+        const workerType = this.detectWorkerType(agentId);
+        if (workerType) {
+          const caps = getWorkerCapabilities(workerType);
+          if (!isToolAllowed(caps, tool.name)) {
+            console.warn(`[ToolExecutor] CAPABILITY_BLOCK: ${agentId} (${workerType}) not allowed to use ${tool.name}`);
+            throw new Error(`CAPABILITY_BLOCK: Worker type ${workerType} is not permitted to use tool '${tool.name}'. Allowed tools: ${caps.allowedTools.join(', ') || 'all'}`);
+          }
+        }
+      }
+
       let result = null;
       switch (tool.name) {
         // ... (write_file case remains same)
@@ -519,14 +537,58 @@ export class ToolExecutor {
           result = await this.handleSpawnWorker(projectPath, tool.arguments.taskId, tool.arguments.instructions, threadId);
           break;
 
+        case 'batch_spawn_workers':
+          result = await this.batchSpawnWorkers(projectPath, tool.arguments.workers, threadId);
+          break;
+
         case 'report_completion':
-          workerRegistry.set(tool.arguments.taskId, { 
-            status: tool.arguments.status, 
-            prUrl: tool.arguments.prUrl 
+          workerRegistry.set(tool.arguments.taskId, {
+            status: tool.arguments.status,
+            prUrl: tool.arguments.prUrl
           });
           await ptm.completeTask(tool.arguments.taskId, agentId || 'unknown', projectPath);
           result = { success: true, message: `Status for ${tool.arguments.taskId} updated and PLAN.md synced.` };
           break;
+
+        case 'discover_agents': {
+          // P20-03: Agent Discovery Service — query for available agents
+          const discoveryResult = agentDiscovery.discover({
+            languages: tool.arguments.languages,
+            frameworks: tool.arguments.frameworks,
+            status: tool.arguments.status,
+            swarmId: tool.arguments.swarmId,
+            minReliability: tool.arguments.minReliability,
+          });
+          result = {
+            agents: discoveryResult.agents.map(a => ({
+              agentId: a.agentId,
+              workerType: a.workerType,
+              status: a.status,
+              currentTask: a.currentTask,
+              languages: a.capabilities.languages,
+              frameworks: a.capabilities.frameworks,
+              reliability: a.capabilities.reliability,
+              quality: a.capabilities.quality,
+            })),
+            totalRegistered: discoveryResult.totalRegistered,
+          };
+          break;
+        }
+
+        case 'post_artifact': {
+          // P20-07: Knowledge Artifact Synthesis
+          const artifactStore = new KnowledgeArtifactStore(projectPath);
+          const artifact = await artifactStore.store({
+            type: tool.arguments.artifact_type || 'discovery',
+            data: tool.arguments.data || {},
+            agentId: agentId || 'unknown',
+            taskId: tool.arguments.taskId || 'unknown',
+            swarmId: tool.arguments.swarmId,
+            summary: tool.arguments.summary,
+          });
+          result = { success: true, artifactId: artifact.id, message: `Artifact stored: ${artifact.type}` };
+          break;
+        }
 
         case 'check_status':
           const taskId = tool.arguments.taskId;
@@ -574,6 +636,10 @@ export class ToolExecutor {
 
         case 'chat_with_team':
           const roundtable = new Roundtable(mainProjectPath || projectPath);
+          // Attach topology for structured routing
+          if (swarmId && swarmTopologyRegistry.has(swarmId)) {
+            roundtable.setTopology(swarmTopologyRegistry.get(swarmId)!);
+          }
           const teamMsg = await roundtable.postMessage(
             agentId || 'unknown',
             contextOrPath && typeof contextOrPath !== 'string' ? contextOrPath.agentId || 'agent' : 'agent',
@@ -934,14 +1000,33 @@ export class ToolExecutor {
     
     console.log(`[Swarm] Spawning worker for task ${taskId}...`);
     
-    // QB-05: Worker Prompt Templating
+    // QB-05: Worker Prompt Templating — supports ANY worker type, not just built-in ones
     let specializedInstructions = instructions;
-    const roleMatch = instructions.match(/ROLE:\s*(UI_BEE|LOGIC_BEE|TEST_BEE)/);
+    const roleMatch = instructions.match(/ROLE:\s*([A-Z][A-Z0-9_]*(?:_BEE)?)/);
     if (roleMatch) {
       const type = roleMatch[1] as WorkerType;
-      const specializedPrompt = getWorkerPrompt(type);
-      specializedInstructions = `${specializedPrompt}\n\n${instructions}`;
-      console.log(`[Swarm] Injected specialized prompt for ${type}`);
+
+      if (isKnownWorkerType(type)) {
+        // Known type (built-in or previously registered) — use existing prompt
+        const specializedPrompt = getWorkerPrompt(type);
+        specializedInstructions = `${specializedPrompt}\n\n${instructions}`;
+        console.log(`[Swarm] Injected known prompt for ${type}`);
+      } else {
+        // Unknown type — use AgentFactory to generate a specialized prompt on-the-fly
+        try {
+          const factory = new AgentFactory({ projectPath });
+          const agentSpec = await factory.createAgent(
+            `Create a ${type} specialist agent. Task instructions: ${instructions.slice(0, 500)}`
+          );
+          // Register so subsequent spawns of this type reuse the prompt
+          registerWorkerType(agentSpec.workerType, agentSpec.prompt, agentSpec.capabilities);
+          specializedInstructions = `${agentSpec.prompt}\n\n${instructions}`;
+          console.log(`[Swarm] Factory generated new agent type: ${agentSpec.workerType}`);
+        } catch (err: any) {
+          console.warn(`[Swarm] Factory generation failed for ${type}, using generic:`, err.message);
+          specializedInstructions = `You are a specialized ${type} agent.\n\n${instructions}`;
+        }
+      }
     }
 
       // 1. Prepare worktree details — use a single timestamp for consistent IDs
@@ -991,6 +1076,21 @@ export class ToolExecutor {
             const tracker = swarmWorkerTracker.get(architectThreadId) || { total: 0, completed: 0, failed: 0, projectPath, summaries: new Map() };
             tracker.total++;
             swarmWorkerTracker.set(architectThreadId, tracker);
+
+            // 4b. Register in topology for structured communication
+            let topology = swarmTopologyRegistry.get(architectThreadId);
+            if (!topology) {
+              // Auto-select topology based on expected swarm size
+              const topoType = TopologyManager.autoSelect(tracker.total);
+              topology = new TopologyManager(topoType);
+              // Register the architect as the hub/root
+              topology.addAgent({ id: architectThreadId, role: 'architect' });
+              swarmTopologyRegistry.set(architectThreadId, topology);
+              console.log(`[Swarm] Created ${topoType} topology for swarm ${architectThreadId}`);
+            }
+            const workerRole = roleMatch ? roleMatch[1] as string : 'worker';
+            topology.addAgent({ id: wtName, role: 'worker' });
+            console.log(`[Swarm] Registered ${wtName} (${workerRole}) in topology. Reachable: ${topology.getReachableAgents(wtName).join(', ')}`);
           }
 
           // 4. Start the background runner (non-blocking) — pass the SAME threadId
@@ -1013,6 +1113,81 @@ export class ToolExecutor {
       console.error(`[Swarm] Failed to spawn worker:`, error);
       return { success: false, error: error.message };
     }
+  }
+
+  /**
+   * Batch spawn multiple workers concurrently using Promise.allSettled.
+   * Respects max_parallel_launches from PolicyStore.
+   * Emits BATCH_SPAWN_START/BATCH_SPAWN_COMPLETE socket events.
+   */
+  private async batchSpawnWorkers(
+    projectPath: string,
+    workers: Array<{ taskId: string; instructions: string }>,
+    architectThreadId?: string
+  ) {
+    if (!workers || workers.length === 0) {
+      return { success: false, error: 'No workers specified' };
+    }
+
+    const maxParallel = this.policyStore
+      ? await this.policyStore.get('max_parallel_launches') || 3
+      : 3;
+
+    console.log(`[Swarm] Batch spawning ${workers.length} workers (max parallel: ${maxParallel})`);
+
+    broadcast('UI_UPDATE', {
+      action: 'BATCH_SPAWN_START',
+      payload: {
+        swarmId: architectThreadId,
+        workerCount: workers.length,
+        maxParallel,
+      }
+    });
+
+    const results: Array<{ taskId: string; success: boolean; error?: string }> = [];
+
+    // Process in batches of maxParallel
+    for (let i = 0; i < workers.length; i += maxParallel) {
+      const batch = workers.slice(i, i + maxParallel);
+
+      const batchResults = await Promise.allSettled(
+        batch.map(w => this.handleSpawnWorker(projectPath, w.taskId, w.instructions, architectThreadId))
+      );
+
+      for (let j = 0; j < batchResults.length; j++) {
+        const r = batchResults[j];
+        const w = batch[j];
+        if (r.status === 'fulfilled') {
+          results.push({ taskId: w.taskId, success: !!(r.value as any)?.success });
+        } else {
+          results.push({ taskId: w.taskId, success: false, error: r.reason?.message || 'Unknown error' });
+        }
+      }
+    }
+
+    const succeeded = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success).length;
+
+    broadcast('UI_UPDATE', {
+      action: 'BATCH_SPAWN_COMPLETE',
+      payload: {
+        swarmId: architectThreadId,
+        succeeded,
+        failed,
+        total: workers.length,
+        results,
+      }
+    });
+
+    console.log(`[Swarm] Batch spawn complete: ${succeeded} succeeded, ${failed} failed`);
+
+    return {
+      success: failed === 0,
+      total: workers.length,
+      succeeded,
+      failed,
+      results,
+    };
   }
 
   private async runBackgroundWorker(worktreePath: string, taskId: string, instructions: string, agentId: string, threadId: string, providerId?: string, apiKey?: string, model?: string, swarmId?: string, mainProjectPath?: string) {
@@ -1044,7 +1219,12 @@ export class ToolExecutor {
     );
 
     workerRegistry.set(taskId, { status: 'running' });
-    
+
+    // P20-03: Register agent in discovery service
+    const detectedType = this.detectWorkerType(agentId) || 'GENERIC';
+    agentDiscovery.register(agentId, detectedType, { swarmId, metadata: { taskId } });
+    agentDiscovery.updateStatus(agentId, 'busy', taskId);
+
     // Broadcast running status to UI
     if (io) io.emit('UI_UPDATE', { action: 'WORKER_STATUS', payload: { threadId, taskId, status: 'running' } });
 
@@ -1057,14 +1237,18 @@ export class ToolExecutor {
     try {
       const result = await runner.executeLoop(instructions, [], model ? { model } : undefined);
       workerRegistry.set(taskId, { status: 'completed' });
-      
+      agentDiscovery.updateStatus(agentId, 'completed'); // P20-03
+      agentDiscovery.deregister(agentId); // P20-03
+
       // Extract completion summary from the worker's last assistant message
       completionSummary = this.extractWorkerSummary(runner, taskId, result);
-      
+
       if (io) io.emit('UI_UPDATE', { action: 'WORKER_STATUS', payload: { threadId, taskId, status: 'completed' } });
     } catch (error: any) {
       console.error(`[Swarm] Background worker ${agentId} error:`, error);
       workerRegistry.set(taskId, { status: 'failed' });
+      agentDiscovery.updateStatus(agentId, 'failed'); // P20-03
+      agentDiscovery.deregister(agentId); // P20-03
       workerStatus = 'failed';
       completionSummary = `[FAILED] Worker ${taskId} encountered an error: ${error.message}`;
       if (io) io.emit('UI_UPDATE', { action: 'WORKER_STATUS', payload: { threadId, taskId, status: 'failed' } });
@@ -1073,6 +1257,10 @@ export class ToolExecutor {
     // Auto-post completion summary to roundtable (guaranteed — even if the LLM forgot)
       try {
         const roundtable = new Roundtable(resolvedMainPath);
+      // Attach topology for structured routing if available
+      if (swarmId && swarmTopologyRegistry.has(swarmId)) {
+        roundtable.setTopology(swarmTopologyRegistry.get(swarmId)!);
+      }
       await roundtable.postMessage(
         agentId,
         'worker',
@@ -1129,8 +1317,9 @@ export class ToolExecutor {
             console.error(`[Swarm] Failed to post swarm completion to roundtable:`, err.message);
           }
 
-          // Cleanup tracker
+          // Cleanup tracker and topology
           swarmWorkerTracker.delete(swarmId);
+          swarmTopologyRegistry.delete(swarmId);
         }
       }
     }
@@ -1189,6 +1378,26 @@ export class ToolExecutor {
     if (workerStatus === 'failed') {
       throw new Error(`Worker ${taskId} failed`);
     }
+  }
+
+  /**
+   * Detect worker type from agentId naming convention.
+   * AgentIds follow pattern: worker-{ROLE}-{timestamp}
+   * Supports any worker type, not just the built-in ones.
+   */
+  private detectWorkerType(agentId: string): string | null {
+    // Pattern: worker-{type_with_dashes}-{timestamp}
+    // e.g. "worker-ui-bee-1709123456" → "UI_BEE"
+    // e.g. "worker-db-migration-bee-1709123456" → "DB_MIGRATION_BEE"
+    const match = agentId.match(/^worker-(.+?)-\d+$/);
+    if (match) {
+      return match[1].toUpperCase().replace(/-/g, '_');
+    }
+    // Fallback: check if agentId itself contains a known pattern
+    const upper = agentId.toUpperCase();
+    const beeMatch = upper.match(/([A-Z][A-Z0-9_]*_BEE)/);
+    if (beeMatch) return beeMatch[1];
+    return null;
   }
 
   /**

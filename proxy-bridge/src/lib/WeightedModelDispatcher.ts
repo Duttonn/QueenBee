@@ -134,6 +134,7 @@ export class WeightedModelDispatcher {
   }
 
   static getCapabilitiesForWorkerType(workerType: string): ModelCapability[] {
+    // Built-in mappings for well-known types
     const workerCapabilityMap: Record<string, ModelCapability[]> = {
       'UI_BEE': ['vision', 'creative'],
       'LOGIC_BEE': ['reasoning', 'code', 'analysis'],
@@ -142,7 +143,17 @@ export class WeightedModelDispatcher {
       'REVIEWER': ['analysis', 'code'],
       'BUILDER': ['code', 'reasoning'],
     };
-    return workerCapabilityMap[workerType] || ['code'];
+    if (workerCapabilityMap[workerType]) return workerCapabilityMap[workerType];
+
+    // Heuristic for dynamic types: infer from name keywords
+    const upper = workerType.toUpperCase();
+    if (upper.includes('UI') || upper.includes('FRONTEND') || upper.includes('DESIGN')) return ['vision', 'creative'];
+    if (upper.includes('TEST') || upper.includes('QA')) return ['code', 'fast'];
+    if (upper.includes('SECURITY') || upper.includes('AUDIT')) return ['reasoning', 'analysis'];
+    if (upper.includes('DB') || upper.includes('DATA') || upper.includes('MIGRATION')) return ['reasoning', 'code'];
+    if (upper.includes('DEPLOY') || upper.includes('INFRA') || upper.includes('DEVOPS')) return ['code', 'fast'];
+    if (upper.includes('API') || upper.includes('BACKEND') || upper.includes('SERVER')) return ['reasoning', 'code', 'analysis'];
+    return ['code']; // Default fallback
   }
 }
 
