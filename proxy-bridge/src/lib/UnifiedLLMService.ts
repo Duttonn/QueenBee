@@ -3,10 +3,15 @@ import { OpenAIProvider } from './providers/OpenAIProvider';
 import { AnthropicProvider } from './providers/AnthropicProvider';
 import { GeminiProvider } from './providers/GeminiProvider';
 import { MistralProvider } from './providers/MistralProvider';
+import { ClaudeCodeProvider } from './providers/ClaudeCodeProvider';
+import { GeminiCliProvider } from './providers/GeminiCliProvider';
+import { OpenRouterProvider } from './providers/OpenRouterProvider';
+import { OllamaProvider } from './providers/OllamaProvider';
 import { LLMMessage, LLMProviderOptions, LLMResponse } from './types/llm';
 import { AuthProfileStore } from './auth-profile-store';
 import { ConfigManager, ModelConfig } from './config-manager';
 import { AuthProfileManager } from './AuthProfileManager';
+import { getCircuitBreaker, CircuitOpenError } from './CircuitBreaker';
 
 // Pricing Registry: Cost per 1k tokens (in USD)
 const PRICING_REGISTRY: Record<string, Record<string, { input: number; output: number }>> = {
@@ -31,7 +36,50 @@ const PRICING_REGISTRY: Record<string, Record<string, { input: number; output: n
     'mistral-large-latest': { input: 0.004, output: 0.012 },
     'mistral-small-latest': { input: 0.001, output: 0.003 },
     'default': { input: 0.002, output: 0.006 }
-  }
+  },
+  // CLI subscription providers — billed via subscription, token tracking approximate
+  'claude-code': { 'default': { input: 0, output: 0 } },
+  'gemini-cli':  { 'default': { input: 0, output: 0 } },
+  // OpenRouter — pay-per-use, cost varies by model (approximate average)
+  openrouter: {
+    'openai/gpt-4o': { input: 0.005, output: 0.015 },
+    'anthropic/claude-sonnet-4-6': { input: 0.003, output: 0.015 },
+    'google/gemini-2.5-pro': { input: 0.00125, output: 0.01 },
+    'meta-llama/llama-3.3-70b-instruct': { input: 0.0002, output: 0.0002 },
+    'deepseek/deepseek-r1': { input: 0.0008, output: 0.0024 },
+    'default': { input: 0.001, output: 0.002 }
+  },
+  groq: {
+    'llama-3.3-70b-versatile': { input: 0.00059, output: 0.00079 },
+    'mixtral-8x7b-32768': { input: 0.00027, output: 0.00027 },
+    'default': { input: 0.0005, output: 0.0008 }
+  },
+  xai: {
+    'grok-3': { input: 0.003, output: 0.015 },
+    'grok-3-mini': { input: 0.0003, output: 0.0005 },
+    'default': { input: 0.002, output: 0.01 }
+  },
+  deepseek: {
+    'deepseek-chat': { input: 0.00014, output: 0.00028 },
+    'deepseek-reasoner': { input: 0.00055, output: 0.00219 },
+    'default': { input: 0.0002, output: 0.0006 }
+  },
+  together: {
+    'meta-llama/Llama-3.3-70B-Instruct-Turbo': { input: 0.00088, output: 0.00088 },
+    'default': { input: 0.0006, output: 0.0006 }
+  },
+  perplexity: {
+    'sonar-pro': { input: 0.003, output: 0.015 },
+    'sonar': { input: 0.001, output: 0.001 },
+    'default': { input: 0.001, output: 0.001 }
+  },
+  cohere: {
+    'command-r-plus': { input: 0.003, output: 0.015 },
+    'command-r': { input: 0.0005, output: 0.0015 },
+    'default': { input: 0.001, output: 0.002 }
+  },
+  ollama:    { 'default': { input: 0, output: 0 } },
+  lmstudio:  { 'default': { input: 0, output: 0 } },
 };
 
 const GLOBAL_DEFAULT_PRICE = { input: 0.002, output: 0.002 };
@@ -82,10 +130,10 @@ export interface FallbackChainConfig {
 }
 
 const DEFAULT_FALLBACK_CHAINS: FallbackChainConfig = {
-  code: ['anthropic', 'openai', 'gemini', 'mistral', 'ollama'],
-  chat: ['gemini', 'openai', 'anthropic', 'mistral', 'ollama'],
-  plan: ['openai', 'anthropic', 'gemini', 'mistral', 'ollama'],
-  default: ['gemini', 'openai', 'anthropic', 'mistral', 'ollama'],
+  code:    ['claude-code', 'anthropic', 'openrouter', 'openai', 'deepseek', 'gemini', 'gemini-cli', 'groq', 'mistral', 'ollama', 'lmstudio'],
+  chat:    ['gemini-cli', 'gemini', 'openrouter', 'openai', 'anthropic', 'claude-code', 'groq', 'mistral', 'perplexity', 'ollama'],
+  plan:    ['claude-code', 'anthropic', 'openai', 'openrouter', 'gemini', 'gemini-cli', 'mistral', 'ollama'],
+  default: ['gemini-cli', 'gemini', 'claude-code', 'openrouter', 'openai', 'anthropic', 'groq', 'deepseek', 'mistral', 'ollama', 'lmstudio'],
 };
 
 /**
@@ -94,9 +142,16 @@ const DEFAULT_FALLBACK_CHAINS: FallbackChainConfig = {
  * getExplorationOptions() returns options that force the exploration model.
  */
 export const EXPLORATION_MODELS: Record<string, string> = {
-  anthropic: 'claude-haiku-4-5-20251001',
-  openai:    'gpt-4o-mini',
-  google:    'gemini-2.0-flash',
+  anthropic:    'claude-haiku-4-5-20251001',
+  'claude-code':'claude-haiku-4-5-20251001',
+  openai:       'gpt-4o-mini',
+  google:       'gemini-2.0-flash',
+  'gemini-cli': 'gemini-2.0-flash',
+  openrouter:   'meta-llama/llama-3.3-70b-instruct:free',
+  groq:         'llama-3.3-70b-versatile',
+  deepseek:     'deepseek-chat',
+  ollama:       'llama3.2',
+  lmstudio:     'llama3.2',
 };
 
 export class UnifiedLLMService {
@@ -207,48 +262,123 @@ export class UnifiedLLMService {
   }
 
   private initFromEnv() {
+    // ── Standard API-key providers ─────────────────────────────────────────
     const openaiKey = process.env.OPENAI_API_KEY;
-    if (openaiKey) {
-      this.providers.set('openai', new OpenAIProvider('openai', openaiKey));
-    }
+    if (openaiKey) this.providers.set('openai', new OpenAIProvider('openai', openaiKey));
 
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
-    if (anthropicKey) {
-      this.providers.set('anthropic', new AnthropicProvider(anthropicKey));
-    }
+    if (anthropicKey) this.providers.set('anthropic', new AnthropicProvider(anthropicKey));
 
-    const geminiKey = process.env.GEMINI_API_KEY;
-    if (geminiKey) {
-      this.providers.set('gemini', new GeminiProvider(geminiKey));
-    }
+    const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    if (geminiKey) this.providers.set('gemini', new GeminiProvider(geminiKey));
 
     const mistralKey = process.env.MISTRAL_API_KEY;
-    if (mistralKey) {
-      this.providers.set('mistral', new MistralProvider(mistralKey));
-    }
+    if (mistralKey) this.providers.set('mistral', new MistralProvider(mistralKey));
 
     const nvidiaKey = process.env.NVIDIA_API_KEY;
-    if (nvidiaKey) {
-      this.providers.set('nvidia', new OpenAIProvider('nvidia', nvidiaKey, 'https://integrate.api.nvidia.com/v1'));
-    }
+    if (nvidiaKey) this.providers.set('nvidia', new OpenAIProvider('nvidia', nvidiaKey, 'https://integrate.api.nvidia.com/v1'));
 
     const moonshotKey = process.env.MOONSHOT_API_KEY;
-    if (moonshotKey) {
-      this.providers.set('moonshot', new OpenAIProvider('moonshot', moonshotKey, 'https://api.moonshot.cn/v1'));
+    if (moonshotKey) this.providers.set('moonshot', new OpenAIProvider('moonshot', moonshotKey, 'https://api.moonshot.cn/v1'));
+
+    const qwenKey = process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY;
+    if (qwenKey) this.providers.set('qwen', new OpenAIProvider('qwen', qwenKey, 'https://dashscope.aliyuncs.com/compatible-mode/v1'));
+
+    // ── OpenRouter — 200+ models with a single key ──────────────────────────
+    const openRouterKey = process.env.OPENROUTER_API_KEY;
+    if (openRouterKey) this.providers.set('openrouter', new OpenRouterProvider(openRouterKey));
+
+    // ── Groq — ultra-fast inference, generous free tier ─────────────────────
+    const groqKey = process.env.GROQ_API_KEY;
+    if (groqKey) this.providers.set('groq', new OpenAIProvider('groq', groqKey, 'https://api.groq.com/openai/v1'));
+
+    // ── xAI (Grok) ──────────────────────────────────────────────────────────
+    const xaiKey = process.env.XAI_API_KEY;
+    if (xaiKey) this.providers.set('xai', new OpenAIProvider('xai', xaiKey, 'https://api.x.ai/v1'));
+
+    // ── DeepSeek ─────────────────────────────────────────────────────────────
+    const deepseekKey = process.env.DEEPSEEK_API_KEY;
+    if (deepseekKey) this.providers.set('deepseek', new OpenAIProvider('deepseek', deepseekKey, 'https://api.deepseek.com'));
+
+    // ── Together AI — open-weight models at low cost ─────────────────────────
+    const togetherKey = process.env.TOGETHER_API_KEY;
+    if (togetherKey) this.providers.set('together', new OpenAIProvider('together', togetherKey, 'https://api.together.xyz/v1'));
+
+    // ── Perplexity — real-time web search + LLM ──────────────────────────────
+    const perplexityKey = process.env.PERPLEXITY_API_KEY;
+    if (perplexityKey) this.providers.set('perplexity', new OpenAIProvider('perplexity', perplexityKey, 'https://api.perplexity.ai'));
+
+    // ── Cohere — Command R+ series ───────────────────────────────────────────
+    const cohereKey = process.env.COHERE_API_KEY;
+    if (cohereKey) this.providers.set('cohere', new OpenAIProvider('cohere', cohereKey, 'https://api.cohere.com/compatibility/v1'));
+
+    // ── Cerebras — fast inference ────────────────────────────────────────────
+    const cerebrasKey = process.env.CEREBRAS_API_KEY;
+    if (cerebrasKey) this.providers.set('cerebras', new OpenAIProvider('cerebras', cerebrasKey, 'https://api.cerebras.ai/v1'));
+
+    // ── Fireworks AI — fast open-weight serving ──────────────────────────────
+    const fireworksKey = process.env.FIREWORKS_API_KEY;
+    if (fireworksKey) this.providers.set('fireworks', new OpenAIProvider('fireworks', fireworksKey, 'https://api.fireworks.ai/inference/v1'));
+
+    // ── Sambanova — fast inference ───────────────────────────────────────────
+    const sambanovaKey = process.env.SAMBANOVA_API_KEY;
+    if (sambanovaKey) this.providers.set('sambanova', new OpenAIProvider('sambanova', sambanovaKey, 'https://api.sambanova.ai/v1'));
+
+    // ── Hyperbolic ───────────────────────────────────────────────────────────
+    const hyperbolicKey = process.env.HYPERBOLIC_API_KEY;
+    if (hyperbolicKey) this.providers.set('hyperbolic', new OpenAIProvider('hyperbolic', hyperbolicKey, 'https://api.hyperbolic.xyz/v1'));
+
+    // ── Local providers — no auth, no data leaves machine ────────────────────
+    // Ollama (auto-detect: if no explicit OLLAMA_HOST env, try localhost)
+    const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
+    const ollamaProvider = new OllamaProvider(ollamaHost);
+    this.providers.set('ollama', ollamaProvider);
+
+    // LM Studio — local OpenAI-compatible server
+    const lmStudioHost = process.env.LMSTUDIO_HOST || 'http://localhost:1234';
+    this.providers.set('lmstudio', new OpenAIProvider('lmstudio', 'lm-studio', `${lmStudioHost}/v1`));
+
+    // ── CLI subscription providers — uses installed CLI auth, no API key ──────
+    const claudeCodeProvider = new ClaudeCodeProvider();
+    if (claudeCodeProvider.hasKey()) {
+      this.providers.set('claude-code', claudeCodeProvider);
+      console.log('[LLMService] Claude Code subscription detected — claude-code provider enabled');
     }
 
-    const qwenKey = process.env.QWEN_API_KEY;
-    if (qwenKey) {
-      this.providers.set('qwen', new OpenAIProvider('qwen', qwenKey, 'https://dashscope.aliyuncs.com/compatible-mode/v1'));
+    const geminiCliProvider = new GeminiCliProvider();
+    if (geminiCliProvider.hasKey()) {
+      this.providers.set('gemini-cli', geminiCliProvider);
+      console.log('[LLMService] Gemini CLI OAuth credentials detected — gemini-cli provider enabled');
     }
   }
 
   private initFromProfile(profile: any) {
     const key = profile.apiKey || profile.access || profile.token;
-    if (!key) return;
-
-    // Use provider ID or custom name
     const id = profile.id || profile.provider;
+
+    // CLI providers don't need an API key — they use local credentials
+    if (profile.provider === 'claude-code') {
+      const p = new ClaudeCodeProvider();
+      if (p.hasKey()) this.providers.set(id, p);
+      return;
+    }
+    if (profile.provider === 'gemini-cli') {
+      const p = new GeminiCliProvider();
+      if (p.hasKey()) this.providers.set(id, p);
+      return;
+    }
+    // Ollama / LM Studio — no key required
+    if (profile.provider === 'ollama') {
+      this.providers.set(id, new OllamaProvider(profile.apiBase || 'http://localhost:11434'));
+      return;
+    }
+    if (profile.provider === 'lmstudio') {
+      const base = profile.apiBase || 'http://localhost:1234';
+      this.providers.set(id, new OpenAIProvider(id, 'lm-studio', `${base}/v1`));
+      return;
+    }
+
+    if (!key) return;
 
     switch (profile.provider) {
       case 'openai':
@@ -264,6 +394,27 @@ export class UnifiedLLMService {
       case 'mistral':
         this.providers.set(id, new MistralProvider(key));
         break;
+      case 'openrouter':
+        this.providers.set(id, new OpenRouterProvider(key));
+        break;
+      case 'groq':
+        this.providers.set(id, new OpenAIProvider(id, key, profile.apiBase || 'https://api.groq.com/openai/v1'));
+        break;
+      case 'xai':
+        this.providers.set(id, new OpenAIProvider(id, key, profile.apiBase || 'https://api.x.ai/v1'));
+        break;
+      case 'deepseek':
+        this.providers.set(id, new OpenAIProvider(id, key, profile.apiBase || 'https://api.deepseek.com'));
+        break;
+      case 'together':
+        this.providers.set(id, new OpenAIProvider(id, key, profile.apiBase || 'https://api.together.xyz/v1'));
+        break;
+      case 'perplexity':
+        this.providers.set(id, new OpenAIProvider(id, key, profile.apiBase || 'https://api.perplexity.ai'));
+        break;
+      case 'cohere':
+        this.providers.set(id, new OpenAIProvider(id, key, profile.apiBase || 'https://api.cohere.com/compatibility/v1'));
+        break;
       case 'moonshot':
       case 'kimi':
         this.providers.set(id, new OpenAIProvider(id, key, profile.apiBase || 'https://api.moonshot.cn/v1'));
@@ -271,6 +422,11 @@ export class UnifiedLLMService {
       case 'qwen':
         this.providers.set(id, new OpenAIProvider(id, key, profile.apiBase || 'https://dashscope.aliyuncs.com/compatible-mode/v1'));
         break;
+      default:
+        // Generic OpenAI-compatible with custom base URL
+        if (profile.apiBase) {
+          this.providers.set(id, new OpenAIProvider(id, key, profile.apiBase));
+        }
     }
   }
 
@@ -313,17 +469,24 @@ export class UnifiedLLMService {
     const timeoutMs = getModelTimeout(options?.model);
     console.log(`[LLMService] Chat with provider: ${providerId}, model: ${options?.model || 'default'}, timeout: ${timeoutMs}ms`);
 
+    // P21-01: Circuit breaker wraps the provider call
+    const breaker = getCircuitBreaker(providerId);
     try {
-      // P18-06: Apply model-aware timeout
-      const response = await withTimeout(
-        provider.chat(messages, options),
-        timeoutMs,
-        `${providerId}/${options?.model || 'default'}`
+      const response = await breaker.call(() =>
+        withTimeout(
+          provider.chat(messages, options),
+          timeoutMs,
+          `${providerId}/${options?.model || 'default'}`
+        )
       );
       this.authProfileManager.markSuccess(providerId);
       this.recordUsage(providerId, response.model || 'unknown', response.usage);
       return response;
     } catch (error: any) {
+      if (error instanceof CircuitOpenError) {
+        console.warn(`[LLMService] Circuit breaker open for '${providerId}': ${error.message}`);
+        throw error;
+      }
       const reason = AuthProfileManager.classifyError(error);
       this.authProfileManager.markFailure(providerId, reason);
       console.error(`[LLMService] Provider '${providerId}' failed (${reason}): ${error.message}`);
@@ -336,15 +499,19 @@ export class UnifiedLLMService {
 
     // For 'auto', try smart routing then fallback
     if (providerId === 'auto') {
-      // Use autoChat logic for stream — find the right provider
       const modelName = options?.model?.toLowerCase() || '';
       let bestId: string | null = null;
-      if (modelName.includes('gemini')) bestId = 'gemini';
-      else if (modelName.includes('gpt') || modelName.includes('o1-')) bestId = 'openai';
-      else if (modelName.includes('claude')) bestId = 'anthropic';
-      else if (modelName.includes('mistral')) bestId = 'mistral';
+      if (modelName.includes('/') && this.providers.has('openrouter')) bestId = 'openrouter';
+      else if (modelName.includes('gemini')) bestId = this.providers.has('gemini-cli') ? 'gemini-cli' : 'gemini';
+      else if (modelName.includes('gpt') || modelName.includes('o1-') || modelName.includes('o3-')) bestId = 'openai';
+      else if (modelName.includes('claude')) bestId = this.providers.has('claude-code') ? 'claude-code' : 'anthropic';
+      else if (modelName.includes('grok')) bestId = 'xai';
+      else if (modelName.includes('deepseek')) bestId = 'deepseek';
+      else if (modelName.includes('sonar')) bestId = 'perplexity';
+      else if (modelName.includes('mistral') || modelName.includes('mixtral')) bestId = this.providers.has('groq') ? 'groq' : 'mistral';
       else if (modelName.includes('moonshot') || modelName.includes('kimi')) bestId = 'moonshot';
       else if (modelName.includes('qwen')) bestId = 'qwen';
+      else if (modelName.includes('llama') || modelName.includes('phi')) bestId = this.providers.has('groq') ? 'groq' : 'ollama';
 
       if (bestId) {
         const p = await this.getOrLoadProvider(bestId, options);
@@ -498,8 +665,47 @@ export class UnifiedLLMService {
         return new GeminiProvider(apiKey);
       case 'mistral':
         return new MistralProvider(apiKey);
+      case 'openrouter':
+        return new OpenRouterProvider(apiKey);
+      case 'groq':
+        return new OpenAIProvider('groq', apiKey, 'https://api.groq.com/openai/v1');
+      case 'xai':
+        return new OpenAIProvider('xai', apiKey, 'https://api.x.ai/v1');
+      case 'deepseek':
+        return new OpenAIProvider('deepseek', apiKey, 'https://api.deepseek.com');
+      case 'together':
+        return new OpenAIProvider('together', apiKey, 'https://api.together.xyz/v1');
+      case 'perplexity':
+        return new OpenAIProvider('perplexity', apiKey, 'https://api.perplexity.ai');
+      case 'cohere':
+        return new OpenAIProvider('cohere', apiKey, 'https://api.cohere.com/compatibility/v1');
+      case 'cerebras':
+        return new OpenAIProvider('cerebras', apiKey, 'https://api.cerebras.ai/v1');
+      case 'fireworks':
+        return new OpenAIProvider('fireworks', apiKey, 'https://api.fireworks.ai/inference/v1');
+      case 'sambanova':
+        return new OpenAIProvider('sambanova', apiKey, 'https://api.sambanova.ai/v1');
+      case 'hyperbolic':
+        return new OpenAIProvider('hyperbolic', apiKey, 'https://api.hyperbolic.xyz/v1');
       case 'nvidia':
         return new OpenAIProvider('nvidia', apiKey, 'https://integrate.api.nvidia.com/v1');
+      case 'moonshot':
+      case 'kimi':
+        return new OpenAIProvider(type, apiKey, 'https://api.moonshot.cn/v1');
+      case 'qwen':
+        return new OpenAIProvider('qwen', apiKey, 'https://dashscope.aliyuncs.com/compatible-mode/v1');
+      case 'ollama':
+        return new OllamaProvider();
+      case 'lmstudio':
+        return new OpenAIProvider('lmstudio', 'lm-studio', 'http://localhost:1234/v1');
+      case 'claude-code': {
+        const p = new ClaudeCodeProvider();
+        return p.hasKey() ? p : undefined;
+      }
+      case 'gemini-cli': {
+        const p = new GeminiCliProvider();
+        return p.hasKey() ? p : undefined;
+      }
       default:
         return undefined;
     }
@@ -512,11 +718,21 @@ export class UnifiedLLMService {
     const modelName = options?.model?.toLowerCase();
     if (modelName) {
       let bestProviderId: string | null = null;
-      if (modelName.includes('gpt') || modelName.includes('o1-')) bestProviderId = 'openai';
-      else if (modelName.includes('claude')) bestProviderId = 'anthropic';
-      else if (modelName.includes('gemini')) bestProviderId = 'gemini';
-      else if (modelName.includes('mistral') || modelName.includes('mixtral')) bestProviderId = 'mistral';
-      else if (modelName.includes('lama') || modelName.includes('qwen') || modelName.includes('phi')) bestProviderId = 'ollama';
+      // OpenRouter model names contain a slash (provider/model)
+      if (modelName.includes('/') && this.providers.has('openrouter')) bestProviderId = 'openrouter';
+      else if (modelName.includes('gpt') || modelName.includes('o1-') || modelName.includes('o3-')) bestProviderId = 'openai';
+      else if (modelName.includes('claude')) bestProviderId = this.providers.has('claude-code') ? 'claude-code' : 'anthropic';
+      else if (modelName.includes('gemini')) bestProviderId = this.providers.has('gemini-cli') ? 'gemini-cli' : 'gemini';
+      else if (modelName.includes('grok')) bestProviderId = 'xai';
+      else if (modelName.includes('deepseek')) bestProviderId = 'deepseek';
+      else if (modelName.includes('sonar')) bestProviderId = 'perplexity';
+      else if (modelName.includes('command')) bestProviderId = 'cohere';
+      else if (modelName.includes('llama') || modelName.includes('mistral') || modelName.includes('mixtral') || modelName.includes('phi') || modelName.includes('qwen')) {
+        // Prefer Groq for speed if available, then Together, then Ollama
+        bestProviderId = this.providers.has('groq') ? 'groq'
+          : this.providers.has('together') ? 'together'
+          : 'ollama';
+      }
 
       if (bestProviderId) {
         const p = this.providers.get(bestProviderId);
@@ -527,8 +743,17 @@ export class UnifiedLLMService {
       }
     }
 
-    // 1. Simple priority list for auto selection
-    const priorityTypes = ['gemini', 'google', 'nvidia', 'openai', 'anthropic', 'ollama'];
+    // 1. Priority list for auto selection (subscription/free providers first)
+    const priorityTypes = [
+      'gemini-cli', 'claude-code',                   // subscription CLI providers (free-to-use)
+      'gemini', 'google',                             // API-key Gemini
+      'openrouter',                                   // multi-model hub
+      'groq',                                         // fast + free tier
+      'openai', 'anthropic',                          // flagship API providers
+      'deepseek', 'together', 'perplexity', 'cohere', // specialized
+      'nvidia', 'cerebras', 'fireworks',              // inference providers
+      'ollama', 'lmstudio',                           // local
+    ];
     const candidates: { id: string, provider: LLMProvider }[] = [];
 
     for (const [id, p] of this.providers.entries()) {
@@ -552,16 +777,24 @@ export class UnifiedLLMService {
           console.log(`[AutoChat] Skipping '${id}' (in cooldown)`);
           continue;
         }
+        // P21-01: Skip providers with open circuit breakers
+        const breaker = getCircuitBreaker(id);
+        if (!breaker.isAllowed()) {
+          console.log(`[AutoChat] Skipping '${id}' (circuit breaker open)`);
+          continue;
+        }
         try {
           console.log(`[AutoChat] Trying provider: ${id}`);
-          const response = await provider.chat(messages, options);
+          const response = await breaker.call(() => provider.chat(messages, options));
           this.authProfileManager.markSuccess(id);
           return response;
         } catch (e: any) {
-          const reason = AuthProfileManager.classifyError(e);
-          this.authProfileManager.markFailure(id, reason);
-            lastError = e;
-            console.error(`[AutoChat] Fallback provider '${id}' failed (${reason}): ${e.message}`);
+          if (!(e instanceof CircuitOpenError)) {
+            const reason = AuthProfileManager.classifyError(e);
+            this.authProfileManager.markFailure(id, reason);
+          }
+          lastError = e;
+          console.error(`[AutoChat] Fallback provider '${id}' failed: ${e.message}`);
         }
       }
     }

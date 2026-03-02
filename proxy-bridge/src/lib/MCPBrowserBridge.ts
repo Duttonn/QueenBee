@@ -1,4 +1,4 @@
-import { browserControlService, BrowserControlService } from './BrowserControlService';
+import { browserControlService, BrowserControlService, ElementInfo } from './BrowserControlService';
 
 /**
  * MCPBrowserBridge (P19-11)
@@ -8,9 +8,66 @@ import { browserControlService, BrowserControlService } from './BrowserControlSe
  */
 export class MCPBrowserBridge {
   private browserService: BrowserControlService;
+  private consoleErrors: string[] = [];
+  private consoleListenerAttached = false;
 
   constructor(service: BrowserControlService = browserControlService) {
     this.browserService = service;
+  }
+
+  private attachConsoleListener(): void {
+    if (this.consoleListenerAttached) return;
+    const page = (this.browserService as any).page;
+    if (!page) return;
+    page.on('console', (msg: any) => {
+      if (msg.type() === 'error') {
+        this.consoleErrors.push(msg.text());
+        if (this.consoleErrors.length > 100) this.consoleErrors.shift();
+      }
+    });
+    this.consoleListenerAttached = true;
+  }
+
+  /**
+   * Launch browser and connect to a URL.
+   */
+  async connect(url: string): Promise<{ connected: boolean; pageUrl: string; pageTitle: string }> {
+    this.consoleListenerAttached = false;
+    this.consoleErrors = [];
+    const info = await this.browserService.launch(url);
+    this.attachConsoleListener();
+    return { connected: true, pageUrl: info.url, pageTitle: info.title };
+  }
+
+  /**
+   * Get element info at page coordinates.
+   */
+  async elementAtPoint(x: number, y: number): Promise<ElementInfo> {
+    return this.browserService.getElementAtPoint(x, y);
+  }
+
+  /**
+   * Take a screenshot and send it to a vision LLM for verification.
+   * Returns pass/fail + analysis.
+   */
+  async visualVerify(description: string, keyElements?: string[]): Promise<{
+    passed: boolean;
+    analysis: string;
+    fidelityScore: number;
+    screenshot: string;
+  }> {
+    const screenshot = await this.browserService.captureScreenshot();
+
+    const { ScreenshotComparator } = await import('./ScreenshotComparator');
+    const comparator = new ScreenshotComparator(process.cwd());
+    const result = await comparator.visualVerifyWithLLM(screenshot, description, keyElements);
+
+    return {
+      passed: result.passed,
+      analysis: result.analysis,
+      fidelityScore: result.fidelityScore,
+      screenshot,
+    };
   }
 
   /**
@@ -28,34 +85,22 @@ export class MCPBrowserBridge {
       return { url: '', title: '', dom: '', consoleErrors: [] };
     }
 
+    this.attachConsoleListener();
+
     const url = page.url() as string;
     const title: string = await page.title();
     const rawDom: string = await page.content();
     const dom = rawDom.length > 5000 ? rawDom.substring(0, 5000) + '...[truncated]' : rawDom;
 
-    // Collect console errors via CDP
-    const consoleErrors: string[] = [];
-    page.on('console', (msg: any) => {
-      if (msg.type() === 'error') {
-        consoleErrors.push(msg.text());
-      }
-    });
-
+    const consoleErrors = [...this.consoleErrors];
     return { url, title, dom, consoleErrors };
   }
 
-  /**
-   * Navigate the browser to a URL.
-   */
   async navigate(url: string): Promise<{ success: boolean }> {
     await this.browserService.navigate(url);
     return { success: true };
   }
 
-  /**
-   * Take a screenshot of the current page (or navigate to url first).
-   * Returns base64-encoded PNG.
-   */
   async screenshot(url?: string): Promise<{ base64: string }> {
     if (url) {
       await this.browserService.navigate(url);
@@ -64,25 +109,16 @@ export class MCPBrowserBridge {
     return { base64 };
   }
 
-  /**
-   * Click an element identified by CSS selector.
-   */
   async click(selector: string): Promise<{ success: boolean }> {
     await this.browserService.click(selector);
     return { success: true };
   }
 
-  /**
-   * Type text into an element identified by CSS selector.
-   */
   async type(selector: string, text: string): Promise<{ success: boolean }> {
     await this.browserService.type(selector, text);
     return { success: true };
   }
 
-  /**
-   * Get the outer HTML of an element (or full body if no selector given).
-   */
   async getDom(selector?: string): Promise<{ html: string; selector: string }> {
     const page = (this.browserService as any).page;
     if (!page) {

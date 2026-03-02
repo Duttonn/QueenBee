@@ -2,18 +2,6 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { NativeService } from '../services/NativeService';
 
-export interface AIProvider {
-    id: string;
-    name: string;
-    icon: string;
-    apiKey?: string;
-    baseUrl?: string;
-    connected: boolean;
-    tier: number;
-    models?: string[];
-    authType: 'api_key' | 'oauth' | 'token';
-}
-
 export interface GitForge {
     id: 'github' | 'gitlab' | 'google';
     name: string;
@@ -64,22 +52,168 @@ interface AuthState {
     disconnectForge: (id: string) => void;
 }
 
+export type ProviderGroup = 'subscription' | 'hub' | 'flagship' | 'fast' | 'specialized' | 'local';
+
+export interface AIProvider {
+    id: string;
+    name: string;
+    icon: string;
+    apiKey?: string;
+    baseUrl?: string;
+    connected: boolean;
+    tier: number;
+    models?: string[];
+    authType: 'api_key' | 'oauth' | 'cli' | 'none';
+    group: ProviderGroup;
+    description?: string;
+    keyPlaceholder?: string;
+    docsUrl?: string;
+}
+
 const defaultProviders: AIProvider[] = [
-    { id: 'openai', name: 'OpenAI', icon: '🤖', connected: false, tier: 1, models: ['gpt-4o', 'gpt-4-turbo', 'o1-preview'], authType: 'api_key' },
-    { id: 'openai-codex', name: 'OpenAI Codex (ChatGPT)', icon: '💬', connected: false, tier: 2, models: ['gpt-4o', 'gpt-4-turbo'], authType: 'oauth' },
-    { id: 'anthropic', name: 'Claude (Anthropic)', icon: '🧠', connected: false, tier: 3, models: ['claude-3-5-sonnet', 'claude-3-opus', 'claude-3-haiku'], authType: 'api_key' },
-    { id: 'anthropic-oauth', name: 'Claude OAuth (Subscription)', icon: '🧠', connected: false, tier: 4, models: ['claude-3-5-sonnet'], authType: 'oauth' },
-            { id: 'gemini', name: 'Google Gemini', icon: '✨', connected: false, tier: 5, models: ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-2.0-flash-001', 'gemini-2.0-flash-lite-001'], authType: 'api_key' },
-            { id: 'google-gemini-cli', name: 'Gemini CLI', icon: '💻', connected: false, tier: 6, models: ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'], authType: 'oauth' },
-    
-    { id: 'google-antigravity', name: 'Antigravity', icon: '🌌', connected: false, tier: 7, models: ['antigravity-1'], authType: 'oauth' },
-    { id: 'mistral', name: 'Mistral AI', icon: '🌬️', connected: false, tier: 7, models: ['mistral-large-latest', 'mistral-small-latest', 'codestral-latest'], authType: 'api_key' },
-    { id: 'qwen-portal', name: 'Qwen Portal', icon: '🏮', connected: false, tier: 8, models: ['qwen-turbo'], authType: 'oauth' },
-    { id: 'perplexity', name: 'Perplexity', icon: '🔍', connected: false, tier: 9, models: ['llama-3-sonar-large-32k-online'], authType: 'api_key' },
-    { id: 'groq', name: 'Groq', icon: '⚡', connected: false, tier: 10, models: ['llama3-70b-8192', 'mixtral-8x7b-32768'], authType: 'api_key' },
-    { id: 'ollama', name: 'Ollama (Local)', icon: '🦙', connected: false, tier: 11, baseUrl: 'http://localhost:11434', models: ['llama3', 'mistral', 'codellama'], authType: 'api_key' },
-    { id: 'nvidia', name: 'NVIDIA NIM', icon: '🟢', connected: false, tier: 12, models: ['meta/llama3-70b-instruct'], authType: 'api_key' },
-    { id: 'antigravity', name: 'Antigravity (Legacy)', icon: '🌌', connected: false, tier: 13, models: ['antigravity-1'], authType: 'api_key' },
+    // ── Subscription CLIs (no API key — uses local CLI auth) ──────────────────
+    {
+        id: 'claude-code', name: 'Claude (Subscription)', icon: '🟣', group: 'subscription',
+        connected: false, tier: 1, authType: 'cli',
+        models: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
+        description: 'Use your Claude.ai Pro/Team subscription. Requires the claude CLI.',
+        docsUrl: 'https://claude.ai/download'
+    },
+    {
+        id: 'gemini-cli', name: 'Gemini (Subscription)', icon: '🔵', group: 'subscription',
+        connected: false, tier: 2, authType: 'cli',
+        models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'],
+        description: 'Use your Google AI Pro subscription. Requires the Gemini CLI.',
+        docsUrl: 'https://github.com/google-gemini/gemini-cli'
+    },
+
+    // ── Multi-model hubs ───────────────────────────────────────────────────────
+    {
+        id: 'openrouter', name: 'OpenRouter', icon: '🔀', group: 'hub',
+        connected: false, tier: 3, authType: 'api_key',
+        models: ['openai/gpt-4o', 'anthropic/claude-sonnet-4-6', 'google/gemini-2.5-pro',
+                 'meta-llama/llama-3.3-70b-instruct:free', 'deepseek/deepseek-r1'],
+        description: '200+ models with one key — GPT-4o, Claude, Gemini, Llama & more.',
+        keyPlaceholder: 'sk-or-...', docsUrl: 'https://openrouter.ai/keys'
+    },
+
+    // ── Flagship API providers ─────────────────────────────────────────────────
+    {
+        id: 'openai', name: 'OpenAI', icon: '⚫', group: 'flagship',
+        connected: false, tier: 4, authType: 'api_key',
+        models: ['gpt-4o', 'gpt-4o-mini', 'o3-mini', 'o1', 'o3'],
+        description: 'GPT-4o, o3, o1 and more.',
+        keyPlaceholder: 'sk-...', docsUrl: 'https://platform.openai.com/api-keys'
+    },
+    {
+        id: 'anthropic', name: 'Anthropic (API)', icon: '🧠', group: 'flagship',
+        connected: false, tier: 5, authType: 'api_key',
+        models: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
+        description: 'Direct Anthropic API. Billed separately from Claude.ai.',
+        keyPlaceholder: 'sk-ant-...', docsUrl: 'https://console.anthropic.com/'
+    },
+    {
+        id: 'gemini', name: 'Google Gemini (API)', icon: '✨', group: 'flagship',
+        connected: false, tier: 6, authType: 'api_key',
+        models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'],
+        description: 'Gemini API via Google AI Studio. Free tier available.',
+        keyPlaceholder: 'AIza...', docsUrl: 'https://aistudio.google.com/apikey'
+    },
+    {
+        id: 'mistral', name: 'Mistral AI', icon: '🌬️', group: 'flagship',
+        connected: false, tier: 7, authType: 'api_key',
+        models: ['mistral-large-latest', 'mistral-small-latest', 'codestral-latest', 'mistral-nemo'],
+        description: 'European AI. Codestral is great for code generation.',
+        keyPlaceholder: '...', docsUrl: 'https://console.mistral.ai/api-keys'
+    },
+
+    // ── Fast inference ─────────────────────────────────────────────────────────
+    {
+        id: 'groq', name: 'Groq', icon: '⚡', group: 'fast',
+        connected: false, tier: 8, authType: 'api_key',
+        models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
+        description: 'Ultra-fast inference, generous free tier. 500+ req/day free.',
+        keyPlaceholder: 'gsk_...', docsUrl: 'https://console.groq.com/keys'
+    },
+    {
+        id: 'deepseek', name: 'DeepSeek', icon: '🌊', group: 'fast',
+        connected: false, tier: 9, authType: 'api_key',
+        models: ['deepseek-chat', 'deepseek-reasoner'],
+        description: 'DeepSeek V3 & R1 reasoning. Very low cost.',
+        keyPlaceholder: 'sk-...', docsUrl: 'https://platform.deepseek.com/api_keys'
+    },
+    {
+        id: 'cerebras', name: 'Cerebras', icon: '🧪', group: 'fast',
+        connected: false, tier: 10, authType: 'api_key',
+        models: ['llama3.1-70b', 'llama3.1-8b', 'llama-3.3-70b'],
+        description: 'World\'s fastest inference. 2000+ tokens/sec.',
+        keyPlaceholder: 'csk-...', docsUrl: 'https://cloud.cerebras.ai/platform'
+    },
+
+    // ── Specialized ────────────────────────────────────────────────────────────
+    {
+        id: 'xai', name: 'xAI (Grok)', icon: '𝕏', group: 'specialized',
+        connected: false, tier: 11, authType: 'api_key',
+        models: ['grok-3', 'grok-3-mini', 'grok-3-fast'],
+        description: 'Grok 3 by xAI. Real-time X/Twitter data access.',
+        keyPlaceholder: 'xai-...', docsUrl: 'https://console.x.ai/'
+    },
+    {
+        id: 'perplexity', name: 'Perplexity', icon: '🔍', group: 'specialized',
+        connected: false, tier: 12, authType: 'api_key',
+        models: ['sonar-pro', 'sonar', 'sonar-reasoning-pro', 'sonar-reasoning'],
+        description: 'Real-time web search + LLM. Great for research tasks.',
+        keyPlaceholder: 'pplx-...', docsUrl: 'https://www.perplexity.ai/settings/api'
+    },
+    {
+        id: 'cohere', name: 'Cohere', icon: '🔗', group: 'specialized',
+        connected: false, tier: 13, authType: 'api_key',
+        models: ['command-r-plus', 'command-r', 'command-r-08-2024'],
+        description: 'Command R+ excels at RAG and enterprise use cases.',
+        keyPlaceholder: '...', docsUrl: 'https://dashboard.cohere.com/api-keys'
+    },
+    {
+        id: 'together', name: 'Together AI', icon: '🤝', group: 'specialized',
+        connected: false, tier: 14, authType: 'api_key',
+        models: ['meta-llama/Llama-3.3-70B-Instruct-Turbo', 'deepseek-ai/DeepSeek-V3',
+                 'Qwen/Qwen2.5-Coder-32B-Instruct', 'mistralai/Mixtral-8x7B-Instruct-v0.1'],
+        description: 'Open-weight models at low cost. Great for fine-tuned models.',
+        keyPlaceholder: '...', docsUrl: 'https://api.together.ai/settings/api-keys'
+    },
+    {
+        id: 'fireworks', name: 'Fireworks AI', icon: '🎆', group: 'specialized',
+        connected: false, tier: 15, authType: 'api_key',
+        models: ['accounts/fireworks/models/llama-v3p3-70b-instruct',
+                 'accounts/fireworks/models/deepseek-v3',
+                 'accounts/fireworks/models/qwen2p5-coder-32b-instruct'],
+        description: 'Fast serving of open-weight models.',
+        keyPlaceholder: 'fw_...', docsUrl: 'https://fireworks.ai/account/api-keys'
+    },
+    {
+        id: 'nvidia', name: 'NVIDIA NIM', icon: '🟢', group: 'specialized',
+        connected: false, tier: 16, authType: 'api_key',
+        models: ['meta/llama-3.3-70b-instruct', 'nvidia/llama-3.1-nemotron-70b-instruct'],
+        description: 'NVIDIA optimized inference for Llama and more.',
+        keyPlaceholder: 'nvapi-...', docsUrl: 'https://build.nvidia.com/'
+    },
+
+    // ── Local (no auth, no data leaves machine) ────────────────────────────────
+    {
+        id: 'ollama', name: 'Ollama (Local)', icon: '🦙', group: 'local',
+        connected: false, tier: 17, authType: 'none',
+        baseUrl: 'http://localhost:11434',
+        models: ['llama3.3', 'mistral', 'codellama', 'qwen2.5-coder', 'deepseek-coder-v2'],
+        description: 'Run any model locally. 100% private. Install at ollama.com.',
+        docsUrl: 'https://ollama.com'
+    },
+    {
+        id: 'lmstudio', name: 'LM Studio (Local)', icon: '🖥️', group: 'local',
+        connected: false, tier: 18, authType: 'none',
+        baseUrl: 'http://localhost:1234',
+        models: ['local-model'],
+        description: 'Run GGUF models locally with a GUI. Private and offline.',
+        docsUrl: 'https://lmstudio.ai'
+    },
 ];
 
 const defaultForges: GitForge[] = [
@@ -143,8 +277,20 @@ export const useAuthStore = create<AuthState>()(
             }),
 
             saveApiKey: async (id, key) => {
+                // 1. Encrypt + store locally
                 const encrypted = await NativeService.storage.encrypt(key);
                 localStorage.setItem(`queen-bee-sec-${id}`, encrypted);
+                // 2. Persist to backend (auth-profile-store + hot-register in UnifiedLLMService)
+                const provider = get().providers.find(p => p.id === id);
+                try {
+                    await fetch('/api/providers/save', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ provider: id, apiKey: key, baseUrl: provider?.baseUrl }),
+                    });
+                } catch (e) {
+                    console.warn('[AuthStore] Backend persist failed (non-fatal):', e);
+                }
                 set((state) => ({
                     providers: state.providers.map(p => p.id === id ? { ...p, apiKey: key, connected: true } : p)
                 }));
@@ -181,7 +327,7 @@ export const useAuthStore = create<AuthState>()(
         }),
         {
             name: 'queen-bee-auth',
-            version: 5, // Incremented to remove hardcoded models
+            version: 6, // Incremented to add full provider ecosystem
             partialize: (state) => ({
                 user: state.user,
                 isAuthenticated: state.isAuthenticated,

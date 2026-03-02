@@ -1,6 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import { spawnSync } from 'child_process';
 
-type Provider = 'openai' | 'anthropic' | 'gemini' | 'nvidia' | 'ollama' | 'azure' | 'custom';
+type Provider = string; // now open-ended
 
 interface TestRequest {
     provider: Provider;
@@ -69,16 +73,107 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 result = await testAzure(apiKey, baseUrl);
                 break;
 
+            case 'mistral':
+                result = await testOpenAICompat(provider, apiKey, 'https://api.mistral.ai/v1',
+                    ['mistral-large-latest', 'mistral-small-latest', 'codestral-latest', 'mistral-nemo']);
+                break;
+
+            case 'openrouter':
+                result = await testOpenRouter(apiKey);
+                break;
+
+            case 'groq':
+                result = await testOpenAICompat(provider, apiKey, 'https://api.groq.com/openai/v1',
+                    ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it']);
+                break;
+
+            case 'xai':
+                result = await testOpenAICompat(provider, apiKey, 'https://api.x.ai/v1',
+                    ['grok-3', 'grok-3-mini', 'grok-3-fast', 'grok-2-1212']);
+                break;
+
+            case 'deepseek':
+                result = await testOpenAICompat(provider, apiKey, 'https://api.deepseek.com/v1',
+                    ['deepseek-chat', 'deepseek-reasoner']);
+                break;
+
+            case 'together':
+                result = await testOpenAICompat(provider, apiKey, 'https://api.together.xyz/v1',
+                    ['meta-llama/Llama-3.3-70B-Instruct-Turbo', 'mistralai/Mixtral-8x7B-Instruct-v0.1',
+                     'Qwen/Qwen2.5-Coder-32B-Instruct', 'deepseek-ai/DeepSeek-V3']);
+                break;
+
+            case 'perplexity':
+                result = await testOpenAICompat(provider, apiKey, 'https://api.perplexity.ai',
+                    ['sonar-pro', 'sonar', 'sonar-reasoning-pro', 'sonar-reasoning']);
+                break;
+
+            case 'cohere':
+                result = await testOpenAICompat(provider, apiKey, 'https://api.cohere.com/compatibility/v1',
+                    ['command-r-plus', 'command-r', 'command-r-08-2024']);
+                break;
+
+            case 'cerebras':
+                result = await testOpenAICompat(provider, apiKey, 'https://api.cerebras.ai/v1',
+                    ['llama3.1-70b', 'llama3.1-8b', 'llama-3.3-70b']);
+                break;
+
+            case 'fireworks':
+                result = await testOpenAICompat(provider, apiKey, 'https://api.fireworks.ai/inference/v1',
+                    ['accounts/fireworks/models/llama-v3p3-70b-instruct',
+                     'accounts/fireworks/models/deepseek-v3',
+                     'accounts/fireworks/models/qwen2p5-coder-32b-instruct']);
+                break;
+
+            case 'sambanova':
+                result = await testOpenAICompat(provider, apiKey, 'https://api.sambanova.ai/v1',
+                    ['Meta-Llama-3.3-70B-Instruct', 'DeepSeek-R1', 'QwQ-32B']);
+                break;
+
+            case 'hyperbolic':
+                result = await testOpenAICompat(provider, apiKey, 'https://api.hyperbolic.xyz/v1',
+                    ['Qwen/Qwen2.5-Coder-32B-Instruct', 'meta-llama/Llama-3.3-70B-Instruct',
+                     'deepseek-ai/DeepSeek-V3']);
+                break;
+
+            case 'moonshot':
+                result = await testOpenAICompat(provider, apiKey, 'https://api.moonshot.cn/v1',
+                    ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k']);
+                break;
+
+            case 'qwen':
+                result = await testOpenAICompat(provider, apiKey,
+                    'https://dashscope.aliyuncs.com/compatible-mode/v1',
+                    ['qwen-plus', 'qwen-turbo', 'qwen-max', 'qwen2.5-coder-32b-instruct']);
+                break;
+
+            case 'lmstudio':
+                result = await testOllama(baseUrl || 'http://localhost:1234');
+                break;
+
+            case 'claude-code':
+                result = testClaudeCode();
+                break;
+
+            case 'gemini-cli':
+                result = testGeminiCli();
+                break;
+
             case 'custom':
                 result = await testCustom(apiKey, baseUrl, model);
                 break;
 
             default:
-                return res.status(400).json({
-                    success: false,
-                    error: `Unknown provider: ${provider}`,
-                    message: 'Supported providers: openai, anthropic, gemini, nvidia, ollama, azure, custom'
-                });
+                // Try as generic OpenAI-compatible if baseUrl provided
+                if (baseUrl) {
+                    result = await testCustom(apiKey, baseUrl, model);
+                } else {
+                    return res.status(400).json({
+                        success: false,
+                        error: `Unknown provider: ${provider}`,
+                        message: 'Unknown provider. If using a custom OpenAI-compatible endpoint, include baseUrl.'
+                    });
+                }
         }
 
         console.log(`[Provider Test] ${provider}: ${result.success ? 'SUCCESS' : 'FAILED'}`);
@@ -429,6 +524,116 @@ async function testAzure(apiKey?: string, baseUrl?: string): Promise<TestResult>
             error: 'network_error',
             message: `Network error: ${error.message}`
         };
+    }
+}
+
+/** Generic OpenAI-compatible test: tries /models then falls back to /chat/completions */
+async function testOpenAICompat(
+    provider: string,
+    apiKey?: string,
+    defaultBaseUrl?: string,
+    defaultModels?: string[]
+): Promise<TestResult> {
+    if (!apiKey) {
+        return {
+            success: false, provider,
+            error: 'missing_api_key',
+            message: `${provider} API key is required.`
+        };
+    }
+    const baseUrl = defaultBaseUrl || 'https://api.openai.com/v1';
+    try {
+        const r = await fetch(`${baseUrl}/models`, {
+            headers: { 'Authorization': `Bearer ${apiKey}`, 'User-Agent': 'QueenBee' }
+        });
+        if (r.ok) {
+            const data = await r.json();
+            const models: string[] = data.data?.map((m: any) => m.id).slice(0, 15) || defaultModels || [];
+            return { success: true, provider, message: `Connected! ${models.length} models available.`, models };
+        }
+        // 404 on /models is normal for some providers — try a tiny completion
+        const cr = await fetch(`${baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: defaultModels?.[0] || 'default', messages: [{ role: 'user', content: 'Hi' }], max_tokens: 1 })
+        });
+        if (cr.ok) {
+            return { success: true, provider, message: 'Connected!', models: defaultModels || [] };
+        }
+        const err = await cr.json().catch(() => ({}));
+        return { success: false, provider, error: 'api_error', message: err?.error?.message || `${provider}: auth failed` };
+    } catch (e: any) {
+        return { success: false, provider, error: 'network_error', message: e.message };
+    }
+}
+
+/** OpenRouter: has its own /models endpoint returning all available models */
+async function testOpenRouter(apiKey?: string): Promise<TestResult> {
+    if (!apiKey) {
+        return { success: false, provider: 'openrouter', error: 'missing_api_key',
+            message: 'OpenRouter API key required. Get one free at https://openrouter.ai/keys' };
+    }
+    try {
+        const r = await fetch('https://openrouter.ai/api/v1/models', {
+            headers: { 'Authorization': `Bearer ${apiKey}`, 'HTTP-Referer': 'https://queenbee.dev' }
+        });
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            return { success: false, provider: 'openrouter', error: 'api_error',
+                message: err?.error?.message || 'Invalid OpenRouter key' };
+        }
+        const data = await r.json();
+        const models: string[] = (data.data || [])
+            .filter((m: any) => !m.id.includes(':nitro') && !m.id.includes(':extended'))
+            .map((m: any) => m.id)
+            .slice(0, 30);
+        return { success: true, provider: 'openrouter',
+            message: `Connected! Access to ${data.data?.length || models.length}+ models.`, models };
+    } catch (e: any) {
+        return { success: false, provider: 'openrouter', error: 'network_error', message: e.message };
+    }
+}
+
+/** Claude Code — check if `claude` binary is installed and authenticated */
+function testClaudeCode(): TestResult {
+    const configDir = path.join(os.homedir(), '.config', 'anthropic');
+    const hasConfig = fs.existsSync(configDir);
+    const binaryCheck = spawnSync('which', ['claude'], { encoding: 'utf-8' });
+    const hasBinary = binaryCheck.status === 0;
+
+    if (!hasBinary) {
+        return { success: false, provider: 'claude-code', error: 'not_installed',
+            message: 'Claude CLI not found. Install it: npm install -g @anthropic-ai/claude-code, then run: claude' };
+    }
+    if (!hasConfig) {
+        return { success: false, provider: 'claude-code', error: 'not_authenticated',
+            message: 'Claude CLI found but not authenticated. Run: claude auth login' };
+    }
+    return { success: true, provider: 'claude-code',
+        message: 'Claude CLI detected and authenticated. Subscription active.',
+        models: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'] };
+}
+
+/** Gemini CLI — check if OAuth creds file exists */
+function testGeminiCli(): TestResult {
+    const credsPath = path.join(os.homedir(), '.gemini', 'oauth_creds.json');
+    if (!fs.existsSync(credsPath)) {
+        return { success: false, provider: 'gemini-cli', error: 'not_authenticated',
+            message: 'Gemini CLI not authenticated. Install: npm install -g @google/gemini-cli, then run: gemini auth' };
+    }
+    try {
+        const creds = JSON.parse(fs.readFileSync(credsPath, 'utf-8'));
+        const hasToken = !!(creds.refresh_token || creds.refreshToken || creds.token?.refresh_token);
+        if (!hasToken) {
+            return { success: false, provider: 'gemini-cli', error: 'invalid_creds',
+                message: 'Gemini credentials file found but refresh token missing. Run: gemini auth' };
+        }
+        return { success: true, provider: 'gemini-cli',
+            message: 'Gemini CLI OAuth credentials detected. Subscription active.',
+            models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'] };
+    } catch {
+        return { success: false, provider: 'gemini-cli', error: 'invalid_creds',
+            message: 'Could not read Gemini credentials. Run: gemini auth' };
     }
 }
 

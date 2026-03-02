@@ -30,6 +30,7 @@ import { TopologyManager } from './TopologyManager';
 import { agentDiscovery } from './AgentDiscoveryService';
 import { AgentFactory } from './AgentFactory';
 import { KnowledgeArtifactStore } from './KnowledgeArtifactStore';
+import { fileConflictDetector } from './FileConflictDetector';
 
 // Registry to track workers in this process (for the prototype)
 const workerRegistry = new Map<string, { status: string; prUrl?: string }>();
@@ -215,6 +216,9 @@ export class ToolExecutor {
           } else {
             const filePath = this.validatePath(projectPath, tool.arguments.path);
             
+            // P21-02: File conflict detection with locking
+            await fileConflictDetector.acquireLock(filePath, agentId || 'unknown', 'write');
+
             // NB-01: File Ownership & Conflict Detection
             const previousOwner = fileOwnershipRegistry.recordWrite(filePath, agentId || 'unknown');
               if (previousOwner && previousOwner !== (agentId || 'unknown')) {
@@ -242,6 +246,25 @@ export class ToolExecutor {
             await fs.ensureDir(path.dirname(filePath));
             await fs.writeFile(filePath, tool.arguments.content);
 
+            // Codemap: update persistent codebase index
+            try {
+              const { codemapService } = await import('./CodemapService');
+              codemapService.setRoot(projectPath);
+              await codemapService.updateEntry(filePath, tool.arguments.content);
+            } catch (_) {}
+
+            // Auto-formatter: run Prettier if auto_format policy enabled
+            try {
+              const policiesPath = path.join(projectPath, '.queenbee', 'policies.json');
+              const policies = await fs.readJson(policiesPath).catch(() => ({}));
+              if (policies.auto_format && /\.(ts|tsx|js|jsx)$/.test(filePath)) {
+                const { execSync } = await import('child_process');
+                try {
+                  execSync(`prettier --write "${filePath}" 2>/dev/null`, { cwd: projectPath, timeout: 15000 });
+                } catch (_) {}
+              }
+            } catch (_) {}
+
             // P18-23: Post-write CommentChecker — warn on AI-slop comments
             const commentChecker = new CommentChecker({ mode: 'warn' });
             const commentResult = await commentChecker.checkFile(filePath).catch(() => null);
@@ -249,12 +272,16 @@ export class ToolExecutor {
               ? CommentChecker.formatFindings(commentResult.findings)
               : null;
 
-            result = { success: true, path: filePath, stats, ...(commentWarning ? { commentWarning } : {}) };
+              result = { success: true, path: filePath, stats, ...(commentWarning ? { commentWarning } : {}) };
+
+              // Invalidate graph cache so next scout_impact reflects this write
+              const { GraphEngine: GE } = await import('./tools/GraphEngine');
+              GE.invalidate(projectPath);
+            }
+            break;
           }
-          break;
-        }
-          
-        case 'run_shell':
+            
+          case 'run_shell':
           result = await this.runShellCommand(tool.arguments.command, projectPath, { projectId, threadId, toolCallId, allowedCommands });
           break;
           
@@ -299,6 +326,16 @@ export class ToolExecutor {
               result = `[REDACTED BY SECURITY AUDITOR: ${readAudit.findings.join(' ')}]`;
             }
           }
+          break;
+        }
+
+        case 'get_codemap': {
+          const { codemapService } = await import('./CodemapService');
+          codemapService.setRoot(projectPath);
+          if (tool.arguments.refresh) {
+            await codemapService.buildCodemap(projectPath);
+          }
+          result = await codemapService.getCodemap();
           break;
         }
 
@@ -415,6 +452,11 @@ export class ToolExecutor {
             break;
           }
           const editResult = await applyHashlineEdits(hlPath, ops);
+          
+          // Invalidate graph cache so next scout_impact reflects this edit
+          const { GraphEngine: GE } = await import('./tools/GraphEngine');
+          GE.invalidate(projectPath);
+          
           result = editResult;
           break;
         }
@@ -900,7 +942,41 @@ export class ToolExecutor {
           break;
         }
 
-        default:
+        case 'browser_connect': {
+          const { mcpBrowserBridge } = await import('./MCPBrowserBridge');
+          result = await mcpBrowserBridge.connect(tool.arguments.url);
+          break;
+        }
+
+          case 'browser_visual_verify': {
+            const { mcpBrowserBridge } = await import('./MCPBrowserBridge');
+            result = await mcpBrowserBridge.visualVerify(
+              tool.arguments.description,
+              tool.arguments.key_elements
+            );
+            break;
+          }
+
+          // ── Graph / Impact-analysis tools ─────────────────────────────────
+          case 'scout_impact': {
+            const { GraphEngine } = await import('./tools/GraphEngine');
+            result = await GraphEngine.scoutImpact(projectPath, tool.arguments.file_path);
+            break;
+          }
+
+          case 'graph_find_callers': {
+            const { GraphEngine } = await import('./tools/GraphEngine');
+            result = await GraphEngine.getFunctionCallers(projectPath, tool.arguments.function_name);
+            break;
+          }
+
+          case 'graph_summary': {
+            const { GraphEngine } = await import('./tools/GraphEngine');
+            result = await GraphEngine.getGraphSummary(projectPath);
+            break;
+          }
+
+          default:
           throw new Error(`Unknown tool: ${tool.name}`);
       }
 
@@ -1239,6 +1315,7 @@ export class ToolExecutor {
       workerRegistry.set(taskId, { status: 'completed' });
       agentDiscovery.updateStatus(agentId, 'completed'); // P20-03
       agentDiscovery.deregister(agentId); // P20-03
+      fileConflictDetector.releaseAllForAgent(agentId); // P21-02
 
       // Extract completion summary from the worker's last assistant message
       completionSummary = this.extractWorkerSummary(runner, taskId, result);
@@ -1249,6 +1326,7 @@ export class ToolExecutor {
       workerRegistry.set(taskId, { status: 'failed' });
       agentDiscovery.updateStatus(agentId, 'failed'); // P20-03
       agentDiscovery.deregister(agentId); // P20-03
+      fileConflictDetector.releaseAllForAgent(agentId); // P21-02
       workerStatus = 'failed';
       completionSummary = `[FAILED] Worker ${taskId} encountered an error: ${error.message}`;
       if (io) io.emit('UI_UPDATE', { action: 'WORKER_STATUS', payload: { threadId, taskId, status: 'failed' } });

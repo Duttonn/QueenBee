@@ -869,11 +869,23 @@
 
 ### 🔴 HIGH PRIORITY
 
-- [x] `LS-01`: [Backend] **set_work_environment tool** — Per-task file scope isolation
-  - **Files**: `proxy-bridge/src/lib/ToolDefinitions.ts`, `proxy-bridge/src/lib/ToolExecutor.ts`, `proxy-bridge/src/lib/ProjectTaskManager.ts`
-  - **Description**: Researcher agents call this to lock which files a builder can modify. ToolExecutor validates write_file against scope, throws `SCOPE_VIOLATION` if out of bounds. Storage: `.queenbee/work-environments.json` (`{ [taskId]: { files, notes, setAt } }`). Uses glob/minimatch for pattern matching.
-  - **Key method**: `ptm.setWorkEnvironment(taskId, files[], notes?)` + `ptm.getWorkEnvironment(taskId)`
-  - **Worker**: BACKEND
+  - [x] `LS-01`: [Backend] **set_work_environment tool** — Per-task file scope isolation
+    - **Files**: `proxy-bridge/src/lib/ToolDefinitions.ts`, `proxy-bridge/src/lib/ToolExecutor.ts`, `proxy-bridge/src/lib/ProjectTaskManager.ts`
+    - **Description**: Researcher agents call this to lock which files a builder can modify. ToolExecutor validates write_file against scope, throws `SCOPE_VIOLATION` if out of bounds. Storage: `.queenbee/work-environments.json` (`{ [taskId]: { files, notes, setAt } }`). Uses glob/minimatch for pattern matching.
+    - **Key method**: `ptm.setWorkEnvironment(taskId, files[], notes?)` + `ptm.getWorkEnvironment(taskId)`
+    - **Worker**: BACKEND
+
+## 🗺 PHASE 19: IMPACT ANALYSIS & CODE GRAPH
+> **Goal**: Implement live, code-driven (not AI-inferred) dependency and call graph visualizer for proactive impact analysis.
+
+- [x] `FEAT-19`: [Fullstack] **Live Impact Analysis & Code Graph Visualizer**
+  - **Files**: `proxy-bridge/src/lib/tools/GraphEngine.ts`, `proxy-bridge/src/pages/api/graph/*`, `dashboard/src/components/navigator/CodeGraphPanel.tsx`
+  - **Description**: Two-layer analysis: (1) File-level dependencies using `skott` (with tsconfig path alias resolution), (2) Function-level call graph using `@ast-grep/napi` — catches class methods (`method_definition`), top-level functions, and arrow/fn-expression variables. Tested + accuracy-audited against QueenBee itself (248 files, 21 fns on ToolExecutor, 9 on AgentFactory, real circular dep `ToolExecutor→AutonomousRunner→AgentSession→ToolExecutor`).
+  - **Tools**: `scout_impact(filePath)`, `graph_find_callers(fnName)`, `graph_summary()`.
+  - **UI**: Interactive force-directed canvas graph (zero deps, HTML5 Canvas). Features: drag-to-pin, scroll-to-zoom, pan, click for blast-radius sidebar (direct + transitive dependents, imports, npm packages, functions list, orphan/circular warnings). All labels accurate.
+  - **Accuracy fixes applied**: class method extraction, thirdParty field, `.next/` leakage, page-file false orphans, self-node in transitive deps, callerFn attribution for `const x = call()` patterns.
+  - **Worker**: FULLSTACK
+
 
 - [x] `LS-02`: [Backend] **write_finding / read_findings tools** — Structured research blackboard
   - **Files**: `proxy-bridge/src/lib/ToolDefinitions.ts`, `proxy-bridge/src/lib/ToolExecutor.ts`

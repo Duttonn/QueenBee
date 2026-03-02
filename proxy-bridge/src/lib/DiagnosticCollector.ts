@@ -8,6 +8,7 @@ import { sessionManager } from './SessionManager';
 import { getLaneStats } from './CommandQueue';
 import { unifiedLLMService } from './UnifiedLLMService';
 import { approvalBridge } from './ExternalApprovalBridge';
+import { AGENT_TOOLS } from './ToolDefinitions';
 
 export interface SessionHeartbeat {
   threadId: string;
@@ -17,7 +18,7 @@ export interface SessionHeartbeat {
 }
 
 export interface DiagnosticEvent {
-  type: 'session_start' | 'session_end' | 'session_step' | 'stuck_detected' | 'queue_pressure' | 'provider_unhealthy';
+  type: 'session_start' | 'session_end' | 'session_step' | 'stuck_detected' | 'queue_pressure' | 'provider_unhealthy' | 'tool_count_warning';
   threadId?: string;
   timestamp: number;
   data: any;
@@ -32,6 +33,8 @@ export interface HealthSnapshot {
   providerHealth: Record<string, any>;
   pendingApprovals: number;
   recentEvents: DiagnosticEvent[];
+  toolCount: number;
+  toolCountStatus: 'ok' | 'warning' | 'critical';
 }
 
 const STUCK_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes without activity
@@ -79,6 +82,15 @@ class DiagnosticCollectorImpl {
   }
 
   /**
+   * Get the current tool count and its health status.
+   */
+  getToolCount(): { count: number; status: 'ok' | 'warning' | 'critical' } {
+    const count = AGENT_TOOLS.length;
+    const status = count > 80 ? 'critical' : count > 60 ? 'warning' : 'ok';
+    return { count, status };
+  }
+
+  /**
    * Check for stuck sessions and queue pressure.
    * Called periodically (e.g., from HeartbeatService or setInterval).
    */
@@ -115,6 +127,17 @@ class DiagnosticCollectorImpl {
       }
     }
 
+    // Tool count monitoring
+    const { count: toolCount, status: toolCountStatus } = this.getToolCount();
+    if (toolCountStatus !== 'ok') {
+      newEvents.push({
+        type: 'tool_count_warning',
+        timestamp: now,
+        data: { toolCount, status: toolCountStatus, threshold: toolCount > 80 ? 80 : 60 },
+      });
+      console.warn(`[Diagnostics] TOOL COUNT ${toolCountStatus.toUpperCase()}: ${toolCount} tools active (threshold: ${toolCount > 80 ? 80 : 60})`);
+    }
+
     return newEvents;
   }
 
@@ -132,6 +155,7 @@ class DiagnosticCollectorImpl {
       }
     }
 
+    const { count: toolCount, status: toolCountStatus } = this.getToolCount();
     return {
       timestamp: new Date().toISOString(),
       activeSessions: activeThreads.length,
@@ -141,6 +165,8 @@ class DiagnosticCollectorImpl {
       providerHealth: unifiedLLMService.authProfileManager.getAllStats(),
       pendingApprovals: approvalBridge.getPendingCount(),
       recentEvents: [], // P18-C4: historical events now delegated to EventLog JSONL
+      toolCount,
+      toolCountStatus,
     };
   }
 

@@ -708,6 +708,93 @@ export const AGENT_TOOLS = [
         required: []
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'browser_connect',
+      description: 'Connect to a running web application by launching a headless browser and navigating to the given URL. Use this before other browser_ tools.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'The URL of the web app to connect to (e.g. "http://localhost:5173").' }
+        },
+        required: ['url']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'browser_visual_verify',
+      description: 'Take a screenshot of the current browser page and verify it matches an expected visual state using a vision LLM. Returns pass/fail with analysis. Use after making code changes to confirm the UI looks correct.',
+      parameters: {
+        type: 'object',
+        properties: {
+          description: { type: 'string', description: 'Description of the expected visual state (e.g. "A login form with email and password fields and a blue submit button").' },
+          key_elements: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Optional list of key UI elements that should be present (e.g. ["login form", "submit button", "logo"]).'
+          }
+        },
+    required: ['description']
+        }
+      }
+    },
+  {
+    type: 'function',
+    function: {
+      name: 'scout_impact',
+      description: 'Analyse the blast radius of a file change before modifying it. Returns every file that directly or transitively imports the target file, plus its direct dependencies. Use this before editing a shared utility or library file to understand how many things will be affected.',
+      parameters: {
+        type: 'object',
+        properties: {
+          file_path: { type: 'string', description: 'Relative path to the file you are about to change (e.g. "src/lib/utils.ts").' }
+        },
+        required: ['file_path']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'graph_find_callers',
+      description: 'Find every call site of a function across the entire project. Returns file paths and line numbers where the function is called. Useful before renaming a function or changing its signature.',
+      parameters: {
+        type: 'object',
+        properties: {
+          function_name: { type: 'string', description: 'The exact function name to search for (e.g. "handleConnect", "formatDate").' }
+        },
+        required: ['function_name']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'graph_summary',
+      description: 'Get a high-level summary of the project dependency graph: total files, orphan files (never imported), circular dependencies, and the top most-imported files. Good for orientation at the start of a session.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: []
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_codemap',
+      description: 'Get the persistent codebase map — a file tree with module descriptions, exports, and line counts. Use this instead of exploring files from scratch to save exploration tokens. Returns a map of { [filePath]: { exports, description, lineCount } }.',
+      parameters: {
+        type: 'object',
+        properties: {
+          refresh: { type: 'boolean', description: 'If true, rebuilds the map from disk before returning (slower but up-to-date).' }
+        },
+        required: []
+      }
+    }
   }
-  ];
+    ];
   

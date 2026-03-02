@@ -65,6 +65,7 @@ import RoundtablePanel from '../agents/RoundtablePanel';
 import LearningVelocityPanel from '../evolution/LearningVelocityPanel';
 import DeepInspector from '../inspector/DeepInspector';
 import BrowserPanel from '../navigator/BrowserPanel';
+import CodeGraphPanel from '../navigator/CodeGraphPanel';
 
 const MentionDropdown = ({ files, selectedIndex, onSelect }: { files: string[], selectedIndex: number, onSelect: (f: string) => void }) => {
   // QB-02: Include system commands in the dropdown
@@ -129,6 +130,9 @@ interface ComposerBarProps {
   onApprovePlan?: () => void;
   onRevisePlan?: () => void;
   swarmPhase?: 'plan' | 'prompts' | 'launch' | null;
+  pinnedElements?: PinnedElement[];
+  onRemovePin?: (selector: string) => void;
+  onOpenProviders?: () => void;
 }
 
 // ─── Slash Command types ───────────────────────────────────────────────────────
@@ -138,17 +142,26 @@ interface SlashCommand {
 }
 
 // ─── Element chip (from BrowserPanel picker) ──────────────────────────────────
-const ElementChip = ({ selector, onRemove }: { selector: string; onRemove: () => void }) => (
+interface PinnedElement {
+  selector: string;
+  html: string;
+  tagName?: string;
+  sourceFile?: string;
+  sourceLine?: string;
+}
+
+const ElementChip = ({ selector, sourceFile, onRemove }: { selector: string; sourceFile?: string; onRemove: () => void }) => (
   <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-[10px] font-bold text-indigo-700 uppercase tracking-wider group">
     <Target size={9} className="text-indigo-400" />
     <span className="max-w-[140px] truncate font-mono normal-case">{selector}</span>
+    {sourceFile && <span className="text-[8px] text-indigo-400 font-mono normal-case">{sourceFile}</span>}
     <button onClick={onRemove} className="p-0.5 hover:bg-indigo-100 rounded-md transition-colors">
       <X size={9} />
     </button>
   </div>
 );
 
-const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onModeChange, availableModels, selectedModel, onModelSelect, composerMode, onComposerModeChange, projectFiles, onAttach, pendingFiles = [], onRemoveFile, planWaiting, onApprovePlan, onRevisePlan, swarmPhase }: ComposerBarProps) => {
+const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onModeChange, availableModels, selectedModel, onModelSelect, composerMode, onComposerModeChange, projectFiles, onAttach, pendingFiles = [], onRemoveFile, planWaiting, onApprovePlan, onRevisePlan, swarmPhase, pinnedElements = [], onRemovePin, onOpenProviders }: ComposerBarProps) => {
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [mentionSearch, setMentionSearch] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -158,9 +171,6 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
   const [slashSearch, setSlashSearch] = useState<string | null>(null);
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
   const [slashIndex, setSlashIndex] = useState(0);
-
-  // ── Element picker chip ───────────────────────────────────────────────────
-  const [pickedElement, setPickedElement] = useState<{ selector: string; html: string } | null>(null);
 
   const filteredFiles = React.useMemo(() => {
     if (mentionSearch === null) return [];
@@ -206,15 +216,6 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
   }, [slashSearch, activeProjectForSlash?.path]);
 
   // ── Element picker event listener ──────────────────────────────────────────
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { selector: string; html: string };
-      setPickedElement(detail);
-    };
-    window.addEventListener('queenbee:element-picked', handler);
-    return () => window.removeEventListener('queenbee:element-picked', handler);
-  }, []);
-
   const handleSelectSlashCommand = (cmd: SlashCommand) => {
     // Replace the /... prefix in the input with the full command name
     const lastSlashIndex = value.lastIndexOf('/');
@@ -437,14 +438,16 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
 
           {/* Top: Input Area */}
         <div className="px-4 pt-4 pb-2">
-          {(pendingFiles.length > 0 || pickedElement) && (
+          {(pendingFiles.length > 0 || pinnedElements.length > 0) && (
             <div className="flex flex-wrap gap-2 mb-3">
-              {pickedElement && (
+              {pinnedElements.map(el => (
                 <ElementChip
-                  selector={pickedElement.selector}
-                  onRemove={() => setPickedElement(null)}
+                  key={el.selector}
+                  selector={el.selector}
+                  sourceFile={el.sourceFile}
+                  onRemove={() => onRemovePin?.(el.selector)}
                 />
-              )}
+              ))}
               {pendingFiles.map(file => (
                 <div key={file.name} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-100 border border-zinc-200 text-[10px] font-bold text-zinc-600 uppercase tracking-wider group">
                   <FileIcon size={10} className="text-zinc-400" />
@@ -535,53 +538,65 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
 
             {/* Model Selector */}
             <div className="relative">
-              <button
-                onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-500 bg-zinc-100 hover:bg-zinc-200 rounded-xl transition-all"
-              >
-                <span>{selectedModel || 'Select Model'}</span>
-                <ChevronDown size={10} className="text-zinc-400" />
-              </button>
-              <AnimatePresence>
-                {isModelMenuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setIsModelMenuOpen(false)} />
-                    <motion.div
-                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      className="absolute bottom-full left-0 mb-3 w-64 bg-white border border-zinc-200 shadow-2xl rounded-2xl overflow-hidden z-[60] p-1"
-                    >
-                      <div className="px-3 py-2 text-[9px] font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-50 mb-1">
-                        AI Model
-                      </div>
-                      <div className="max-h-80 overflow-y-auto">
-                        {availableModels.map((m, idx) => {
-                          const showProviderHeader = idx === 0 || availableModels[idx-1].provider !== m.provider;
-                          return (
-                            <React.Fragment key={`${m.provider}-${m.name}`}>
-                              {showProviderHeader && (
-                                <div className="px-3 py-1.5 text-[8px] font-black text-blue-500 uppercase tracking-[0.2em] bg-blue-50/50 mt-1 first:mt-0 mb-1 rounded-lg">
-                                  {m.provider}
-                                </div>
-                              )}
-                              <button
-                                onClick={() => { onModelSelect(m.name, m.provider); setIsModelMenuOpen(false); }}
-                                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition-all ${m.name === selectedModel
-                                  ? 'bg-zinc-900 text-white shadow-lg'
-                                  : 'text-zinc-600 hover:bg-zinc-50'
-                                  }`}
-                              >
-                                {m.name}
-                              </button>
-                            </React.Fragment>
-                          );
-                        })}
-                      </div>
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
+              {availableModels.length === 0 ? (
+                <button
+                  onClick={() => onOpenProviders?.()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition-all"
+                >
+                  <span>Connect a Provider</span>
+                  <span className="text-amber-400">→</span>
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-500 bg-zinc-100 hover:bg-zinc-200 rounded-xl transition-all"
+                  >
+                    <span>{selectedModel || 'Select Model'}</span>
+                    <ChevronDown size={10} className="text-zinc-400" />
+                  </button>
+                  <AnimatePresence>
+                    {isModelMenuOpen && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setIsModelMenuOpen(false)} />
+                        <motion.div
+                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                          className="absolute bottom-full left-0 mb-3 w-64 bg-white border border-zinc-200 shadow-2xl rounded-2xl overflow-hidden z-[60] p-1"
+                        >
+                          <div className="px-3 py-2 text-[9px] font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-50 mb-1">
+                            AI Model
+                          </div>
+                          <div className="max-h-80 overflow-y-auto">
+                            {availableModels.map((m, idx) => {
+                              const showProviderHeader = idx === 0 || availableModels[idx-1].provider !== m.provider;
+                              return (
+                                <React.Fragment key={`${m.provider}-${m.name}`}>
+                                  {showProviderHeader && (
+                                    <div className="px-3 py-1.5 text-[8px] font-black text-blue-500 uppercase tracking-[0.2em] bg-blue-50/50 mt-1 first:mt-0 mb-1 rounded-lg">
+                                      {m.provider}
+                                    </div>
+                                  )}
+                                  <button
+                                    onClick={() => { onModelSelect(m.name, m.provider); setIsModelMenuOpen(false); }}
+                                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition-all ${m.name === selectedModel
+                                      ? 'bg-zinc-900 text-white shadow-lg'
+                                      : 'text-zinc-600 hover:bg-zinc-50'
+                                      }`}
+                                  >
+                                    {m.name}
+                                  </button>
+                                </React.Fragment>
+                              );
+                            })}
+                          </div>
+                        </motion.div>
+                      </>
+                    )}
+                  </AnimatePresence>
+                </>
+              )}
             </div>
           </div>
 
@@ -630,10 +645,12 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const [isLearningVelocityOpen, setIsLearningVelocityOpen] = useState(false);
   const [isDeepInspectorOpen, setIsDeepInspectorOpen] = useState(false);
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
+  const [isCodeGraphOpen, setIsCodeGraphOpen] = useState(false);
   const [isCommitModalOpen, setIsCommitModalOpen] = useState(false);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isCustomizationOpen, setIsCustomizationOpen] = useState(false);
+  const [isProvidersOpen, setIsProvidersOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
@@ -647,6 +664,17 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
   const [swarmPhase, setSwarmPhase] = useState<'plan' | 'prompts' | 'launch' | null>(null);
   const [showPathInput, setShowPathInput] = useState(false);
   const [pathInputValue, setPathInputValue] = useState('');
+  const [pinnedElements, setPinnedElements] = useState<PinnedElement[]>([]);
+
+  // Listen for pinned elements from BrowserPanel
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as PinnedElement[];
+      setPinnedElements(detail);
+    };
+    window.addEventListener('queenbee:elements-pinned', handler);
+    return () => window.removeEventListener('queenbee:elements-pinned', handler);
+  }, []);
 
   const { 
     projects, 
@@ -824,7 +852,22 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
 
     // 1. Context Enhancement: Scan for @mentions and inject content
     let augmentedMessages = [...messages];
-    
+
+    // Inject pinned browser elements as context
+    if (pinnedElements.length > 0) {
+      const elementContext = pinnedElements.map(el => {
+        let entry = `[${el.selector}] <${el.tagName || 'unknown'}>`;
+        if (el.sourceFile) entry += ` (source: ${el.sourceFile}${el.sourceLine ? ':' + el.sourceLine : ''})`;
+        entry += `\n${el.html}`;
+        return entry;
+      }).join('\n\n');
+      augmentedMessages.push({
+        role: 'system',
+        content: `User pinned ${pinnedElements.length} browser element(s) for context:\n\n${elementContext}`
+      });
+      setPinnedElements([]); // Clear after injecting
+    }
+
     // Inject any context from manual file uploads (Plus button)
     const currentPendingContext = contextInjection || pendingContext;
     if (currentPendingContext) {
@@ -1026,7 +1069,24 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           }
         }
     } else {
-        // Web Mode: Show inline path input (native picker not available in sandboxed browsers)
+        // Web Mode: ask the local proxy-bridge to open the native OS folder picker.
+        // This works because the server process can pop a GUI dialog on the host machine.
+        // Fall back to the manual text input if the server isn't reachable or errors.
+        const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+        if (isLocal) {
+          try {
+            const res = await fetch(`${API_BASE}/api/utils/choose-folder`);
+            const data = await res.json();
+            if (data.path) {
+              await handleAddProjectByPath(data.path);
+              return;
+            }
+            if (data.canceled) return; // user dismissed the dialog — do nothing
+            // data.error means GUI not available; fall through to manual input
+          } catch {
+            // Network or JSON error — fall through to manual input
+          }
+        }
         setPathInputValue('');
         setShowPathInput(true);
     }
@@ -1142,6 +1202,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
               <Sidebar
                 activeView={activeView}
                 onOpenSettings={() => setIsCustomizationOpen(true)}
+                onOpenProviders={() => setIsProvidersOpen(true)}
                 onSearchClick={() => setCommandBarOpen(true)}
                 selectedProjectId={selectedProjectId}
                 onProjectSelect={(id) => {
@@ -1199,7 +1260,8 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                     onToggleEvolution={() => setIsEvolutionOpen(prev => !prev)}
                     onToggleLearningVelocity={() => setIsLearningVelocityOpen(prev => !prev)}
                     onToggleDeepInspector={() => setIsDeepInspectorOpen(prev => !prev)}
-                    onToggleBrowser={() => setIsBrowserOpen(prev => !prev)}
+                      onToggleBrowser={() => setIsBrowserOpen(prev => !prev)}
+                      onToggleCodeGraph={() => setIsCodeGraphOpen(prev => !prev)}
                     onToggleTerminal={() => setIsTerminalOpen(prev => !prev)}
                     onToggleDiff={() => setIsDiffOpen(prev => !prev)}
                     onRun={handleRunProject}
@@ -1264,6 +1326,9 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                       }
                       if (fileInfo) setPendingFiles(prev => [...prev, fileInfo]);
                     }}
+                    pinnedElements={pinnedElements}
+                    onRemovePin={(selector) => setPinnedElements(prev => prev.filter(p => p.selector !== selector))}
+                    onOpenProviders={() => setIsProvidersOpen(true)}
                     />
                   )}
               </>) : (
@@ -1276,6 +1341,11 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         <LearningVelocityPanel isOpen={isLearningVelocityOpen} onClose={() => setIsLearningVelocityOpen(false)} />
         <DeepInspector isOpen={isDeepInspectorOpen} onClose={() => setIsDeepInspectorOpen(false)} />
         <BrowserPanel isOpen={isBrowserOpen} onClose={() => setIsBrowserOpen(false)} />
+        <CodeGraphPanel
+          isOpen={isCodeGraphOpen}
+          onClose={() => setIsCodeGraphOpen(false)}
+          projectPath={activeProject?.path ?? null}
+        />
 
         <AnimatePresence>
           {isTerminalOpen && (
@@ -1297,6 +1367,11 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         isOpen={isCustomizationOpen}
         onClose={() => setIsCustomizationOpen(false)}
       />
+      <AnimatePresence>
+        {isProvidersOpen && (
+          <UniversalAuthModal onComplete={() => setIsProvidersOpen(false)} />
+        )}
+      </AnimatePresence>
 
         {!isWeb && (
           <CommitModal
@@ -1341,12 +1416,14 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           </div>
         )}
 
-      {/* Path Input Dialog (web mode fallback for Open Project) */}
+      {/* Path Input Dialog — fallback when native picker unavailable (remote access / no zenity) */}
       {showPathInput && (
         <div className="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-4" onClick={() => setShowPathInput(false)}>
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-zinc-900 mb-2">Open Project</h3>
-            <p className="text-sm text-zinc-500 mb-4">Enter the absolute path to your project folder</p>
+            <h3 className="text-lg font-bold text-zinc-900 mb-1">Open Project</h3>
+            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+              Native folder picker unavailable — enter the absolute path manually, or install <strong>zenity</strong> (Linux) for a GUI picker.
+            </p>
             <input
               type="text"
               value={pathInputValue}

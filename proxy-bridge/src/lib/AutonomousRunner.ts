@@ -18,6 +18,7 @@ import { MemoryStore } from './MemoryStore';
 import { PolicyStore } from './PolicyStore';
 import { CompletionGate } from './CompletionGate';
 import { JudgeInput } from './LLMJudge';
+import { LifecycleHookManager } from './LifecycleHooks';
 import { SkillsManager } from './SkillsManager';
 import { IntentClassifier } from './IntentClassifier';
 
@@ -84,6 +85,7 @@ export class AutonomousRunner {
   private eventLog: EventLog;
   private memoryStore: MemoryStore;
   private policyStore: PolicyStore;
+  private lifecycleHooks: LifecycleHookManager;
     private lastAttemptToolSignature: string = '';
     private swarmId: string | undefined;
     private mainProjectPath: string; // Always points to the main project root (not worktree)
@@ -115,17 +117,32 @@ export class AutonomousRunner {
      */
     private transitionState(newState: SessionLifecycleState): void {
       if (this.lifecycleState === newState) return;
-      
+
       const previousState = this.lifecycleState;
+
+      // P22-03: Run pre-transition hooks (fire-and-forget, don't block sync method)
+      this.lifecycleHooks.runHooks(newState, 'pre', {
+        agent_id: this.agentId || '',
+        previous_state: previousState,
+        thread_id: this.threadId || '',
+      }).catch(() => { /* non-blocking */ });
+
       this.previousLifecycleState = previousState;
       this.lifecycleState = newState;
-      
+
       // Record state history
       this.stateHistory.push({ state: newState, timestamp: Date.now() });
-      
+
       // Emit lifecycle event
       this.emitLifecycleEvent(newState, previousState);
-      
+
+      // P22-03: Run post-transition hooks (fire-and-forget)
+      this.lifecycleHooks.runHooks(newState, 'post', {
+        agent_id: this.agentId || '',
+        previous_state: previousState,
+        thread_id: this.threadId || '',
+      }).catch(() => { /* non-blocking */ });
+
       console.log(`[AutonomousRunner] State transition: ${previousState} → ${newState}`);
     }
 
@@ -307,6 +324,7 @@ export class AutonomousRunner {
     this.eventLog = new EventLog(projectPath);
     this.memoryStore = new MemoryStore(projectPath);
     this.policyStore = new PolicyStore(projectPath);
+    this.lifecycleHooks = new LifecycleHookManager(projectPath);
     
     if (agentId?.includes('architect')) {
       this.role = 'architect';

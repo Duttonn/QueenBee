@@ -24,7 +24,8 @@ import {
   Download,
   Trash2,
   Bot,
-  Users
+  Users,
+  Cpu
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -75,6 +76,7 @@ interface SidebarProps {
   activeView: 'build' | 'automations' | 'skills' | 'triage';
   onViewChange: (view: 'build' | 'automations' | 'skills' | 'triage') => void;
   onOpenSettings?: () => void;
+  onOpenProviders?: () => void;
   onSearchClick?: () => void;
   selectedProjectId?: string | null;
   onProjectSelect?: (id: string) => void;
@@ -221,17 +223,8 @@ const RemotesSection = ({
     }
   };
 
-  const handleClone = async (forge: ForgeType, repo: RemoteRepo) => {
-    try {
-      await fetch(`${API_BASE}/api/git/clone`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clone_url: repo.clone_url || repo.html_url }),
-      });
-      onClone(repo);
-    } catch {
-      // silently handle
-    }
+  const handleClone = (_forge: ForgeType, repo: RemoteRepo) => {
+    onClone(repo);
   };
 
   return (
@@ -321,7 +314,7 @@ const RemotesSection = ({
   );
 };
 
-const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, selectedProjectId, onProjectSelect, onAddProject }: SidebarProps) => {
+const Sidebar = ({ activeView, onViewChange, onOpenSettings, onOpenProviders, onSearchClick, selectedProjectId, onProjectSelect, onAddProject }: SidebarProps) => {
   const { projects, addProject, activeThreadId, setActiveThread, addThread, selectedProjectId: storeSelectedProjectId, unreadThreads, resetSwarm } = useHiveStore();
   const { forges, user } = useAuthStore();
   const connectedForges = forges.filter(f => f.connected);
@@ -691,7 +684,7 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
       />
 
       <div className="p-3 border-t border-zinc-200 bg-white">
-        <div 
+        <div
           onClick={onOpenSettings}
           className="flex items-center gap-3 p-2 rounded-2xl hover:bg-zinc-50 transition-all cursor-pointer group border border-transparent hover:border-zinc-100"
         >
@@ -711,7 +704,16 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onSearchClick, sele
               <div className="text-[8px] text-zinc-400 font-bold uppercase tracking-widest">Synced</div>
             </div>
           </div>
-          <Settings size={14} className="text-zinc-400 group-hover:text-zinc-600 transition-all" />
+          <div className="flex items-center gap-1">
+            <button
+              onClick={(e) => { e.stopPropagation(); onOpenProviders?.(); }}
+              title="AI Providers"
+              className="p-1.5 rounded-xl hover:bg-zinc-100 transition-all"
+            >
+              <Cpu size={13} className="text-zinc-400 hover:text-blue-500 transition-colors" />
+            </button>
+            <Settings size={14} className="text-zinc-400 group-hover:text-zinc-600 transition-all" />
+          </div>
         </div>
       </div>
     </div>

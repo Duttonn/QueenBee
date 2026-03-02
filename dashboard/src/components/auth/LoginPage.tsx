@@ -369,28 +369,21 @@ const LoginPage = ({ onLoginComplete }: LoginPageProps) => {
                                                     setError('Please enter a token');
                                                     return;
                                                 }
-                                                setIsLoading(true);
-                                                setError(null);
-                                                try {
-                                                    const res = await fetch('https://api.github.com/user', {
-                                                        headers: { Authorization: `Bearer ${tokenValue.trim()}` }
-                                                    });
-                                                    if (!res.ok) throw new Error('Invalid token');
-                                                    const user = await res.json();
-                                                    onLoginComplete({
-                                                        user: {
-                                                            id: String(user.id),
-                                                            name: user.name || user.login,
-                                                            email: user.email || `${user.login}@users.noreply.github.com`,
-                                                            avatarUrl: user.avatar_url,
-                                                            login: user.login
-                                                        },
-                                                        accessToken: tokenValue.trim()
-                                                    });
-                                                } catch (err: any) {
-                                                    setError(err.message || 'Failed to validate token');
-                                                    setIsLoading(false);
-                                                }
+                                                  setIsLoading(true);
+                                                  setError(null);
+                                                  try {
+                                                      const res = await fetch(`${API_BASE}/api/auth/validate-token`, {
+                                                          method: 'POST',
+                                                          headers: { 'Content-Type': 'application/json' },
+                                                          body: JSON.stringify({ token: tokenValue.trim() })
+                                                      });
+                                                      const data = await res.json();
+                                                      if (!res.ok) throw new Error(data.message || 'Invalid token');
+                                                      onLoginComplete(data);
+                                                  } catch (err: any) {
+                                                      setError(err.message || 'Failed to validate token');
+                                                      setIsLoading(false);
+                                                  }
                                             }}
                                             disabled={isLoading}
                                             className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 px-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"

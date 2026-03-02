@@ -368,6 +368,7 @@ interface AgenticWorkbenchProps {
   onToggleLearningVelocity?: () => void;
   onToggleDeepInspector?: () => void;
   onToggleBrowser?: () => void;
+  onToggleCodeGraph?: () => void;
   onToggleTerminal?: () => void;
   onToggleDiff?: () => void;
   onSendMessage: (content: string) => void;
@@ -544,9 +545,10 @@ interface AgenticWorkbenchProps {
   onToggleEvolution,
   onToggleLearningVelocity,
   onToggleDeepInspector,
-  onToggleBrowser,
-  onToggleTerminal,
-  onToggleDiff,
+    onToggleBrowser,
+    onToggleCodeGraph,
+    onToggleTerminal,
+    onToggleDiff,
   onSendMessage,
   onClearThread,
   onRunCommand,
@@ -1127,13 +1129,21 @@ interface AgenticWorkbenchProps {
             <Search size={18} />
           </button>
 
-          <button
-            onClick={onToggleBrowser}
-            className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-500 hover:text-sky-600 transition-all"
-            title="Browser Panel"
-          >
-            <Globe size={18} />
-          </button>
+            <button
+              onClick={onToggleCodeGraph}
+              className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-500 hover:text-indigo-600 transition-all"
+              title="Code Graph (Dependency Visualizer)"
+            >
+              <GitBranch size={18} />
+            </button>
+
+            <button
+              onClick={onToggleBrowser}
+              className="p-2 hover:bg-zinc-100 rounded-xl text-zinc-500 hover:text-sky-600 transition-all"
+              title="Browser Panel"
+            >
+              <Globe size={18} />
+            </button>
 
           <button
             onClick={onToggleDiff}
