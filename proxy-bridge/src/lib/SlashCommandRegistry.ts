@@ -1,4 +1,4 @@
-import { SkillsManager } from './SkillsManager';
+import { SkillsManager } from './agents/SkillsManager';
 
 /**
  * P19-14: SlashCommandRegistry

@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { mcpBrowserBridge } from '../../../lib/MCPBrowserBridge';
+import { mcpBrowserBridge } from '../../../lib/tools/MCPBrowserBridge';
 
 /**
  * GET /api/browser/dom?selector=X

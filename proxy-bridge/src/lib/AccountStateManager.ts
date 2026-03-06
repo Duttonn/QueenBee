@@ -1,6 +1,6 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { Paths } from './Paths';
+import { Paths } from './infrastructure/Paths';
 
 /**
  * AccountStateManager: Handles saving and loading Hive states per user.

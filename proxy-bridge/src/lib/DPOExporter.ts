@@ -17,7 +17,7 @@
 
 import fs from 'fs-extra';
 import path from 'path';
-import { ExperienceArchive, ArchiveEntry } from './ExperienceArchive';
+import { ExperienceArchive, ArchiveEntry } from './agents/ExperienceArchive';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 

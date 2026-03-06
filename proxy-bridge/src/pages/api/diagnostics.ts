@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { diagnosticCollector } from '../../lib/DiagnosticCollector';
+import { diagnosticCollector } from '../../lib/agents/DiagnosticCollector';
 
 /**
  * GET /api/diagnostics — System health snapshot.

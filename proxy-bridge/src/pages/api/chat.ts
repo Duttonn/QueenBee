@@ -1,9 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { AutonomousRunner } from '../../lib/AutonomousRunner';
-import { logger } from '../../lib/logger';
+import { AutonomousRunner } from '../../lib/agents/AutonomousRunner';
+import { logger } from '../../lib/infrastructure/logger';
 import { unifiedLLMService } from '../../lib/UnifiedLLMService';
 import { withLogging } from '../../lib/api-utils';
-import { enqueueForSession } from '../../lib/CommandQueue';
+import { enqueueForSession } from '../../lib/infrastructure/CommandQueue';
 import path from 'path';
 
 async function handler(req: NextApiRequest, res: NextApiResponse) {

@@ -9,6 +9,7 @@ import { useHiveStore } from './store/useHiveStore';
 import { useSocketEvents } from './hooks/useSocketEvents'; // Added for TASK-03
 import { useDebugLogger } from './hooks/useDebugLogger';
 import { SystemService } from './services/SystemService';
+import { MissionBoard } from './components/mission-control/MissionBoard';
 
 function App() {
   const { isAuthenticated, isOnboarded, login, setOnboarded, connectForge, forges, loadApiKeys } = useAuthStore();
@@ -186,7 +187,11 @@ function App() {
   // Show main dashboard
   return (
     <AnimatePresence mode="wait">
-      <CodexLayout />
+      {new URLSearchParams(window.location.search).get('mission') === 'true' ? (
+         <div className="p-10"><MissionBoard /></div>
+      ) : (
+        <CodexLayout />
+      )}
     </AnimatePresence>
   );
 }

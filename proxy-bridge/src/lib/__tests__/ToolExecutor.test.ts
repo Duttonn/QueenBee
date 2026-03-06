@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ToolExecutor } from '../ToolExecutor';
+import { ToolExecutor } from '../tools/ToolExecutor';
 import fs from 'fs-extra';
 import path from 'path';
 import { exec } from 'child_process';
 
 // Mock dependencies
-vi.mock('../socket-instance', () => ({
+vi.mock('../infrastructure/socket-instance', () => ({
   broadcast: vi.fn(),
 }));
 

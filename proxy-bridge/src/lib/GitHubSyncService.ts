@@ -1,7 +1,7 @@
 import { Octokit } from '@octokit/rest';
 import fs from 'fs-extra';
 import path from 'path';
-import { Paths } from './Paths';
+import { Paths } from './infrastructure/Paths';
 import { RepoClonerService } from './RepoClonerService';
 import { ProjectTaskManager } from './ProjectTaskManager';
 

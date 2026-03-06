@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { unifiedLLMService } from '../../lib/UnifiedLLMService';
-import { logger } from '../../lib/logger';
+import { logger } from '../../lib/infrastructure/logger';
 
 export const config = {
   api: {

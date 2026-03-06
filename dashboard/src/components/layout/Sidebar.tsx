@@ -399,6 +399,12 @@ const Sidebar = ({ activeView, onViewChange, onOpenSettings, onOpenProviders, on
           onClick={() => onViewChange('automations')}
         />
         <NavItem
+          icon={<Cpu size={16} />}
+          label="Mission Control"
+          active={new URLSearchParams(window.location.search).get('mission') === 'true'}
+          onClick={() => window.location.href = '/?mission=true'}
+        />
+        <NavItem
           icon={<Inbox size={16} />}
           label="Triage"
           active={activeView === 'triage'}

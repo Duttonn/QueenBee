@@ -162,8 +162,9 @@ function startBackend(): Promise<void> {
       return proc;
     };
 
-    // 1. Start Next.js API server (port 3000)
-    nextProcess = shellSpawn([nextCli, 'start', '-p', '3000'], 'Next.js');
+    // 1. Start Next.js API server (configurable port, default 3000)
+    const backendPort = env.PORT || '3000';
+    nextProcess = shellSpawn([nextCli, 'start', '-p', backendPort], 'Next.js');
     
     // 2. Start Socket.io server (port 3001)
     socketProcess = shellSpawn([tsxCli, 'server.ts'], 'Socket');
@@ -177,7 +178,7 @@ function startBackend(): Promise<void> {
       const maxAttempts = 30;
       const check = () => {
         attempts++;
-        const req = http.get('http://127.0.0.1:3000/api/health', (res: any) => {
+        const req = http.get(`http://127.0.0.1:${backendPort}/api/health`, (res: any) => {
           if (res.statusCode === 200) {
             console.log('[Main] Backend ready after', attempts, 'checks');
             resolve();
@@ -510,4 +511,44 @@ ipcMain.handle('auth:get-cached', () => {
   const data = authCache;
   authCache = null; // Clear after pull
   return data;
+});
+
+// Open a directory in the system Terminal (FIX-09)
+ipcMain.handle('open-in-terminal', async (_event: any, dirPath: string) => {
+  try {
+    if (process.platform === 'darwin') {
+      // macOS: use AppleScript to open Terminal.app at the given path
+      const { execFile } = require('child_process');
+      const script = `tell application "Terminal"
+  activate
+  do script "cd \\"${dirPath.replace(/"/g, '\\"')}\\" && clear"
+end tell`;
+      await new Promise<void>((resolve, reject) => {
+        execFile('osascript', ['-e', script], (err: any) => {
+          if (err) reject(err); else resolve();
+        });
+      });
+    } else if (process.platform === 'win32') {
+      spawn('cmd.exe', ['/c', 'start', 'cmd.exe', '/K', `cd /d "${dirPath}"`], { detached: true, stdio: 'ignore' }).unref();
+    } else {
+      // Linux: try common terminal emulators
+      const terminals = ['gnome-terminal', 'xterm', 'konsole', 'xfce4-terminal'];
+      const { execFile } = require('child_process');
+      let launched = false;
+      for (const term of terminals) {
+        try {
+          execFile(term, ['--working-directory', dirPath], { detached: true });
+          launched = true;
+          break;
+        } catch { /* try next */ }
+      }
+      if (!launched) electronShell.openPath(dirPath);
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('[Main] open-in-terminal failed:', err.message);
+    // Fallback: open in Finder/Explorer
+    electronShell.openPath(dirPath);
+    return { success: false, error: err.message };
+  }
 });

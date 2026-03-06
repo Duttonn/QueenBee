@@ -14,7 +14,7 @@
  * To use the real SDK, install `@opentelemetry/sdk-node` and set `useRealSDK: true`.
  */
 
-import { broadcast } from './socket-instance';
+import { broadcast } from './infrastructure/socket-instance';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 

@@ -1,6 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { agentDiscovery } from './AgentDiscoveryService';
 
 export type SubHiveType = 'ui' | 'backend' | 'data' | 'testing' | 'general';
 
@@ -196,7 +197,34 @@ export class SubHiveRegistry {
     requiredCapability: SubHiveType,
     contractId?: string
   ): Promise<TaskAssignment> {
-    // Find best sub-hive for the task
+    // P20-03: Consult AgentDiscoveryService for runtime-registered idle agents first.
+    // Map SubHiveType to worker type names and query for a matching idle agent.
+    const capabilityToWorkerType: Record<SubHiveType, string> = {
+      ui: 'UI_BEE',
+      backend: 'LOGIC_BEE',
+      data: 'LOGIC_BEE',
+      testing: 'TEST_BEE',
+      general: 'LOGIC_BEE',
+    };
+    const targetWorkerType = capabilityToWorkerType[requiredCapability];
+    const discoveredAgent = agentDiscovery.findBestAgent({ status: 'idle' });
+    if (discoveredAgent && discoveredAgent.workerType === targetWorkerType) {
+      // Reserve the discovered agent so it won't be double-assigned
+      agentDiscovery.updateStatus(discoveredAgent.agentId, 'busy', task);
+      const assignment: TaskAssignment = {
+        id: `task-${uuidv4().slice(0, 8)}`,
+        task,
+        assignedHiveId: discoveredAgent.agentId, // use agentId as hive reference
+        status: 'pending',
+        contractId,
+      };
+      this.assignments.set(assignment.id, assignment);
+      await this.saveAssignments();
+      console.log(`[SubHive] Task assigned to discovered agent: ${discoveredAgent.agentId} (${discoveredAgent.workerType})`);
+      return assignment;
+    }
+
+    // Fall back to static sub-hive assignment
     const availableHives = Array.from(this.subHives.values())
       .filter(h => h.status === 'idle' || h.status === 'active')
       .filter(h => h.capabilities.some(c => c.type === requiredCapability));

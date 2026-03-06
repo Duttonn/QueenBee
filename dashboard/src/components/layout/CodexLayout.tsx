@@ -1110,25 +1110,35 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     const inElectron = typeof window !== 'undefined' && !!(window as any).electron;
     const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
-    if (inElectron) {
-      // Electron app — use native shell commands via IPC
-      const { shell } = (window as any).electron;
-      switch (app) {
-        case 'vscode':
-          await shell.openExternal(`vscode://file${activeProject.path}`);
-          break;
-        case 'finder':
-          await shell.showItemInFolder(activeProject.path);
-          break;
-        case 'terminal':
-          // x-apple.terminal: is not a valid URL scheme; fall through to executeCommand
-          await executeCommand(`open -a Terminal "${activeProject.path}"`);
-          break;
-        case 'xcode':
-          await shell.openExternal(`xcode://open?url=file://${activeProject.path}`);
-          break;
+      if (inElectron) {
+      // Electron app — use native shell/preload IPC for local OS operations
+      const electron = (window as any).electron;
+      const shell = electron?.shell;
+      try {
+        switch (app) {
+          case 'vscode':
+            await shell?.openExternal(`vscode://file${activeProject.path}`);
+            break;
+          case 'finder':
+            await shell?.showItemInFolder(activeProject.path);
+            break;
+          case 'terminal':
+            // Use preload-exposed openInTerminal (FIX-09: uses IPC via preload, not raw ipcRenderer)
+            if (electron?.openInTerminal) {
+              await electron.openInTerminal(activeProject.path);
+            } else {
+              // Fallback: open the path in Finder which user can drag to Terminal
+              await shell?.openPath(activeProject.path);
+            }
+            break;
+          case 'xcode':
+            await shell?.openExternal(`xcode://open?url=file://${activeProject.path}`);
+            break;
+        }
+        NativeService.notify('Project Opened', `Opened in ${app}`);
+      } catch (e: any) {
+        console.error('handleOpenIn (electron):', e);
       }
-      NativeService.notify('Project Opened', `Opened in ${app}`);
     } else if (isLocal) {
       // Local dev (browser hitting localhost proxy-bridge) — execute commands on the server
       let command = '';
@@ -1152,19 +1162,15 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     }
   };
 
-  const handleRun = () => alert('Run logic');
   const handleCommit = async () => {
-    console.log('Commit action triggered');
     setIsCommitModalOpen(true);
   };
 
   const handleClearThread = () => setActiveThread(null);
-  const handleRunCommand = (cmd: string) => {
-    console.log('Run command:', cmd);
+  const handleRunCommand = (_cmd: string) => {
     setIsTerminalOpen(true);
   };
   const handleRunProject = () => {
-    console.log('Run project');
     setIsTerminalOpen(true);
   };
 
@@ -1280,11 +1286,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
               ) : (
                 <EmptyState
                   onOpenSettings={() => setIsCustomizationOpen(true)}
-                  onRun={handleRun}
-                  onCommit={handleCommit}
                   onOpen={handleOpen}
-                  onToggleTerminal={() => setIsTerminalOpen(prev => !prev)}
-                  onToggleInspector={() => setIsInspectorOpen(prev => !prev)}
                 />
               )}
               {!activeThreadId?.startsWith('roundtable-') && (
@@ -1350,7 +1352,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
         <AnimatePresence>
           {isTerminalOpen && (
             <div className="absolute bottom-0 left-0 right-0 h-72 z-50">
-              <XtermTerminal />
+                <XtermTerminal cwd={activeProject?.path} />
               <button
                 onClick={() => setIsTerminalOpen(false)}
                 className="absolute top-2 right-4 text-zinc-500 hover:text-zinc-900 z-[60]"
@@ -1454,7 +1456,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
     );
   };
 
-const EmptyState = ({ onOpenSettings, onRun, onCommit, onOpen, onToggleTerminal, onToggleInspector }: any) => (
+const EmptyState = ({ onOpenSettings, onOpen }: any) => (
   <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-zinc-50/30">
     <motion.div
       initial={{ opacity: 0, y: 20 }}

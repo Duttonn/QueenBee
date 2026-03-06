@@ -2,7 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import fs from 'fs-extra';
 import path from 'path';
 import simpleGit from 'simple-git';
-import { Paths } from '../../../lib/Paths';
+import { Paths } from '../../../lib/infrastructure/Paths';
 import { GitHubAdapter } from '../../../lib/forges/GitHubAdapter';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {

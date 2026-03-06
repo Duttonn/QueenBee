@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { ToolExecutor } from '../../../lib/ToolExecutor';
+import { ToolExecutor } from '../../../lib/tools/ToolExecutor';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     if (req.method !== 'POST') {

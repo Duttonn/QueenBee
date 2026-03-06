@@ -15,7 +15,7 @@
  *   - TopologyManager.ts: discovery uses topology for routing
  */
 
-import { broadcast } from './socket-instance';
+import { broadcast } from './infrastructure/socket-instance';
 import { WorkerCapabilities, getWorkerCapabilities } from './prompts/workers';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */

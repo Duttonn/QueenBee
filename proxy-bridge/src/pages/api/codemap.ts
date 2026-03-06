@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { codemapService } from '../../lib/CodemapService';
+import { codemapService } from '../../lib/infrastructure/CodemapService';
 
 /**
  * GET /api/codemap?action=rebuild&root=/path  → rebuild codemap

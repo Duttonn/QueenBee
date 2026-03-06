@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { getDb, saveDb, Automation } from '../../lib/db';
+import { getDb, saveDb, Automation } from '../../lib/infrastructure/db';
 import { v4 as uuidv4 } from 'uuid';
 import { cronManager } from '../../lib/CronManager';
 

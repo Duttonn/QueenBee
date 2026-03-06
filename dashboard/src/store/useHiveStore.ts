@@ -15,6 +15,8 @@ interface HiveState {
   tasks: any[]; // GSDPhase[]
   active_plan: string | null;
   unreadThreads: Set<string>;
+  soul: Record<string, any>; // SOUL profile state
+  taskState: Record<string, any>; // Persistent task state mapping
   _debouncedSaves?: Record<string, any>;
 
   // Actions
@@ -28,6 +30,7 @@ interface HiveState {
   setSelectedProjectId: (id: string | null) => void;
   spawnAgent: (projectId: string, agent: any) => void;
   updateAgentStatus: (projectId: string, agentName: string, status: string) => void;
+  updateTaskState: (taskId: string, state: any) => void; // New action
 
     // Swarm Actions
     resetSwarm: (projectId: string) => Promise<void>;
@@ -59,6 +62,8 @@ export const useHiveStore = create<HiveState>()(
       tasks: [],
       active_plan: null,
       unreadThreads: new Set<string>(),
+      soul: {},
+      taskState: {},
 
       initSocket: async () => {
         if (get().socket) return;
@@ -165,6 +170,10 @@ export const useHiveStore = create<HiveState>()(
         // Reset active thread when switching projects to avoid stale thread leakage
         set({ selectedProjectId: id, activeThreadId: null });
       },
+
+      updateTaskState: (taskId, state) => set((s) => ({
+        taskState: { ...s.taskState, [taskId]: state }
+      })),
 
       spawnAgent: (projectId, agent) => set((state) => ({
         projects: state.projects.map(p =>
@@ -538,7 +547,9 @@ export const useHiveStore = create<HiveState>()(
         isOrchestratorActive: state.isOrchestratorActive,
         tasks: state.tasks,
         active_plan: state.active_plan,
-        unreadThreads: Array.from(state.unreadThreads)
+        unreadThreads: Array.from(state.unreadThreads),
+        soul: state.soul,
+        taskState: state.taskState
       }),
         onRehydrateStorage: () => {
           return (state) => {

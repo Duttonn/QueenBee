@@ -2,7 +2,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import fs from 'fs-extra';
 import path from 'path';
-import { Paths } from '../../../../lib/Paths';
+import { Paths } from '../../../../lib/infrastructure/Paths';
 
 const CONFIG_DIR = Paths.getQueenBeeConfigDir();
 const GITHUB_CREDS_FILE = Paths.getGitHubOAuthCredsPath();

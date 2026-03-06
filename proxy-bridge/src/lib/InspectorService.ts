@@ -1,9 +1,9 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { execSync } from 'child_process';
-import { CostTracker } from './CostTracker';
-import { MemoryStore, MemoryEntry } from './MemoryStore';
-import { diagnosticCollector } from './DiagnosticCollector';
+import { CostTracker } from './agents/CostTracker';
+import { MemoryStore, MemoryEntry } from './infrastructure/MemoryStore';
+import { diagnosticCollector } from './agents/DiagnosticCollector';
 
 /**
  * InspectorService (P19-06)

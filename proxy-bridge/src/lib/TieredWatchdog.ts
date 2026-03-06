@@ -15,7 +15,7 @@
  *   - socket-instance.ts: emits WATCHDOG_TIER_0/1/2 events
  */
 
-import { broadcast } from './socket-instance';
+import { broadcast } from './infrastructure/socket-instance';
 import { unifiedLLMService } from './UnifiedLLMService';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */

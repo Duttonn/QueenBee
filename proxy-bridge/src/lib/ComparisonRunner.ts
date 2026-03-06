@@ -12,7 +12,7 @@
  *   - socket-instance for live streaming results
  */
 
-import { broadcast } from './socket-instance';
+import { broadcast } from './infrastructure/socket-instance';
 import { unifiedLLMService } from './UnifiedLLMService';
 import { LLMMessage, LLMProviderOptions } from './types/llm';
 

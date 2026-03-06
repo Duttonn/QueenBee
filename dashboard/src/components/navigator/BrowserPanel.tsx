@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Globe, Target, Loader2, AlertTriangle, X, RefreshCw, ExternalLink, Trash2, Wifi, WifiOff } from 'lucide-react';
+import { Globe, Target, Loader2, AlertTriangle, X, RefreshCw, ExternalLink, Trash2, Wifi, WifiOff, Grab } from 'lucide-react';
 import ElementPicker, { type PickedElement } from './ElementPicker';
 import { API_BASE } from '../../services/api';
 
@@ -28,6 +28,8 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
   const [pinnedElements, setPinnedElements] = useState<PickedElement[]>([]);
   const [pinnedBoxes, setPinnedBoxes] = useState<Array<{ selector: string; x: number; y: number; width: number; height: number }>>([]);
   const [pickerError, setPickerError] = useState<string | null>(null);
+  const [reactGrabEnabled, setReactGrabEnabled] = useState(false);
+  const [reactGrabInjecting, setReactGrabInjecting] = useState(false);
   const [imgDims, setImgDims] = useState({ w: 0, h: 0 });
   const [pageInfo, setPageInfo] = useState<{ viewportWidth: number; viewportHeight: number } | null>(null);
 
@@ -196,6 +198,23 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
     );
   }, []);
 
+  const toggleReactGrab = useCallback(async () => {
+    if (reactGrabEnabled) {
+      setReactGrabEnabled(false);
+      return;
+    }
+    setReactGrabInjecting(true);
+    try {
+      await fetch(`${API}/browser/grab`, { method: 'POST' });
+      setReactGrabEnabled(true);
+    } catch {
+      // injection failed silently — still enable UI enrichment attempt
+      setReactGrabEnabled(true);
+    } finally {
+      setReactGrabInjecting(false);
+    }
+  }, [reactGrabEnabled]);
+
   // Update image dims on resize
   useEffect(() => {
     if (!screenshot) return;
@@ -275,6 +294,20 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
                   <Target size={16} />
                 </button>
 
+                {/* React Grab toggle */}
+                <button
+                  onClick={toggleReactGrab}
+                  disabled={reactGrabInjecting}
+                  title={reactGrabEnabled ? 'React Grab active — picks show component name' : 'Enable React Grab to see component names when picking elements'}
+                  className={`p-2 rounded-lg transition-colors flex-shrink-0 ${
+                    reactGrabEnabled
+                      ? 'bg-violet-100 text-violet-600'
+                      : 'hover:bg-zinc-100 text-zinc-400'
+                  }`}
+                >
+                  {reactGrabInjecting ? <Loader2 size={14} className="animate-spin" /> : <Grab size={14} />}
+                </button>
+
                 {/* Refresh */}
                 <button
                   onClick={refreshScreenshot}
@@ -323,10 +356,26 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
                   <span className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wider flex-shrink-0">
                     Pinned ({pinnedElements.length}):
                   </span>
-                  {pinnedElements.map((el, i) => (
+                  {pinnedElements.map((el) => (
                     <div key={el.selector} className="flex items-center gap-1 px-1.5 py-0.5 bg-indigo-100 rounded text-[10px] font-mono text-indigo-800">
-                      <span className="max-w-[120px] truncate">{el.selector}</span>
-                      <button onClick={() => removePin(el.selector)} className="p-0.5 hover:bg-indigo-200 rounded">
+                      {el.componentName ? (
+                        <>
+                          <span className="text-violet-600 font-semibold max-w-[100px] truncate" title={el.componentName}>
+                            {el.componentName}
+                          </span>
+                          <span className="text-indigo-400">/</span>
+                          <span className="max-w-[80px] truncate text-indigo-600" title={el.selector}>{el.selector}</span>
+                          {el.reactFile && (
+                            <span className="text-[9px] text-indigo-400 max-w-[80px] truncate" title={el.reactFile}>
+                              {el.reactFile.split('/').pop()}
+                              {el.reactLine ? `:${el.reactLine}` : ''}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="max-w-[120px] truncate">{el.selector}</span>
+                      )}
+                      <button onClick={() => removePin(el.selector)} className="p-0.5 hover:bg-indigo-200 rounded flex-shrink-0">
                         <X size={8} />
                       </button>
                     </div>
@@ -427,6 +476,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
                       onPick={handlePick}
                       onError={msg => setPickerError(msg)}
                       pinnedBoxes={pinnedBoxes}
+                      reactGrabEnabled={reactGrabEnabled}
                     />
                   )}
                 </div>

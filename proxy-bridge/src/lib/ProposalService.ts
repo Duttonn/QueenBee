@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { aggregateScores } from './consensus';
+import { aggregateScores } from './infrastructure/consensus';
 
 export type ConfidenceLevel = 'ship' | 'approved' | 'mutation_required' | 'mutation_major' | 'rejected';
 
@@ -267,7 +267,7 @@ export class ProposalService {
 
     // Broadcast judgment to roundtable (dynamic import to avoid circular deps)
     try {
-      const { Roundtable } = await import('./Roundtable');
+      const { Roundtable } = await import('./agents/Roundtable');
       const rt = new Roundtable(this.projectPath);
       const stressorNote = stressor ? `. Stressor: ${stressor}` : '';
       await rt.postMessage(

@@ -1,7 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { RepoClonerService } from '../../../lib/RepoClonerService';
-import { getDb, saveDb, Project, getProjectsForSession } from '../../../lib/db';
-import { broadcast } from '../../../lib/socket-instance';
+import { getDb, saveDb, Project, getProjectsForSession } from '../../../lib/infrastructure/db';
+import { broadcast } from '../../../lib/infrastructure/socket-instance';
 import { getSessionId } from '../../../lib/session';
 
 const cloner = new RepoClonerService();

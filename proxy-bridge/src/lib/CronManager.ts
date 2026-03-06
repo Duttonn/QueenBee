@@ -1,11 +1,11 @@
 import cron from 'node-cron';
 import fs from 'fs-extra';
 import path from 'path';
-import { Paths } from './Paths';
-import { broadcast } from './socket-instance';
+import { Paths } from './infrastructure/Paths';
+import { broadcast } from './infrastructure/socket-instance';
 import { githubSyncService } from './GitHubSyncService';
-import { AutonomousRunner } from './AutonomousRunner';
-import { getDb } from './db';
+import { AutonomousRunner } from './agents/AutonomousRunner';
+import { getDb } from './infrastructure/db';
 
 export interface AutomationJob {
   id: string;
@@ -195,7 +195,7 @@ export class CronManager {
     const mockSocket = { 
       emit: (event: string, data: any) => console.log(`[BackgroundAgent] ${event}`, data) 
     } as any;
-    const runner = new AutonomousRunner(mockSocket, projectPath, 'auto', null, null, 'local');
+    const runner = new AutonomousRunner(mockSocket, projectPath, 'auto', null, null, 'local', 'solo', 'code');
     await runner.executeLoop("Perform a full scan of the workspace and update GSD_TASKS.md if necessary.");
   }
 
@@ -224,7 +224,7 @@ export class CronManager {
       emit: (event: string, data: any) => console.log(`[BackgroundAgent] ${event}`, data) 
     } as any;
     
-    const runner = new AutonomousRunner(mockSocket, projectPath, 'auto', null, null, 'local');
+    const runner = new AutonomousRunner(mockSocket, projectPath, 'auto', null, null, 'local', 'solo', 'code');
     await runner.executeLoop(instruction);
   }
 

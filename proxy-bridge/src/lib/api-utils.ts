@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { logContext, logger } from './logger';
+import { logContext, logger } from './infrastructure/logger';
 
 export type ApiHandler = (req: NextApiRequest, res: NextApiResponse) => Promise<void | any>;
 

@@ -28,6 +28,38 @@
 - [ ] Build macOS Binary (.dmg).
 - [ ] Final End-to-End Test.
 
+## 🧩 RESEARCH: Multi-Agent Team Orchestration Patterns
+> **Source**: Analysis of awesome-llm-apps multi-agent teams section
+> **Reference**: https://github.com/Shubhamsaboo/awesome-llm-apps#-multi-agent-teams
+> **STATUS**: ✅ IMPLEMENTED — Key patterns extracted and built into QueenBee
+
+### Multi-Agent Team Projects to Study
+Based on the awesome-llm-apps repository, here are key multi-agent team implementations:
+
+| Project | Description | Relevance |
+|---------|-------------|-----------|
+| **AG2 Adaptive Research Team** | Adaptive research with AG2 framework | Swarm coordination patterns |
+| **AI Services Agency (CrewAI)** | CrewAI-based service agency | Role-based agent orchestration |
+| **Multimodal Coding Agent Team** | Multi-modal code generation | UI/code coordination |
+| **AI Travel Planner Agent Team** | Multi-stage planning | Task decomposition |
+| **AI Self-Evolving Agent** | Self-improving agent | Learning & adaptation (HIGH PRIORITY) |
+| **AI Competitor Intelligence** | Competitive analysis | Research coordination |
+| **AI Finance Agent Team** | Financial analysis | Specialized roles |
+| **AI Legal Agent Team** | Legal research | Multi-specialist coordination |
+| **AI Recruitment Agent Team** | HR workflows | Sequential task flow |
+
+### Key Patterns to Extract
+1. **Role-Based Specialization** - Different agents for different tasks
+2. **Adaptive Research** - Dynamic task allocation based on agent capabilities
+3. **Multi-Modal Coordination** - Handling different input/output types
+4. **Self-Evolution** - Agent learning from past interactions
+5. **Sequential Workflows** - Ordered task execution with dependencies
+
+### ✅ Implementation Derived from Research
+- **[x] P0 — Coverage Threshold Check** (`CompletionGate.ts`): `checkCoverage()` method reads `.coverage-thresholds.json`, runs `test:coverage` script if no summary exists, and blocks DONE transitions if any metric (lines/functions/branches/statements) falls below threshold. Implements the metaswarm "never ship undertested code" pattern.
+- **[x] P1 — Fresh Reviewer / Anti-Anchoring** (`LLMJudge.ts`): `freshSession` option rotates the judge provider away from both the worker provider AND the last-used judge to prevent anchoring bias across evaluation rounds. `selectFreshJudgeProvider()` tracks `lastJudgeProvider` and excludes it on next call.
+- **[x] P2 — 4-Phase Execution Loop** (`ExecutionLoop.ts`): Full `IMPLEMENT → VALIDATE → ADVERSARIAL_REVIEW → COMMIT` pipeline with max 3 retry iterations, continuation prompt injection on failure, and `EXECUTION_LOOP_COMPLETE` socket event on commit. Adversarial review uses `freshSession: true` to get a different-provider judgment each time.
+
 ## 🧩 PHASE 7: AGENT COORDINATION & ARCHITECTURE (VoxYZ Gap Implementation)
 > **Goal**: Implement the "nervous system" for agents: PolicyStore, MemoryStore, EventLog, Heartbeat, and structured coordination.
 
@@ -121,8 +153,8 @@
 
 - [x] `PAI-02`: [Backend] Implement **StyleScraper** (RAG for Style)
   - **Files**: `proxy-bridge/src/lib/learning/StyleScraper.ts`
-  - **Logic**: Before `write_file`, search DB for files with similar extension/path.
-  - **Action**: Inject "User Code Samples" into the context window so the LLM mimics the style (indentation, comments, imports).
+  - **Logic**: Before `write_to_file`, search DB for files with similar extension/path.
+    - **Action**: Inject "User Code Samples" into the context window so the LLM mimics the style (indentation, comments, imports).
 
 ### 🟠 PHASE 8.2: EXPLICIT ALIGNMENT
 - [x] `PAI-03`: [Backend] Create **`teach_agent`** Tool
@@ -264,7 +296,7 @@
 
 - [x] `OC-10`: [Backend] Security Audit Framework (Agent Guard)
   - **Files**: NEW `proxy-bridge/src/lib/SecurityAuditor.ts`, MODIFY `proxy-bridge/src/lib/ToolExecutor.ts`
-  - **Description**: Static audit for commands (rm -rf, fork bombs, curl|bash, dd, mkfs) and content (API keys, JWTs, GitHub PATs). Blocks high/critical risk operations. Wired into write_file, read_file, read_file_range, and runShellCommand.
+  - **Description**: Static audit for commands (rm -rf, fork bombs, curl|bash, dd, mkfs) and content (API keys, JWTs, GitHub PATs). Blocks high/critical risk operations. Wired into write_to_file, read_file, read_file_range, and runShellCommand.
   - **Worker**: BACKEND
 
 ## 🚀 PHASE 10: OPERATIONAL EXCELLENCE (Filtered OpenClaw Patterns)
@@ -431,11 +463,11 @@
 ### 🔴 P1 — Swarm Safety (File Conflicts)
 - [x] `NB-01`: [Backend] **File Change Event Bus**
   - **Priority**: P1 — Prevents the #1 swarm failure mode (agents overwriting each other's files)
-  - **Description**: Track which agents own which files. When `write_file` is called, check if another active agent has also written to the same file. If so, inject a system message alert into the other agent's context via Roundtable.
-  - **Files**: NEW `proxy-bridge/src/lib/FileWatcher.ts`, MODIFY `proxy-bridge/src/lib/ToolExecutor.ts` (write_file handler), MODIFY `proxy-bridge/src/lib/Roundtable.ts`
+  - **Description**: Track which agents own which files. When `write_to_file` is called, check if another active agent has also written to the same file. If so, inject a system message alert into the other agent's context via Roundtable.
+  - **Files**: NEW `proxy-bridge/src/lib/FileWatcher.ts`, MODIFY `proxy-bridge/src/lib/ToolExecutor.ts` (write_to_file handler), MODIFY `proxy-bridge/src/lib/Roundtable.ts`
   - **Implementation**:
-    - `FileWatcher`: In-memory map of `filePath → { lastWriter: agentId, timestamp }`. No fs.watch needed — just track on write_file tool calls.
-    - On write_file: Check if `lastWriter !== currentAgent`. If conflict, post to Roundtable: `"⚠️ {agentId} modified {file} which was last edited by {otherAgent}"`
+    - `FileWatcher`: In-memory map of `filePath → { lastWriter: agentId, timestamp }`. No fs.watch needed — just track on write_to_file tool calls.
+    - On write_to_file: Check if `lastWriter !== currentAgent`. If conflict, post to Roundtable: `"⚠️ {agentId} modified {file} which was last edited by {otherAgent}"`
     - Expose `getFileOwnership()` for diagnostics
   - **Criteria**: Worker A edits `App.tsx`, Worker B gets a system message alert without needing `chat_with_team`.
   - **Worker**: BACKEND
@@ -446,9 +478,9 @@
   - **Description**: Create specialized worker personas with focused system prompts.
   - **Files**: NEW `proxy-bridge/src/lib/prompts/workers/ui-bee.ts`, NEW `proxy-bridge/src/lib/prompts/workers/logic-bee.ts`, NEW `proxy-bridge/src/lib/prompts/workers/test-bee.ts`, NEW `proxy-bridge/src/lib/prompts/workers/index.ts`
   - **Implementation**:
-    - `UI_BEE`: Focus on components, styling, accessibility. Tools: write_file, read_file, search. No shell access.
+    - `UI_BEE`: Focus on components, styling, accessibility. Tools: write_to_file, read_file, search. No shell access.
     - `LOGIC_BEE`: Focus on business logic, APIs, data flow. Full tool access.
-    - `TEST_BEE`: Focus on test writing, coverage. Tools: write_file, read_file, run_shell (test commands only).
+    - `TEST_BEE`: Focus on test writing, coverage. Tools: write_to_file, read_file, run_shell (test commands only).
     - `getWorkerPrompt(type: WorkerType)`: Returns the full system prompt for the worker type.
     - Architect selects template based on task analysis.
   - **Criteria**: Architect can reference `UI_BEE` in spawn_worker and the worker gets a specialized prompt.
@@ -557,7 +589,7 @@
 
 - [DONE] `QB-17`: [Backend] **Worker Completion Auto-Post to Roundtable**
   - **Files**: `proxy-bridge/src/lib/ToolExecutor.ts`
-  - **Description**: `runBackgroundWorker` now guarantees a completion summary is posted to the shared roundtable even if the LLM never calls `chat_with_team`. `extractWorkerSummary` collects file paths with line stats (+X/-Y lines) from `write_file` results plus the last assistant message. Posted as `[DONE]` with full summary. Swarm-complete message also posted when all workers finish.
+  - **Description**: `runBackgroundWorker` now guarantees a completion summary is posted to the shared roundtable even if the LLM never calls `chat_with_team`. `extractWorkerSummary` collects file paths with line stats (+X/-Y lines) from `write_to_file` results plus the last assistant message. Posted as `[DONE]` with full summary. Swarm-complete message also posted when all workers finish.
   - **Worker**: BACKEND
 
 - [DONE] `QB-18`: [Backend] **WORKER_STATUS Socket Events**
@@ -773,10 +805,11 @@
   - **Context**: Fix the file attachment flow via the Plus button
   - **Worker**: FRONTEND
 
-- [ ] `FIX-09`: [Frontend] **Embedded Terminal & Open in Terminal**
-  - **Description**: The embedded terminal is not working properly and "Open in Terminal" button is broken.
-  - **Files**: `dashboard/src/components/layout/XtermTerminal.tsx`, `dashboard/src/components/layout/AgenticWorkbench.tsx`
-  - **Worker**: FRONTEND
+- [x] `FIX-09`: [Frontend] **Embedded Terminal & Open in Terminal**
+    - **Description**: The embedded terminal is not working properly and "Open in Terminal" button is broken.
+    - **Files**: `dashboard/src/components/layout/XtermTerminal.tsx`, `dashboard/src/components/layout/AgenticWorkbench.tsx`
+    - **Fix**: Rewrote XtermTerminal with live connection status indicator, reconnect button, proper `cwd` passthrough from active project, and polling transport fallback. Fixed terminal socket server to pass `cwd` from query param, use richer shell env, and handle pty spawn errors. Fixed Electron "Open in Terminal" to use AppleScript via new `open-in-terminal` IPC handler in main.ts + preload.ts exposure instead of erroneously calling the HTTP executeCommand API.
+    - **Worker**: FRONTEND + ELECTRON
 
 ### 🟠 HIGH — Feature Implementation
 
@@ -2046,3 +2079,135 @@
 | **AOP-Paper** | https://github.com/The-Swarm-Corporation/AOP-Paper | Cross-org agent discovery protocol — relevant if QueenBee agents ever need to collaborate across projects/orgs |
 | **AgentScope** | https://github.com/modelscope/agentscope | Their Trinity-RFT agentic RL training is the most advanced agent improvement system in open source — worth deep study for Phase 20-11 |
 
+---
+
+## 📚 MULTI-AGENT GAP ANALYSIS (From awesome-llm-apps)
+
+### Repositories Cloned
+Based on the "#-multi-agent-teams" section of https://github.com/Shubhamsaboo/awesome-llm-apps
+
+Cloned to `/tmp/queenbee-research/`:
+- agentscope (modelscope/agentscope)
+- clawswarm (The-Swarm-Corporation/ClawSwarm)
+- composio-ao (ComposioHQ/agent-orchestrator)
+- danau5tin-macs (Danau5tin/multi-agent-coding-system)
+- fcn06-swarm (fcn06/swarm)
+- langgraph-swarm (langchain-ai/langgraph-swarm)
+- metaswarm (dsifry/metaswarm)
+- puzld-ai (MedChaouch/Puzld.ai)
+
+### Gap Analysis: What to Implement
+
+| Priority | Task | File | Description |
+|----------|------|------|-------------|
+| **P0** | Add Coverage Threshold Check | `proxy-bridge/src/lib/CompletionGate.ts` | Add `checkCoverage()` method that reads `.coverage-thresholds.json` and blocks if below threshold |
+| **P1** | Implement Fresh Reviewer Option | `proxy-bridge/src/lib/LLMJudge.ts` | Add `freshSession: boolean` option to create isolated context per retry |
+| **P2** | Create 4-Phase Execution Loop | NEW `proxy-bridge/src/lib/ExecutionLoop.ts` | Implement IMPLEMENT → VALIDATE → ADVERSARIAL_REVIEW → COMMIT loop |
+
+### Key Patterns from metaswarm
+- Coverage threshold enforcement via `.coverage-thresholds.json`
+- Fresh reviewer on each retry (prevents anchoring bias)
+- 4-phase execution loop with adversarial review
+
+### Already Implemented (Verified)
+- DesignReviewGate (`proxy-bridge/src/lib/DesignReviewGate.ts`) ✅
+- Quality Gates (`proxy-bridge/src/lib/CompletionGate.ts`) ✅
+- LLM Judge (`proxy-bridge/src/lib/LLMJudge.ts`) ✅
+
+
+---
+
+## 🔬 RESEARCH: Competitive Repo Analysis (symphony / contextplus / mission-control / pinchtab)
+> **Status**: Analysis complete — bugs fixed, improvements logged
+> **Date**: 2026-03-06
+
+### ✅ Bugs Fixed (this session)
+
+| File | Bug | Fix |
+|------|-----|-----|
+| `src/lib/FastIndexer.ts` | **Command injection** — `query` interpolated into `execSync` shell string (`find` + `rg`) | Replaced with `spawnSync` using args array — no shell |
+| `src/lib/tools/ToolExecutor.ts:264` | **Injection** — `filePath` interpolated into prettier `execSync` shell string | Replaced with `execFileSync('prettier', ['--write', filePath])` |
+| `src/lib/tools/ToolExecutor.ts:530` | **Injection** — commit message only partially sanitized (missed `$()`, `$VAR`) in `exec` shell string | Replaced with `execFile('git', ['commit', '-m', commitMsg])` — no shell |
+| `src/lib/tools/NotebookSearchTool.ts:14` | **TS error** — `NotebookSessionManager.notebookSessionManager` accessed as static property (doesn't exist) | Changed import to named `notebookSessionManager` module export |
+| `src/lib/__tests__/AgentSession.test.ts:2` | **TS error** — import path `'../AgentSession'` stale after file moved to `agents/` | Updated to `'../agents/AgentSession'` |
+| `src/lib/__tests__/ToolExecutor.test.ts:2` | **TS error** — import path `'../ToolExecutor'` stale after file moved to `tools/` | Updated to `'../tools/ToolExecutor'` |
+| `src/lib/__tests__/ToolExecutor.test.ts:8` | **Mock path** — `'../socket-instance'` stale after move | Updated to `'../infrastructure/socket-instance'` |
+
+### 🟡 Known Issues Not Yet Fixed
+
+| Issue | Severity | File | Notes |
+|-------|----------|------|-------|
+| **Race condition on task claim** | High | `src/lib/TaskManager.ts` | File-based read-modify-write with no lock — concurrent agents can double-claim. Needs SQLite or a file lock (e.g. `proper-lockfile`) |
+| **Electron IPC missing handlers** | Critical | `electron/main.ts` | `fs:read`, `fs:write` etc. IPC handlers not implemented (noted from prior audit) |
+| **DevTools forced open in prod** | Critical | `electron/main.ts` | Prior audit finding — not yet fixed |
+| **ElectronAdapter uses HTTP not IPC** | High | dashboard | Prior audit finding — not yet fixed |
+
+### 🚀 Improvements to Port (Prioritized)
+
+#### From **PinchTab** (browser automation)
+- [ ] **A11y element refs** — assign stable short refs (`e1..eN`) from aria snapshot instead of fragile CSS selectors. Modify `BrowserControlService.getAriaTree()` to return ref-indexed map. `src/lib/BrowserControlService.ts`
+- [ ] **Token-efficient page snapshot** — emit structured text (URL + title + interactive elements) instead of screenshots for nav tasks (~800 tokens vs ~10k). Add `getTextSnapshot()` to BrowserControlService.
+- [ ] **Multi-instance browser registry** — replace singleton `browserControlService` with `BrowserInstanceRegistry` keyed by agentId, each with isolated `userDataDir`. Enables parallel browser agents.
+- [ ] **Stealth injection** — add `page.addScriptToEvaluateOnNewDocument(stealthScript)` in BrowserControlService.launch() to bypass bot detection.
+- [ ] **Profile persistence** — pass `userDataDir` to puppeteer launch to persist cookies/localStorage across disconnects.
+
+#### From **Context+** (semantic code intelligence)
+- [ ] **Tree-sitter AST skeleton** — replace `FastIndexer` text search with Tree-sitter parsing for structural symbol extraction (functions, classes, exports). Agents get semantic understanding, not just grep hits.
+- [ ] **Blast radius analysis** — before any `write_file`, trace all files importing the modified symbol. Feed into TruthScorer for impact-aware scoring.
+- [ ] **Shadow restore points** — create a file snapshot before `write_file` tool writes. Allow one-command restore if tests fail post-write.
+- [ ] **Memory graph with decay** — upgrade `ObservationalMemory` from key-value to a typed property graph with `e^(-λt)` edge decay. Enables graph traversal ("what tests cover this function").
+- [ ] **Embedding-based semantic search** — use Ollama embeddings (free, local) to rank code search results semantically instead of by text match.
+
+#### From **Mission Control** (infrastructure)
+- [ ] **SQLite for TaskManager** — replace file-based PLAN.md task state with SQLite (`better-sqlite3` WAL). Atomic `UPDATE WHERE status='todo' LIMIT 1` eliminates race condition.
+- [ ] **HMAC-SHA256 on webhooks** — add `X-Hub-Signature-256` header to `ExternalApprovalBridge` outbound calls so receivers can verify authenticity.
+- [ ] **RBAC layer** — add viewer/operator/admin roles to API routes. Currently all calls are trusted.
+- [ ] **Local Claude Code session scanner** — auto-scan `~/.claude/projects/` JSONL files to surface token usage and cost in dashboard without requiring agent self-reporting.
+
+#### From **Symphony** (workflow protocol)
+- [ ] **External tracker adapter** — `LinearTrackerAdapter` / `GitHubProjectsAdapter` to poll issue state and route agent sessions by ticket status (Todo → In Progress → Human Review → Merging → Done).
+- [ ] **Completion bar gate** — extend `CompletionGate` to block state transitions until all workpad acceptance criteria are explicitly checked off (not just AI confidence score).
+- [ ] **Multi-turn continuation prompt** — when AutonomousRunner detects issue still active after turn end, emit a structured continuation prompt (not just restart) — Symphony's approach avoids re-doing completed work.
+
+## 🖥 FRONTEND AUDIT: Unwired / Deprecated Components (2026-03-06)
+
+### ✅ Bugs Fixed
+
+| Component | Bug | Fix Applied |
+|-----------|-----|-------------|
+| `CodexLayout.tsx` | `handleRun = () => alert('Run logic')` — stub, `onRun` prop passed to EmptyState but never called | Removed stub + dead prop params |
+| `CodexLayout.tsx` | EmptyState accepted `onRun`, `onCommit`, `onToggleTerminal`, `onToggleInspector` but used none | Cleaned props to only `onOpenSettings` + `onOpen` |
+| `Sidebar.tsx` | "Mission Control" NavItem had `active={activeView === 'triage'}` — same condition as "Triage", both highlighted simultaneously | Fixed to `active={new URLSearchParams(window.location.search).get('mission') === 'true'}` |
+| `XtermTerminal.tsx` | `transports: ['websocket', 'polling']` — polling requests hit Next.js routing which calls `res.end()` instead of letting socket.io handle them, breaking the handshake | Changed to `transports: ['websocket']` — WebSocket bypasses Next.js routing and is handled natively by socket.io |
+| `BrowserPanel.tsx` | Pinned element chips only showed `el.selector`, ignoring new `componentName`/`reactFile` fields from react-grab integration | Updated chips to show `ComponentName / selector + filename:line` |
+
+### 🗑 Orphaned Components — Never Imported Anywhere
+
+These files exist but are never imported/used in the running app. They are safe to delete in a cleanup pass.
+
+| File | Status | Notes |
+|------|--------|-------|
+| `layout/Toolbelt.tsx` | Deprecated | Hardcoded fake skills + MCP data; `+ Install from ClawdHub` button has no `onClick` |
+| `layout/TerminalPane.tsx` | Deprecated | Fake terminal (blinking cursor text only); superseded by `XtermTerminal.tsx` |
+| `layout/TaskStatus.tsx` | Orphaned | Never imported |
+| `layout/QueenBeeTrigger.tsx` | Orphaned | Never imported |
+| `layout/AtlasCodeBridge.tsx` | Orphaned | Never imported |
+| `layout/AnnotationLayer.tsx` | Orphaned | Never imported |
+| `layout/GlobalOrchestrator.tsx` | Orphaned | Never imported |
+| `layout/AutonomousStatus.tsx` | Orphaned | Never imported |
+| `layout/RealTimeLogFeed.tsx` | Orphaned | Never imported |
+| `layout/SwarmMetricsPanel.tsx` | Orphaned | Never imported |
+| `layout/ToolCallViewer.tsx` | Duplicate | Old version; real one is `agents/ToolCallViewer.tsx` (used in AgenticWorkbench) |
+| `components/VoiceInput.tsx` | Deprecated | Superseded by `useVoiceRecording` hook |
+
+### 🔀 Duplicate Components — Shadowed by Better Versions
+
+| Stale File | Active Version | Difference |
+|------------|----------------|------------|
+| `features/DictationOverlay.tsx` | `layout/DictationOverlay.tsx` | Stale version missing `error` prop, no Escape key handler |
+| `features/InspectorPanel.tsx` | `layout/InspectorPanel.tsx` | Stale version uses hardcoded static mock data |
+
+### ⚠️ Known Stubs (not yet wired)
+
+- `handleRunCommand` in `CodexLayout.tsx` opens the terminal but ignores the `cmd` argument — actual command is not run in the terminal. Would need XtermTerminal to expose a `sendCommand(cmd)` method.
+- `CommitModal` is gated behind `!isWeb` in CodexLayout (line ~1387) — web users cannot commit via UI. Intentional or oversight TBD.

@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { CostTracker } from '../../lib/CostTracker';
+import { CostTracker } from '../../lib/agents/CostTracker';
 
 /**
  * GET /api/costs?range=7d&groupBy=model|tool|daily&projectPath=/path

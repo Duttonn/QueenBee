@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import fs from 'fs-extra';
 import path from 'path';
-import { Paths } from './Paths';
+import { Paths } from './infrastructure/Paths';
 
 export interface Observation {
   id: string;

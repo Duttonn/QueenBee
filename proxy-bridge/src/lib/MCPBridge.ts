@@ -1,7 +1,7 @@
 import { execSync } from 'child_process';
 import axios from 'axios';
 import path from 'path';
-import { mcpBrowserBridge } from './MCPBrowserBridge';
+import { mcpBrowserBridge } from './tools/MCPBrowserBridge';
 import { browserControlService } from './BrowserControlService';
 
 /**

@@ -1,6 +1,6 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { Paths } from './Paths';
+import { Paths } from './infrastructure/Paths';
 
 export class MultiAccountKeyring {
   private storagePath = Paths.getAuthPath();

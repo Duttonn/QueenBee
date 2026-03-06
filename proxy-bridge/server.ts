@@ -3,13 +3,13 @@ loadQueenBeeEnv();
 
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { EventLoopManager } from './src/lib/EventLoopManager';
-import { setIO } from './src/lib/socket-instance';
+import { EventLoopManager } from './src/lib/infrastructure/EventLoopManager';
+import { setIO } from './src/lib/infrastructure/socket-instance';
 import { TaskManager } from './src/lib/TaskManager';
 import { cronManager } from './src/lib/CronManager';
-import { HeartbeatService } from './src/lib/HeartbeatService';
+import { HeartbeatService } from './src/lib/agents/HeartbeatService';
 import { TriggerEngine } from './src/lib/TriggerEngine';
-import { Paths } from './src/lib/Paths';
+import { Paths } from './src/lib/infrastructure/Paths';
 
 const PORT = parseInt(process.env.SOCKET_PORT || '3001', 10);
 const HOST = process.env.SOCKET_HOST || '0.0.0.0'; // 0.0.0.0 for VPS, works fine locally too

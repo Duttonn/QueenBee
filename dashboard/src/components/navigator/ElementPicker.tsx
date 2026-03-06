@@ -10,6 +10,12 @@ export interface PickedElement {
   sourceFile?: string;
   sourceLine?: string;
   boundingBox?: { x: number; y: number; width: number; height: number };
+  /** React Grab — component name from React Fiber (dev builds only) */
+  componentName?: string;
+  /** React Grab — source file path */
+  reactFile?: string;
+  /** React Grab — source line number */
+  reactLine?: number;
 }
 
 interface ElementPickerProps {
@@ -22,6 +28,8 @@ interface ElementPickerProps {
   onError?: (msg: string) => void;
   /** Bounding boxes for pinned elements (page coords) */
   pinnedBoxes?: Array<{ selector: string; x: number; y: number; width: number; height: number }>;
+  /** When true, also fetch React component name + file via /api/browser/grab */
+  reactGrabEnabled?: boolean;
 }
 
 const ElementPicker: React.FC<ElementPickerProps> = ({
@@ -33,6 +41,7 @@ const ElementPicker: React.FC<ElementPickerProps> = ({
   onPick,
   onError,
   pinnedBoxes = [],
+  reactGrabEnabled = false,
 }) => {
   const [loading, setLoading] = useState(false);
   const [crosshair, setCrosshair] = useState<{ x: number; y: number } | null>(null);
@@ -93,6 +102,20 @@ const ElementPicker: React.FC<ElementPickerProps> = ({
           sourceLine: data.sourceLine,
           boundingBox: data.boundingBox || undefined,
         };
+
+        // React Grab: enrich pick with component name + file from Fiber tree
+        if (reactGrabEnabled) {
+          try {
+            const rgRes = await fetch(`${API}/browser/grab?x=${pageX}&y=${pageY}`);
+            if (rgRes.ok) {
+              const rg = await rgRes.json();
+              if (rg.componentName) picked.componentName = rg.componentName;
+              if (rg.fileName) picked.reactFile = rg.fileName;
+              if (rg.lineNumber) picked.reactLine = rg.lineNumber;
+            }
+          } catch { /* non-fatal */ }
+        }
+
         onPick(picked);
       } catch (err: any) {
         onError?.(err?.message || 'Failed to pick element');

@@ -3,7 +3,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import yaml from 'js-yaml';
-import { Paths } from './Paths';
+import { Paths } from './infrastructure/Paths';
 
 const CONFIG_DIR = Paths.getQueenBeeConfigDir();
 const CONFIG_FILE = Paths.getQueenBeeConfigFile();

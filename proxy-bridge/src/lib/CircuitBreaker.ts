@@ -14,7 +14,7 @@
  *   - socket-instance.ts: emits CIRCUIT_BREAKER_STATE_CHANGE events
  */
 
-import { broadcast } from './socket-instance';
+import { broadcast } from './infrastructure/socket-instance';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 

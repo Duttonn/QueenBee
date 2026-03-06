@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AgentSession } from '../AgentSession';
+import { AgentSession } from '../agents/AgentSession';
 import { unifiedLLMService } from '../UnifiedLLMService';
 
 // Mock dependencies

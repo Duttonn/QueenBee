@@ -7,7 +7,7 @@
 
 import fs from 'fs-extra';
 import path from 'path';
-import { getDb } from './db';
+import { getDb } from './infrastructure/db';
 
 export interface ProjectSummary {
   name: string;

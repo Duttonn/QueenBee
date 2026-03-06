@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { getDb, saveDb, Skill } from '../../lib/db';
+import { getDb, saveDb, Skill } from '../../lib/infrastructure/db';
 import { v4 as uuidv4 } from 'uuid';
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {

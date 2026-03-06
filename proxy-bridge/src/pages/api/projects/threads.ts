@@ -1,6 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { getDb, saveDb } from '../../../lib/db';
-import { sessionManager } from '../../../lib/SessionManager';
+import { getDb, saveDb } from '../../../lib/infrastructure/db';
+import { sessionManager } from '../../../lib/agents/SessionManager';
 
 export const config = {
     api: {

@@ -7,7 +7,7 @@
  * Reference: SixHq/Overture - locally-run visual approval gateway
  */
 
-import { broadcast } from './socket-instance';
+import { broadcast } from './infrastructure/socket-instance';
 
 export interface OvertureDecision {
   id: string;

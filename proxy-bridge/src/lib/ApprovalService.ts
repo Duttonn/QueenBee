@@ -11,9 +11,9 @@
  * to the UI broadcast channel.
  */
 
-import { approvalBridge } from './ExternalApprovalBridge';
-import { broadcast } from './socket-instance';
-import { PolicyStore } from './PolicyStore';
+import { approvalBridge } from './infrastructure/ExternalApprovalBridge';
+import { broadcast } from './infrastructure/socket-instance';
+import { PolicyStore } from './infrastructure/PolicyStore';
 
 export interface ApprovalRequest {
   toolCallId: string;

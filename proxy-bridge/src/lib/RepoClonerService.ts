@@ -2,7 +2,7 @@ import simpleGit, { SimpleGit } from 'simple-git';
 import fs from 'fs-extra';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { Paths } from './Paths';
+import { Paths } from './infrastructure/Paths';
 
 export class RepoClonerService {
   private baseDir: string;

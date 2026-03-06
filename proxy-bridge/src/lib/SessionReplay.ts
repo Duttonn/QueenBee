@@ -15,8 +15,8 @@
 
 import fs from 'fs-extra';
 import path from 'path';
-import { Paths } from './Paths';
-import { broadcast } from './socket-instance';
+import { Paths } from './infrastructure/Paths';
+import { broadcast } from './infrastructure/socket-instance';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 

@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
-import { PolicyStore } from './PolicyStore';
-import { SessionLifecycleState } from './AutonomousRunner';
+import { PolicyStore } from './infrastructure/PolicyStore';
+import { SessionLifecycleState } from './agents/AutonomousRunner';
 
 /**
  * PR State information

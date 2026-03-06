@@ -622,7 +622,7 @@ const AutomationDashboard = () => {
             onClose={() => setSelectedAutomation(null)} 
             automation={selectedAutomation}
             onUpdate={(id, updates) => {
-                fetch(`http://127.0.0.1:3000/api/automations`, {
+                fetch(`${API_BASE}/api/automations`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ id, ...updates })

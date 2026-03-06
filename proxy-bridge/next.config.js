@@ -4,6 +4,14 @@ const nextConfig = {
     // reflects the request origin. No static headers here — a static
     // Access-Control-Allow-Origin would conflict with the middleware's
     // per-request origin logic and break credentials mode.
+
+    // Disable @vercel/nft "Collecting build traces" pass.
+    // Native modules (node-pty, puppeteer-core) use runtime __dirname /
+    // bindings() calls that nft cannot statically resolve, causing
+    // ERR_INVALID_ARG_TYPE and exit code 1. Trace files are only needed
+    // for `output: 'standalone'` deployments — we ship via `next start`
+    // inside Electron, so they are not required.
+    outputFileTracing: false,
 };
 
 export default nextConfig;

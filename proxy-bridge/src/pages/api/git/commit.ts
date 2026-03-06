@@ -1,7 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import simpleGit from 'simple-git';
-import { SecurityAuditAgent } from '../../../lib/SecurityAuditAgent';
-import { Paths } from '../../../lib/Paths';
+import { SecurityAuditAgent } from '../../../lib/agents/SecurityAuditAgent';
+import { Paths } from '../../../lib/infrastructure/Paths';
 import fs from 'fs';
 
 const securityAudit = new SecurityAuditAgent();

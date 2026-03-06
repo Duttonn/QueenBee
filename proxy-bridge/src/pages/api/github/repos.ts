@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { UniversalForgeAdapter } from '../../../lib/ForgeAdapter';
+import { UniversalForgeAdapter } from '../../../lib/infrastructure/ForgeAdapter';
 import { GitHubAdapter } from '../../../lib/forges/GitHubAdapter';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {

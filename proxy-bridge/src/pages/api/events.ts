@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { EventLog, EventFilters } from '../../lib/EventLog';
+import { EventLog, EventFilters } from '../../lib/agents/EventLog';
 import { withLogging } from '../../lib/api-utils';
 
 async function handler(req: NextApiRequest, res: NextApiResponse) {

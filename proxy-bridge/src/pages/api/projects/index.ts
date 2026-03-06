@@ -1,9 +1,9 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { getDb, saveDb, Project, getProjectsForSession } from '../../../lib/db';
-import { broadcast } from '../../../lib/socket-instance';
+import { getDb, saveDb, Project, getProjectsForSession } from '../../../lib/infrastructure/db';
+import { broadcast } from '../../../lib/infrastructure/socket-instance';
 import { v4 as uuidv4 } from 'uuid';
 import { getSessionId } from '../../../lib/session';
-import { Paths } from '../../../lib/Paths';
+import { Paths } from '../../../lib/infrastructure/Paths';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const sessionId = getSessionId(req);

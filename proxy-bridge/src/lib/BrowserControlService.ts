@@ -1,5 +1,5 @@
 import puppeteer, { Browser, Page } from 'puppeteer-core';
-import { broadcast } from './socket-instance';
+import { broadcast } from './infrastructure/socket-instance';
 
 export interface ElementInfo {
   selector: string;
@@ -186,6 +186,76 @@ export class BrowserControlService {
   async navigate(url: string) {
     if (!this.page) throw new Error('No active page');
     await this.page.goto(url, { waitUntil: 'networkidle2', timeout: 30_000 });
+  }
+
+  /**
+   * Inject react-grab into the current page (and all future navigations).
+   * Uses the public CDN bundle so it works without a local install in the target app.
+   */
+  async injectReactGrab(): Promise<void> {
+    if (!this.page) throw new Error('No active page');
+    const CDN = 'https://unpkg.com/react-grab/dist/index.global.js';
+    // Persist across navigations
+    await (this.page as any).addScriptToEvaluateOnNewDocument({ url: CDN });
+    // Inject into the currently-loaded page
+    await (this.page as any).addScriptTag({ url: CDN });
+  }
+
+  /**
+   * Return the nearest React component name + source file at a page coordinate.
+   * Walks the React Fiber tree without requiring react-grab to be injected.
+   * Returns null if the element has no React fiber or React is not present.
+   */
+  async getReactContext(x: number, y: number): Promise<{
+    componentName: string | null;
+    fileName: string | null;
+    lineNumber: number | null;
+  } | null> {
+    if (!this.page) throw new Error('No active page');
+    return this.page.evaluate((px: number, py: number) => {
+      const el = document.elementFromPoint(px, py);
+      if (!el) return null;
+
+      // Find the React fiber key on this element or any ancestor
+      const getFiber = (node: Element | null): any => {
+        while (node) {
+          const key = Object.keys(node).find(
+            k => k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance'),
+          );
+          if (key) return (node as any)[key];
+          node = node.parentElement;
+        }
+        return null;
+      };
+
+      const fiber = getFiber(el);
+      if (!fiber) return null;
+
+      // Walk up the Fiber return chain to find a user-land component
+      const isUserComponent = (name: string) =>
+        name && /^[A-Z]/.test(name) &&
+        !['Suspense', 'StrictMode', 'Fragment', 'Profiler', 'Router', 'Route'].includes(name);
+
+      let f = fiber.return;
+      while (f) {
+        const type = f.type;
+        const name: string | null = type
+          ? (type.displayName || type.name || null)
+          : null;
+        if (name && isUserComponent(name)) {
+          // Try to extract source location from _debugSource (React dev builds)
+          const src = f._debugSource;
+          return {
+            componentName: name,
+            fileName: src?.fileName ?? null,
+            lineNumber: src?.lineNumber ?? null,
+          };
+        }
+        f = f.return;
+      }
+
+      return { componentName: null, fileName: null, lineNumber: null };
+    }, x, y);
   }
 
   async disconnect() {

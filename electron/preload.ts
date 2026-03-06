@@ -41,6 +41,8 @@ contextBridge.exposeInMainWorld('electron', {
 
   getCachedAuth: () => ipcRenderer.invoke('auth:get-cached'),
 
+  openInTerminal: (dirPath: string) => ipcRenderer.invoke('open-in-terminal', dirPath),
+
   log: (level: string, message: string) => ipcRenderer.send('app:log', { level, message }),
 
   getNativeContext: () => {

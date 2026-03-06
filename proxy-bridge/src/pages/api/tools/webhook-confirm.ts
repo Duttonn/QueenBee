@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { approvalBridge } from '../../../lib/ExternalApprovalBridge';
-import { ToolExecutor } from '../../../lib/ToolExecutor';
+import { approvalBridge } from '../../../lib/infrastructure/ExternalApprovalBridge';
+import { ToolExecutor } from '../../../lib/tools/ToolExecutor';
 
 /**
  * POST /api/tools/webhook-confirm?id=<toolCallId>&action=approve|reject

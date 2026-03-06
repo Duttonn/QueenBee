@@ -35,3 +35,4 @@ deploy_key.pub
 
 # Legacy secret files
 idsecret.txt
+tmp/

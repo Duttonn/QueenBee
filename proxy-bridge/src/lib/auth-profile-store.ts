@@ -1,7 +1,7 @@
 
 import fs from 'fs-extra';
 import path from 'path';
-import { Paths } from './Paths';
+import { Paths } from './infrastructure/Paths';
 
 const CONFIG_DIR = Paths.getQueenBeeConfigDir();
 

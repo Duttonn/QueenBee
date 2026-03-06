@@ -1,9 +1,9 @@
 import fs from 'fs-extra';
 import path from 'path';
 import yaml from 'js-yaml';
-import { Paths } from './Paths';
-import { AgentEvent } from './EventLog';
-import { broadcast } from './socket-instance';
+import { Paths } from './infrastructure/Paths';
+import { AgentEvent } from './agents/EventLog';
+import { broadcast } from './infrastructure/socket-instance';
 import chokidar from 'chokidar';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */

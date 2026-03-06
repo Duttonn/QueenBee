@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { Roundtable } from '../../../lib/Roundtable';
+import { Roundtable } from '../../../lib/agents/Roundtable';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     if (req.method !== 'POST') {

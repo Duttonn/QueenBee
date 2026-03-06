@@ -17,7 +17,7 @@
 
 import fs from 'fs-extra';
 import path from 'path';
-import { Paths } from './Paths';
+import { Paths } from './infrastructure/Paths';
 import { v4 as uuidv4 } from 'uuid';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */

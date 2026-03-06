@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { PolicyStore } from '../../lib/PolicyStore';
+import { PolicyStore } from '../../lib/infrastructure/PolicyStore';
 import { withLogging } from '../../lib/api-utils';
 
 async function handler(req: NextApiRequest, res: NextApiResponse) {

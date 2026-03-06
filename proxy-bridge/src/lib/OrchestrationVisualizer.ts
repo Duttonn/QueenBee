@@ -1,5 +1,5 @@
-import { HiveOrchestrator } from './HiveOrchestrator';
-import { ContextScraper } from './ContextScraper';
+import { HiveOrchestrator } from './orchestration/HiveOrchestrator';
+import { ContextScraper } from './infrastructure/ContextScraper';
 import { Socket } from 'socket.io';
 
 /**

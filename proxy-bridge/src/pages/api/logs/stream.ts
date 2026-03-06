@@ -1,7 +1,7 @@
 import { Server } from 'socket.io';
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { setIO } from '../../../lib/socket-instance';
-import { EventLoopManager } from '../../../lib/EventLoopManager';
+import { setIO } from '../../../lib/infrastructure/socket-instance';
+import { EventLoopManager } from '../../../lib/infrastructure/EventLoopManager';
 
 /**
  * Log Streaming & Monitoring Service

@@ -17,7 +17,7 @@
  */
 
 import { execSync } from 'child_process';
-import { broadcast } from './socket-instance';
+import { broadcast } from './infrastructure/socket-instance';
 import { unifiedLLMService } from './UnifiedLLMService';
 import fs from 'fs-extra';
 

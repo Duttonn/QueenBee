@@ -66,13 +66,13 @@ jobs:
         env:
           VITE_ELECTRON: 'true'
 
-        - name: Write proxy-bridge .env.local
-          shell: bash
-          run: |
-              printf 'GITHUB_CLIENT_ID=%s\nGITHUB_CLIENT_SECRET=%s\n' \
-                "${{ secrets.GH_OAUTH_CLIENT_ID }}" \
-                "${{ secrets.GH_OAUTH_CLIENT_SECRET }}" \
-                > proxy-bridge/.env.local
+      - name: Write proxy-bridge .env.local
+        shell: bash
+        run: |
+          printf 'GITHUB_CLIENT_ID=%s\nGITHUB_CLIENT_SECRET=%s\n' \
+            "${{ secrets.GH_OAUTH_CLIENT_ID }}" \
+            "${{ secrets.GH_OAUTH_CLIENT_SECRET }}" \
+            > proxy-bridge/.env.local
 
       - name: Build proxy-bridge
         working-directory: proxy-bridge

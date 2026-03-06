@@ -15,7 +15,7 @@
  *   - ExperienceArchive.ts: record improvement deltas for learning
  */
 
-import { broadcast } from './socket-instance';
+import { broadcast } from './infrastructure/socket-instance';
 import { unifiedLLMService } from './UnifiedLLMService';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */

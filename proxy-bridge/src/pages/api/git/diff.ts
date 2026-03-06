@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { execSync } from 'child_process';
 import path from 'path';
-import { Paths } from '../../../lib/Paths';
+import { Paths } from '../../../lib/infrastructure/Paths';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { projectPath, filePath, staged } = req.query;

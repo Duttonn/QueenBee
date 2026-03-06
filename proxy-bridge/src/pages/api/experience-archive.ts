@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import fs from 'fs-extra';
 import path from 'path';
-import { ExperienceArchive, ArchiveEntry } from '../../lib/ExperienceArchive';
+import { ExperienceArchive, ArchiveEntry } from '../../lib/agents/ExperienceArchive';
 import { withLogging } from '../../lib/api-utils';
 
 /**

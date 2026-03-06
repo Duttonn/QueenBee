@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import crypto from 'crypto';
-import { Paths } from './Paths';
+import { Paths } from './infrastructure/Paths';
 
 /**
  * PortableConfigManager: Handles offline-first config snapshots.

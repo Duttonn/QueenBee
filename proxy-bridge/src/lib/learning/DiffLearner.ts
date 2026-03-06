@@ -1,6 +1,6 @@
 import { LLMMessage } from '../types/llm';
 import { unifiedLLMService } from '../UnifiedLLMService';
-import { MemoryStore } from '../MemoryStore';
+import { MemoryStore } from '../infrastructure/MemoryStore';
 
 export class DiffLearner {
   private memoryStore: MemoryStore;

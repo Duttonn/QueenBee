@@ -14,9 +14,9 @@
  *   - socket-instance.ts: emits DESIGN_REVIEW_RESULT event
  */
 
-import { broadcast } from './socket-instance';
+import { broadcast } from './infrastructure/socket-instance';
 import { unifiedLLMService } from './UnifiedLLMService';
-import { aggregateScores } from './consensus';
+import { aggregateScores } from './infrastructure/consensus';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
