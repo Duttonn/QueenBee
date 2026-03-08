@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { NativeService } from '../services/NativeService';
+import { API_BASE } from '../services/api';
 
 export interface GitForge {
     id: 'github' | 'gitlab' | 'google';
@@ -283,7 +284,7 @@ export const useAuthStore = create<AuthState>()(
                 // 2. Persist to backend (auth-profile-store + hot-register in UnifiedLLMService)
                 const provider = get().providers.find(p => p.id === id);
                 try {
-                    await fetch('/api/providers/save', {
+                    await fetch(`${API_BASE}/api/providers/save`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ provider: id, apiKey: key, baseUrl: provider?.baseUrl }),
