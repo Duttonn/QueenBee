@@ -1281,14 +1281,12 @@ export class ToolExecutor {
 
   private async runBackgroundWorker(worktreePath: string, taskId: string, instructions: string, agentId: string, threadId: string, providerId?: string, apiKey?: string, model?: string, swarmId?: string, mainProjectPath?: string) {
     const { AutonomousRunner } = await import('../agents/AutonomousRunner');
-    const { getIO } = await import('../infrastructure/socket-instance');
-    
-    const io = getIO();
-    // Create a mock socket that redirects emits to the global io instance
-    // Always tag events with the worker's threadId so the frontend routes messages correctly
+    const { broadcast: broadcastFn } = await import('../infrastructure/socket-instance');
+
+    // Create a mock socket that broadcasts via the relay (works across processes)
     const mockSocket = {
       emit: (event: string, data: any) => {
-        if (io) io.emit(event, { ...data, agentId, threadId, parentTaskId: taskId });
+        broadcastFn(event, { ...data, agentId, threadId, parentTaskId: taskId });
       },
       on: () => {},
       off: () => {}
@@ -1315,7 +1313,7 @@ export class ToolExecutor {
     agentDiscovery.updateStatus(agentId, 'busy', taskId);
 
     // Broadcast running status to UI
-    if (io) io.emit('UI_UPDATE', { action: 'WORKER_STATUS', payload: { threadId, taskId, status: 'running' } });
+    broadcastFn('UI_UPDATE', { action: 'WORKER_STATUS', payload: { threadId, taskId, status: 'running' } });
 
     // Derive project path from worktree path (go up to find the main project)
     const resolvedMainPath = mainProjectPath || (swarmId ? (swarmWorkerTracker.get(swarmId)?.projectPath || worktreePath) : worktreePath);
@@ -1333,7 +1331,7 @@ export class ToolExecutor {
       // Extract completion summary from the worker's last assistant message
       completionSummary = this.extractWorkerSummary(runner, taskId, result);
 
-      if (io) io.emit('UI_UPDATE', { action: 'WORKER_STATUS', payload: { threadId, taskId, status: 'completed' } });
+      broadcastFn('UI_UPDATE', { action: 'WORKER_STATUS', payload: { threadId, taskId, status: 'completed' } });
     } catch (error: any) {
       console.error(`[Swarm] Background worker ${agentId} error:`, error);
       workerRegistry.set(taskId, { status: 'failed' });
@@ -1342,7 +1340,7 @@ export class ToolExecutor {
       fileConflictDetector.releaseAllForAgent(agentId); // P21-02
       workerStatus = 'failed';
       completionSummary = `[FAILED] Worker ${taskId} encountered an error: ${error.message}`;
-      if (io) io.emit('UI_UPDATE', { action: 'WORKER_STATUS', payload: { threadId, taskId, status: 'failed' } });
+      broadcastFn('UI_UPDATE', { action: 'WORKER_STATUS', payload: { threadId, taskId, status: 'failed' } });
     }
 
     // Auto-post completion summary to roundtable (guaranteed — even if the LLM forgot)

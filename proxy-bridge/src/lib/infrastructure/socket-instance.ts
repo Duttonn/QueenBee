@@ -30,23 +30,39 @@ function dedupKey(event: string, data: any): string {
 
 export function broadcast(event: string, data: any) {
   const io = getIO();
+
+  const context = logContext.getStore();
+  const payload = context?.requestId
+    ? { ...data, requestId: context.requestId }
+    : data;
+
+  // OP-05: Skip duplicate events within TTL window
+  const key = dedupKey(event, payload);
+  if (broadcastDedup.has(key)) {
+    logger.verbose(`[Socket] Dedup: Skipping duplicate broadcast '${event}'`);
+    return;
+  }
+  broadcastDedup.set(key, true);
+
   if (io) {
-    const context = logContext.getStore();
-    const payload = context?.requestId
-      ? { ...data, requestId: context.requestId }
-      : data;
-
-    // OP-05: Skip duplicate events within TTL window
-    const key = dedupKey(event, payload);
-    if (broadcastDedup.has(key)) {
-      logger.verbose(`[Socket] Dedup: Skipping duplicate broadcast '${event}'`);
-      return;
-    }
-    broadcastDedup.set(key, true);
-
     logger.verbose(`[Socket] Broadcasting event: ${event}`, data);
     io.emit(event, payload);
   } else {
-    console.warn(`[SocketInstance] Cannot broadcast '${event}': IO not initialized in current process.`);
+    // Next.js API process doesn't have the socket server — relay via HTTP
+    const socketPort = process.env.SOCKET_PORT || '3001';
+    const http = require('http');
+    const body = JSON.stringify({ event, data: payload });
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port: parseInt(socketPort),
+      path: '/internal/broadcast',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    });
+    req.on('error', (err: Error) => {
+      logger.verbose(`[SocketInstance] Relay broadcast '${event}' failed: ${err.message}`);
+    });
+    req.write(body);
+    req.end();
   }
 }

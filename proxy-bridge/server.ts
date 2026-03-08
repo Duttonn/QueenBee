@@ -90,6 +90,27 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
+  // Internal broadcast relay — called by the Next.js API process when it needs
+  // to emit socket events (getIO() is null there since setIO() lives here).
+  if (req.url === '/internal/broadcast' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk.toString(); });
+    req.on('end', () => {
+      try {
+        const { event, data } = JSON.parse(body);
+        if (event && io) {
+          io.emit(event, data);
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: 'invalid json' }));
+      }
+    });
+    return;
+  }
+
   res.writeHead(404);
   res.end();
 });
