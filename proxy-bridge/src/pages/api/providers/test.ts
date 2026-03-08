@@ -320,23 +320,65 @@ async function testGemini(apiKey?: string): Promise<TestResult> {
         };
     }
 
+    // Common headers that work for both query-param and header-based auth
+    const authHeaders = {
+        'x-goog-api-key': apiKey,
+        'Content-Type': 'application/json',
+    };
+
     try {
         console.log('[Gemini Test] Fetching models...');
+        // Use both the key query param and the x-goog-api-key header for maximum compatibility
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
+            `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+            { headers: authHeaders }
         );
 
         console.log(`[Gemini Test] Response status: ${response.status}`);
         const data = await response.json();
 
         if (!response.ok) {
-            console.error('[Gemini Test] API error:', data);
-            return {
-                success: false,
-                provider: 'gemini',
-                error: data.error?.status || 'api_error',
-                message: data.error?.message || 'Failed to authenticate with Google AI'
-            };
+            console.error('[Gemini Test] Models endpoint error:', data);
+
+            // Fall back to a minimal content generation request to verify the key
+            console.log('[Gemini Test] Falling back to content generation test...');
+            try {
+                const genResponse = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+                    {
+                        method: 'POST',
+                        headers: authHeaders,
+                        body: JSON.stringify({
+                            contents: [{ role: 'user', parts: [{ text: 'Hi' }] }],
+                            generationConfig: { maxOutputTokens: 1 }
+                        })
+                    }
+                );
+
+                if (genResponse.ok) {
+                    return {
+                        success: true,
+                        provider: 'gemini',
+                        message: 'Connected! Gemini API key is valid.',
+                        models: ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', 'gemini-1.5-flash']
+                    };
+                }
+
+                const genError = await genResponse.json().catch(() => ({}));
+                return {
+                    success: false,
+                    provider: 'gemini',
+                    error: genError.error?.status || data.error?.status || 'api_error',
+                    message: genError.error?.message || data.error?.message || 'Failed to authenticate with Google AI'
+                };
+            } catch (genErr: any) {
+                return {
+                    success: false,
+                    provider: 'gemini',
+                    error: data.error?.status || 'api_error',
+                    message: data.error?.message || 'Failed to authenticate with Google AI'
+                };
+            }
         }
 
         const geminiModels = data.models
@@ -346,13 +388,18 @@ async function testGemini(apiKey?: string): Promise<TestResult> {
                 .slice(0, 10)
             : [];
 
+        // If the API call succeeded but no models matched, still report success
+        const displayModels = geminiModels.length > 0
+            ? geminiModels
+            : ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', 'gemini-1.5-flash'];
+
         console.log(`[Gemini Test] Found ${geminiModels.length} models`);
 
         return {
             success: true,
             provider: 'gemini',
             message: `Connected! Found ${geminiModels.length} Gemini models.`,
-            models: geminiModels
+            models: displayModels
         };
     } catch (error: any) {
         console.error('[Gemini Test] Fetch error:', error);
