@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import simpleGit from 'simple-git';
 import path from 'path';
+import os from 'os';
 import fs from 'fs-extra';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -17,7 +18,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: 'projectPath is required' });
   }
 
-  const absoluteProjectPath = path.resolve(projectPath as string);
+  // Expand ~ to the home directory before resolving
+  let resolvedPath = (projectPath as string).startsWith('~')
+    ? (projectPath as string).replace('~', os.homedir())
+    : (projectPath as string);
+
+  const absoluteProjectPath = path.resolve(resolvedPath);
 
   try {
     if (!(await fs.pathExists(absoluteProjectPath))) {
@@ -26,8 +32,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const git = simpleGit(absoluteProjectPath);
-    const isRepo = await git.checkIsRepo();
-    
+    let isRepo: boolean;
+    try {
+      isRepo = await git.checkIsRepo();
+    } catch {
+      // If checkIsRepo throws (e.g. git binary not found), treat as non-repo
+      console.warn(`[Branches API] checkIsRepo failed for: ${absoluteProjectPath}`);
+      return res.status(200).json({ current: 'none', all: [], branches: {}, isNotRepo: true });
+    }
+
     if (!isRepo) {
         console.warn(`[Branches API] Path is not a git repository: ${absoluteProjectPath}`);
         return res.status(200).json({ current: 'none', all: [], branches: {}, isNotRepo: true });

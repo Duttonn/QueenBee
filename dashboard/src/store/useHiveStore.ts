@@ -224,12 +224,18 @@ export const useHiveStore = create<HiveState>()(
           };
         });
 
-        // 2. Persist to backend
+        // 2. Persist to backend — include project info so backend can auto-create if needed
         try {
+          const project = get().projects.find(p => p.id === projectId);
           await fetch(`${API_BASE}/api/projects/threads`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projectId, thread: { ...thread, messages: [] } })
+            body: JSON.stringify({
+              projectId,
+              thread: { ...thread, messages: [] },
+              projectName: project?.name,
+              projectPath: project?.path,
+            })
           });
         } catch (e) {
           console.error('[HiveStore] Failed to persist new thread:', e);

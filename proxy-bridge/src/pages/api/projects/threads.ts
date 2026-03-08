@@ -15,13 +15,29 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         const db = getDb();
 
         if (req.method === 'POST') {
-            const { projectId, thread } = req.body;
+            const { projectId, thread, projectName, projectPath } = req.body;
             if (!projectId || !thread) return res.status(400).json({ error: 'projectId and thread required' });
 
-            const projectIndex = db.projects.findIndex(p => p.id === projectId);
+            let projectIndex = db.projects.findIndex(p => p.id === projectId);
             if (projectIndex === -1) {
-                console.warn(`[Threads API] Project not found: ${projectId}`);
-                return res.status(404).json({ error: 'Project not found' });
+                // Project not found — try to auto-create it using provided info to avoid data loss
+                if (projectName || projectPath) {
+                    console.log(`[Threads API] Project ${projectId} not found, creating it with provided info`);
+                    const newProject = {
+                        id: projectId,
+                        name: projectName || projectPath || `Project-${projectId.slice(0, 8)}`,
+                        path: projectPath || '',
+                        type: 'local' as const,
+                        threads: [],
+                        agents: [],
+                    };
+                    db.projects.push(newProject);
+                    projectIndex = db.projects.length - 1;
+                } else {
+                    console.warn(`[Threads API] Project not found and no project info provided: ${projectId}`);
+                    // Return 200 instead of 404 to avoid breaking the frontend — thread is in local state
+                    return res.status(200).json({ status: 'skipped', reason: 'project_not_found' });
+                }
             }
 
             // Update or add thread
