@@ -311,6 +311,8 @@ async function testAnthropic(apiKey?: string): Promise<TestResult> {
     }
 }
 
+const GEMINI_API_TIMEOUT_MS = 10_000;
+
 async function testGemini(apiKey?: string, baseUrl?: string): Promise<TestResult> {
     console.log('[Gemini Test] Starting test...');
     if (!apiKey) {
@@ -331,7 +333,7 @@ async function testGemini(apiKey?: string, baseUrl?: string): Promise<TestResult
         console.log(`[Gemini Test] Fetching models from ${geminiBaseUrl}...`);
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const timeoutId = setTimeout(() => controller.abort(), GEMINI_API_TIMEOUT_MS);
 
         const response = await fetch(
             `${geminiBaseUrl}/models?key=${apiKey}`,

@@ -50,12 +50,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   } catch (error: any) {
     console.error(`[Branches API] Error for ${absoluteProjectPath}:`, error.message);
-    // Return a graceful error instead of 500 for git-related failures
-    res.status(200).json({
-      current: 'unknown',
-      all: [],
-      branches: {},
-      error: error.message
-    });
+    res.status(500).json({ error: 'Failed to fetch branches', details: error.message });
   }
 }
