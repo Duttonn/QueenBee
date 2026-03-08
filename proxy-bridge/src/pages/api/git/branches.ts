@@ -17,12 +17,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: 'projectPath is required' });
   }
 
-  const absoluteProjectPath = path.resolve(projectPath as string);
+  // Decode URI-encoded path components (e.g. spaces, special chars from query strings)
+  const decodedPath = decodeURIComponent(projectPath as string);
+  const absoluteProjectPath = path.resolve(decodedPath);
 
   try {
     if (!(await fs.pathExists(absoluteProjectPath))) {
         console.error(`[Branches API] Path does not exist: ${absoluteProjectPath}`);
         return res.status(404).json({ error: 'Project path not found', path: absoluteProjectPath });
+    }
+
+    const stat = await fs.stat(absoluteProjectPath);
+    if (!stat.isDirectory()) {
+        console.error(`[Branches API] Path is not a directory: ${absoluteProjectPath}`);
+        return res.status(400).json({ error: 'Project path is not a directory', path: absoluteProjectPath });
     }
 
     const git = simpleGit(absoluteProjectPath);

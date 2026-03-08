@@ -58,7 +58,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 break;
 
             case 'gemini':
-                result = await testGemini(apiKey);
+                result = await testGemini(apiKey, baseUrl);
                 break;
 
             case 'nvidia':
@@ -177,7 +177,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         console.log(`[Provider Test] ${provider}: ${result.success ? 'SUCCESS' : 'FAILED'}`);
-        return res.status(result.success ? 200 : 400).json(result);
+        // Always return 200 for test results — the body's `success` field indicates pass/fail.
+        // Returning 400 for a failed test confused frontends into treating it as a request error.
+        return res.status(200).json(result);
 
     } catch (error: any) {
         console.error(`[Provider Test] ${provider} error:`, error);
@@ -309,7 +311,9 @@ async function testAnthropic(apiKey?: string): Promise<TestResult> {
     }
 }
 
-async function testGemini(apiKey?: string): Promise<TestResult> {
+const GEMINI_API_TIMEOUT_MS = 10_000;
+
+async function testGemini(apiKey?: string, baseUrl?: string): Promise<TestResult> {
     console.log('[Gemini Test] Starting test...');
     if (!apiKey) {
         return {
@@ -320,14 +324,38 @@ async function testGemini(apiKey?: string): Promise<TestResult> {
         };
     }
 
+    // Allow custom base URL (e.g. for proxied endpoints)
+    const geminiBaseUrl = baseUrl
+        ? baseUrl.replace(/\/+$/, '')
+        : 'https://generativelanguage.googleapis.com/v1beta';
+
     try {
-        console.log('[Gemini Test] Fetching models...');
+        console.log(`[Gemini Test] Fetching models from ${geminiBaseUrl}...`);
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), GEMINI_API_TIMEOUT_MS);
+
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
+            `${geminiBaseUrl}/models?key=${apiKey}`,
+            { signal: controller.signal }
         );
 
+        clearTimeout(timeoutId);
+
         console.log(`[Gemini Test] Response status: ${response.status}`);
-        const data = await response.json();
+
+        let data: any;
+        try {
+            data = await response.json();
+        } catch {
+            console.error('[Gemini Test] Failed to parse JSON response');
+            return {
+                success: false,
+                provider: 'gemini',
+                error: 'invalid_response',
+                message: 'Received non-JSON response from Gemini API. Check your API key or base URL.'
+            };
+        }
 
         if (!response.ok) {
             console.error('[Gemini Test] API error:', data);
@@ -356,6 +384,14 @@ async function testGemini(apiKey?: string): Promise<TestResult> {
         };
     } catch (error: any) {
         console.error('[Gemini Test] Fetch error:', error);
+        if (error.name === 'AbortError') {
+            return {
+                success: false,
+                provider: 'gemini',
+                error: 'timeout',
+                message: 'Connection to Google AI timed out. Check your network connection.'
+            };
+        }
         return {
             success: false,
             provider: 'gemini',

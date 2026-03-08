@@ -226,11 +226,15 @@ export const useHiveStore = create<HiveState>()(
 
         // 2. Persist to backend
         try {
-          await fetch(`${API_BASE}/api/projects/threads`, {
+          const res = await fetch(`${API_BASE}/api/projects/threads`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ projectId, thread: { ...thread, messages: [] } })
           });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            console.error(`[HiveStore] Failed to persist new thread (${res.status}):`, err);
+          }
         } catch (e) {
           console.error('[HiveStore] Failed to persist new thread:', e);
         }

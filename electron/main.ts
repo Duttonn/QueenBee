@@ -171,11 +171,11 @@ function startBackend(): Promise<void> {
     
     console.log('[Main] Backend processes spawned, waiting for Next.js to be ready...');
     
-    // Wait for Next.js to be ready (up to 15s)
+    // Wait for Next.js to be ready (up to 30s)
     return new Promise<void>((resolve) => {
       const http = require('http');
       let attempts = 0;
-      const maxAttempts = 30;
+      const maxAttempts = 60;
       const check = () => {
         attempts++;
         const req = http.get(`http://127.0.0.1:${backendPort}/api/health`, (res: any) => {

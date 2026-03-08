@@ -14,14 +14,35 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     try {
         const db = getDb();
 
+        if (req.method === 'GET') {
+            const { projectId } = req.query;
+            if (!projectId) return res.status(400).json({ error: 'projectId is required' });
+
+            const project = db.projects.find(p => p.id === projectId);
+            if (!project) {
+                console.warn(`[Threads API] GET - Project not found: ${projectId}`);
+                return res.status(404).json({ error: 'Project not found', projectId });
+            }
+
+            return res.status(200).json({ threads: project.threads || [] });
+        }
+
         if (req.method === 'POST') {
             const { projectId, thread } = req.body;
-            if (!projectId || !thread) return res.status(400).json({ error: 'projectId and thread required' });
+            if (!projectId || !thread) {
+                console.warn('[Threads API] POST - Missing projectId or thread in request body');
+                return res.status(400).json({ error: 'projectId and thread required' });
+            }
+
+            if (!thread.id) {
+                console.warn('[Threads API] POST - Thread missing id field');
+                return res.status(400).json({ error: 'thread.id is required' });
+            }
 
             const projectIndex = db.projects.findIndex(p => p.id === projectId);
             if (projectIndex === -1) {
-                console.warn(`[Threads API] Project not found: ${projectId}`);
-                return res.status(404).json({ error: 'Project not found' });
+                console.warn(`[Threads API] POST - Project not found: ${projectId}. Available projects: ${db.projects.map(p => p.id).join(', ') || '(none)'}`);
+                return res.status(404).json({ error: 'Project not found', projectId });
             }
 
             // Update or add thread
@@ -66,7 +87,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
             return res.status(200).json({ status: 'success' });
         }
 
-        res.setHeader('Allow', ['POST', 'DELETE']);
+        res.setHeader('Allow', ['GET', 'POST', 'DELETE']);
         res.status(405).end(`Method ${req.method} Not Allowed`);
     } catch (error: any) {
         console.error('[Threads API] Error:', error);

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useHiveStore } from '../../store/useHiveStore';
+import { API_BASE } from '../../services/api';
 
 interface SwarmMetrics {
   tasks_completed: number;
@@ -77,7 +78,7 @@ export const SwarmMetricsPanel: React.FC = () => {
   useEffect(() => {
     const fetchMetrics = async () => {
       try {
-        const response = await fetch('/api/diagnostics');
+        const response = await fetch(`${API_BASE}/api/diagnostics`);
         if (!response.ok) {
           throw new Error('Failed to fetch diagnostics');
         }
