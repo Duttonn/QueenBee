@@ -48,7 +48,22 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       } catch { /* keep default */ }
     }
 
-    console.log(`[Terminal] Connected — cwd: ${cwd}`);
+    // Resolve a shell binary that actually exists on this system.
+    // GUI Electron apps on macOS often have SHELL unset; probe candidates.
+    const shellCandidates = [
+      process.env.SHELL,
+      '/bin/zsh',
+      '/bin/bash',
+      '/usr/bin/zsh',
+      '/usr/bin/bash',
+      '/bin/sh',
+    ].filter(Boolean) as string[];
+
+    const shell = shellCandidates.find(s => {
+      try { fs.accessSync(s, fs.constants.X_OK); return true; } catch { return false; }
+    }) ?? '/bin/sh';
+
+    console.log(`[Terminal] Connected — cwd: ${cwd}, shell: ${shell}`);
 
     // Build a rich env so macOS shells get correct PATH, TERM, etc.
     const shellEnv: Record<string, string> = {
@@ -57,10 +72,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       COLORTERM: 'truecolor',
       TERM_PROGRAM: 'QueenBee',
       HOME: os.homedir(),
-      SHELL: process.env.SHELL || '/bin/zsh',
+      SHELL: shell,
     };
-
-    const shell = shellEnv.SHELL;
 
     let ptyProcess: ReturnType<typeof spawn> | null = null;
     try {
