@@ -212,7 +212,7 @@ async function testOpenAI(apiKey?: string): Promise<TestResult> {
     }
 
     try {
-        const response = await fetch('https://api.openai.com/v1/models', {
+        const response = await fetchWithTimeout('https://api.openai.com/v1/models', {
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
                 'User-Agent': 'QueenBee-Dashboard'
@@ -244,8 +244,8 @@ async function testOpenAI(apiKey?: string): Promise<TestResult> {
         return {
             success: false,
             provider: 'openai',
-            error: 'network_error',
-            message: `Network error: ${error.message}`
+            error: error.name === 'AbortError' ? 'timeout' : 'network_error',
+            message: error.name === 'AbortError' ? 'Connection timed out.' : `Network error: ${error.message}`
         };
     }
 }
@@ -271,7 +271,7 @@ async function testAnthropic(apiKey?: string): Promise<TestResult> {
 
     try {
         // Anthropic doesn't have a models endpoint, so we make a minimal request
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
+        const response = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
                 'x-api-key': apiKey,
@@ -305,13 +305,21 @@ async function testAnthropic(apiKey?: string): Promise<TestResult> {
         return {
             success: false,
             provider: 'anthropic',
-            error: 'network_error',
-            message: `Network error: ${error.message}`
+            error: error.name === 'AbortError' ? 'timeout' : 'network_error',
+            message: error.name === 'AbortError' ? 'Connection timed out.' : `Network error: ${error.message}`
         };
     }
 }
 
-const GEMINI_API_TIMEOUT_MS = 10_000;
+const DEFAULT_TIMEOUT_MS = 10_000;
+const GEMINI_API_TIMEOUT_MS = DEFAULT_TIMEOUT_MS;
+
+/** fetch() wrapper with a timeout — rejects with AbortError on timeout */
+function fetchWithTimeout(url: string, opts: RequestInit = {}, ms = DEFAULT_TIMEOUT_MS): Promise<Response> {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), ms);
+    return fetch(url, { ...opts, signal: controller.signal }).finally(() => clearTimeout(id));
+}
 
 async function testGemini(apiKey?: string, baseUrl?: string): Promise<TestResult> {
     console.log('[Gemini Test] Starting test...');
@@ -421,7 +429,7 @@ async function testNvidia(apiKey?: string): Promise<TestResult> {
     }
 
     try {
-        const response = await fetch('https://integrate.api.nvidia.com/v1/models', {
+        const response = await fetchWithTimeout('https://integrate.api.nvidia.com/v1/models', {
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
                 'User-Agent': 'QueenBee-Dashboard'
@@ -451,8 +459,8 @@ async function testNvidia(apiKey?: string): Promise<TestResult> {
         return {
             success: false,
             provider: 'nvidia',
-            error: 'network_error',
-            message: `Network error: ${error.message}`
+            error: error.name === 'AbortError' ? 'timeout' : 'network_error',
+            message: error.name === 'AbortError' ? 'Connection timed out.' : `Network error: ${error.message}`
         };
     }
 }
@@ -527,7 +535,7 @@ async function testAzure(apiKey?: string, baseUrl?: string): Promise<TestResult>
     }
 
     try {
-        const response = await fetch(`${baseUrl}/openai/models?api-version=2024-02-01`, {
+        const response = await fetchWithTimeout(`${baseUrl}/openai/models?api-version=2024-02-01`, {
             headers: {
                 'api-key': apiKey,
                 'User-Agent': 'QueenBee-Dashboard'
@@ -557,8 +565,8 @@ async function testAzure(apiKey?: string, baseUrl?: string): Promise<TestResult>
         return {
             success: false,
             provider: 'azure',
-            error: 'network_error',
-            message: `Network error: ${error.message}`
+            error: error.name === 'AbortError' ? 'timeout' : 'network_error',
+            message: error.name === 'AbortError' ? 'Connection timed out.' : `Network error: ${error.message}`
         };
     }
 }
@@ -579,7 +587,7 @@ async function testOpenAICompat(
     }
     const baseUrl = defaultBaseUrl || 'https://api.openai.com/v1';
     try {
-        const r = await fetch(`${baseUrl}/models`, {
+        const r = await fetchWithTimeout(`${baseUrl}/models`, {
             headers: { 'Authorization': `Bearer ${apiKey}`, 'User-Agent': 'QueenBee' }
         });
         if (r.ok) {
@@ -588,7 +596,7 @@ async function testOpenAICompat(
             return { success: true, provider, message: `Connected! ${models.length} models available.`, models };
         }
         // 404 on /models is normal for some providers — try a tiny completion
-        const cr = await fetch(`${baseUrl}/chat/completions`, {
+        const cr = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ model: defaultModels?.[0] || 'default', messages: [{ role: 'user', content: 'Hi' }], max_tokens: 1 })
@@ -599,7 +607,8 @@ async function testOpenAICompat(
         const err = await cr.json().catch(() => ({}));
         return { success: false, provider, error: 'api_error', message: err?.error?.message || `${provider}: auth failed` };
     } catch (e: any) {
-        return { success: false, provider, error: 'network_error', message: e.message };
+        return { success: false, provider, error: e.name === 'AbortError' ? 'timeout' : 'network_error',
+            message: e.name === 'AbortError' ? 'Connection timed out.' : e.message };
     }
 }
 
@@ -610,7 +619,7 @@ async function testOpenRouter(apiKey?: string): Promise<TestResult> {
             message: 'OpenRouter API key required. Get one free at https://openrouter.ai/keys' };
     }
     try {
-        const r = await fetch('https://openrouter.ai/api/v1/models', {
+        const r = await fetchWithTimeout('https://openrouter.ai/api/v1/models', {
             headers: { 'Authorization': `Bearer ${apiKey}`, 'HTTP-Referer': 'https://queenbee.dev' }
         });
         if (!r.ok) {
@@ -626,7 +635,8 @@ async function testOpenRouter(apiKey?: string): Promise<TestResult> {
         return { success: true, provider: 'openrouter',
             message: `Connected! Access to ${data.data?.length || models.length}+ models.`, models };
     } catch (e: any) {
-        return { success: false, provider: 'openrouter', error: 'network_error', message: e.message };
+        return { success: false, provider: 'openrouter', error: e.name === 'AbortError' ? 'timeout' : 'network_error',
+            message: e.name === 'AbortError' ? 'Connection timed out.' : e.message };
     }
 }
 
@@ -694,7 +704,7 @@ async function testCustom(apiKey?: string, baseUrl?: string, model?: string): Pr
             headers['Authorization'] = `Bearer ${apiKey}`;
         }
 
-        const response = await fetch(modelsUrl, { headers });
+        const response = await fetchWithTimeout(modelsUrl, { headers });
 
         if (response.ok) {
             const data = await response.json();
@@ -711,7 +721,7 @@ async function testCustom(apiKey?: string, baseUrl?: string, model?: string): Pr
         // If models endpoint fails, try a simple completion
         const completionUrl = baseUrl.endsWith('/') ? `${baseUrl}v1/chat/completions` : `${baseUrl}/v1/chat/completions`;
 
-        const completionResponse = await fetch(completionUrl, {
+        const completionResponse = await fetchWithTimeout(completionUrl, {
             method: 'POST',
             headers: {
                 ...headers,
@@ -743,8 +753,8 @@ async function testCustom(apiKey?: string, baseUrl?: string, model?: string): Pr
         return {
             success: false,
             provider: 'custom',
-            error: 'network_error',
-            message: `Network error: ${error.message}`
+            error: error.name === 'AbortError' ? 'timeout' : 'network_error',
+            message: error.name === 'AbortError' ? 'Connection timed out.' : `Network error: ${error.message}`
         };
     }
 }
