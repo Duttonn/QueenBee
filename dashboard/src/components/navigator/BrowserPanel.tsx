@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Globe, Target, Loader2, AlertTriangle, X, RefreshCw, ExternalLink, Trash2, Wifi, WifiOff, Grab } from 'lucide-react';
-import ElementPicker, { type PickedElement } from './ElementPicker';
+import { type PickedElement } from './ElementPicker';
 import { API_BASE } from '../../services/api';
 
 const API = `${API_BASE}/api`;
@@ -13,31 +13,246 @@ interface BrowserPanelProps {
   onClose: () => void;
 }
 
+// ─── Inline picker overlay (no screenshots needed) ────────────────────────────
+
+interface IframePickerProps {
+  active: boolean;
+  /** Page dimensions reported by Puppeteer (for coord mapping when iframe is smaller) */
+  pageWidth: number;
+  pageHeight: number;
+  reactGrabEnabled: boolean;
+  onPick: (el: PickedElement) => void;
+  onError: (msg: string) => void;
+  pinnedBoxes: Array<{ selector: string; x: number; y: number; width: number; height: number }>;
+  /** Actual rendered size of the iframe container */
+  containerRef: React.RefObject<HTMLDivElement | null>;
+}
+
+const IframePicker: React.FC<IframePickerProps> = ({
+  active,
+  pageWidth,
+  pageHeight,
+  reactGrabEnabled,
+  onPick,
+  onError,
+  pinnedBoxes,
+  containerRef,
+}) => {
+  const [loading, setLoading] = useState(false);
+  const [crosshair, setCrosshair] = useState<{ x: number; y: number } | null>(null);
+  const [hoverBox, setHoverBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+
+  const getContainerSize = () => {
+    const el = containerRef.current;
+    if (!el) return { w: pageWidth, h: pageHeight };
+    return { w: el.clientWidth, h: el.clientHeight };
+  };
+
+  const toPageCoords = (relX: number, relY: number) => {
+    const { w, h } = getContainerSize();
+    return {
+      x: Math.round((relX / w) * pageWidth),
+      y: Math.round((relY / h) * pageHeight),
+    };
+  };
+
+  const toDisplayCoords = (pageX: number, pageY: number) => {
+    const { w, h } = getContainerSize();
+    return {
+      x: (pageX / pageWidth) * w,
+      y: (pageY / pageHeight) * h,
+    };
+  };
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!active) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      setCrosshair({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    },
+    [active]
+  );
+
+  const handleMouseLeave = useCallback(() => {
+    setCrosshair(null);
+    setHoverBox(null);
+  }, []);
+
+  const handleClick = useCallback(
+    async (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!active || loading) return;
+      e.stopPropagation();
+
+      const rect = e.currentTarget.getBoundingClientRect();
+      const relX = e.clientX - rect.left;
+      const relY = e.clientY - rect.top;
+      const { x: pageX, y: pageY } = toPageCoords(relX, relY);
+
+      setLoading(true);
+      try {
+        const res = await fetch(`${API}/browser/element-at-point?x=${pageX}&y=${pageY}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        if (data.boundingBox) {
+          const d = toDisplayCoords(data.boundingBox.x, data.boundingBox.y);
+          const { w: cw, h: ch } = getContainerSize();
+          setHoverBox({
+            x: d.x,
+            y: d.y,
+            w: (data.boundingBox.width / pageWidth) * cw,
+            h: (data.boundingBox.height / pageHeight) * ch,
+          });
+        }
+
+        const picked: PickedElement = {
+          selector: data.selector,
+          html: data.outerHTML,
+          tagName: data.tagName,
+          sourceFile: data.sourceFile,
+          sourceLine: data.sourceLine,
+          boundingBox: data.boundingBox || undefined,
+        };
+
+        if (reactGrabEnabled) {
+          try {
+            const rgRes = await fetch(`${API}/browser/grab?x=${pageX}&y=${pageY}`);
+            if (rgRes.ok) {
+              const rg = await rgRes.json();
+              if (rg.componentName) picked.componentName = rg.componentName;
+              if (rg.fileName) picked.reactFile = rg.fileName;
+              if (rg.lineNumber) picked.reactLine = rg.lineNumber;
+            }
+          } catch { /* non-fatal */ }
+        }
+
+        onPick(picked);
+      } catch (err: any) {
+        onError(err?.message || 'Failed to pick element');
+      } finally {
+        setLoading(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [active, loading, pageWidth, pageHeight, reactGrabEnabled, onPick, onError]
+  );
+
+  if (!active && pinnedBoxes.length === 0) return null;
+
+  const { w: cw, h: ch } = getContainerSize();
+
+  return (
+    <div
+      className="absolute inset-0 z-10"
+      style={{
+        cursor: active ? (loading ? 'wait' : 'crosshair') : 'default',
+        pointerEvents: active ? 'auto' : 'none',
+      }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      onClick={handleClick}
+    >
+      {/* Green outlines for pinned elements */}
+      {pinnedBoxes.map((box, i) => {
+        const d = toDisplayCoords(box.x, box.y);
+        return (
+          <div
+            key={`pin-${i}`}
+            className="absolute pointer-events-none border-2 border-green-400 rounded-sm"
+            style={{
+              left: d.x,
+              top: d.y,
+              width: (box.width / pageWidth) * cw,
+              height: (box.height / pageHeight) * ch,
+            }}
+          >
+            <div className="absolute -top-4 left-0 px-1 py-0.5 bg-green-500 text-white text-[8px] rounded-sm font-mono">
+              {box.selector}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Hover bounding box (blue) */}
+      {hoverBox && active && (
+        <div
+          className="absolute pointer-events-none border-2 border-indigo-400 bg-indigo-400/10 rounded-sm transition-all duration-75"
+          style={{ left: hoverBox.x, top: hoverBox.y, width: hoverBox.w, height: hoverBox.h }}
+        />
+      )}
+
+      {/* Crosshair */}
+      {active && crosshair && !loading && (
+        <>
+          <div
+            className="absolute pointer-events-none"
+            style={{ left: 0, right: 0, top: crosshair.y, height: 1, background: 'rgba(99,102,241,0.7)' }}
+          />
+          <div
+            className="absolute pointer-events-none"
+            style={{ top: 0, bottom: 0, left: crosshair.x, width: 1, background: 'rgba(99,102,241,0.7)' }}
+          />
+          <div
+            className="absolute pointer-events-none px-2 py-1 bg-indigo-600 text-white text-[9px] rounded-md font-mono shadow-lg"
+            style={{
+              left: Math.min(crosshair.x + 8, cw - 120),
+              top: Math.max(crosshair.y - 28, 4),
+            }}
+          >
+            {Math.round(crosshair.x)}, {Math.round(crosshair.y)}
+          </div>
+        </>
+      )}
+
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white/40">
+          <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+
+      {active && !crosshair && !loading && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-indigo-600/90 text-white text-[10px] font-medium rounded-full shadow-lg">
+          Click to pick an element
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
+  // Connection state
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
-  const [connectUrl, setConnectUrl] = useState('http://localhost:3000');
-  const [url, setUrl] = useState('');
+  const [connectUrl, setConnectUrl] = useState('http://localhost:5173');
+  const [iframeUrl, setIframeUrl] = useState<string | null>(null);
   const [inputUrl, setInputUrl] = useState('');
-  const [screenshot, setScreenshot] = useState<string | null>(null);
-  const [loadingScreenshot, setLoadingScreenshot] = useState(false);
-  const [screenshotError, setScreenshotError] = useState<string | null>(null);
+
+  // Picker state
   const [pickerActive, setPickerActive] = useState(false);
   const [pinnedElements, setPinnedElements] = useState<PickedElement[]>([]);
   const [pinnedBoxes, setPinnedBoxes] = useState<Array<{ selector: string; x: number; y: number; width: number; height: number }>>([]);
   const [pickerError, setPickerError] = useState<string | null>(null);
+
+  // React Grab state
   const [reactGrabEnabled, setReactGrabEnabled] = useState(false);
   const [reactGrabInjecting, setReactGrabInjecting] = useState(false);
-  const [imgDims, setImgDims] = useState({ w: 0, h: 0 });
-  const [pageInfo, setPageInfo] = useState<{ viewportWidth: number; viewportHeight: number } | null>(null);
 
-  const imgRef = useRef<HTMLImageElement>(null);
+  // Page info for coordinate mapping
+  const [pageInfo, setPageInfo] = useState<{ viewportWidth: number; viewportHeight: number }>({
+    viewportWidth: 1280,
+    viewportHeight: 800,
+  });
+
+  // Iframe load / X-Frame error
+  const [iframeError, setIframeError] = useState(false);
+
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Check connection status on open ─────────────────────────────────────
+  // ── Restore connection status on open ───────────────────────────────────
   useEffect(() => {
     if (!isOpen) return;
     fetch(`${API}/browser/connect`)
@@ -45,48 +260,41 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
       .then(data => {
         if (data.connected) {
           setConnected(true);
-          setUrl(data.url || '');
+          setIframeUrl(data.url || '');
           setInputUrl(data.url || '');
           setPageInfo({ viewportWidth: data.viewportWidth || 1280, viewportHeight: data.viewportHeight || 800 });
-          refreshScreenshot();
         }
       })
       .catch(() => {});
   }, [isOpen]);
 
-  // ── Auto-refresh screenshot every 5s when connected ─────────────────────
-  useEffect(() => {
-    if (connected && isOpen) {
-      autoRefreshRef.current = setInterval(() => {
-        if (!loadingScreenshot && !pickerActive) refreshScreenshot();
-      }, 5000);
-    }
-    return () => {
-      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
-    };
-  }, [connected, isOpen, loadingScreenshot, pickerActive]);
-
+  // ── Connect: load iframe + spin up Puppeteer for React Grab ─────────────
   const handleConnect = useCallback(async () => {
     const trimmed = connectUrl.trim();
     if (!trimmed) return;
+    const normalised = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+
     setConnecting(true);
+    setIframeError(false);
     try {
+      // Load iframe immediately (feels instant)
+      setIframeUrl(normalised);
+      setInputUrl(normalised);
+
+      // Connect Puppeteer in background for element-at-point + React Grab
       const res = await fetch(`${API}/browser/connect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: trimmed }),
+        body: JSON.stringify({ url: normalised }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (data.connected) {
-        setConnected(true);
-        setUrl(data.pageUrl || trimmed);
-        setInputUrl(data.pageUrl || trimmed);
-        setPageInfo({ viewportWidth: data.viewportWidth || 1280, viewportHeight: data.viewportHeight || 800 });
-        refreshScreenshot();
+      const data = res.ok ? await res.json() : null;
+      setConnected(true);
+      if (data?.viewportWidth) {
+        setPageInfo({ viewportWidth: data.viewportWidth, viewportHeight: data.viewportHeight });
       }
-    } catch (e: any) {
-      setScreenshotError(e?.message || 'Failed to connect');
+    } catch {
+      // If Puppeteer fails, iframe still shows the page — still mark connected
+      setConnected(true);
     } finally {
       setConnecting(false);
     }
@@ -101,45 +309,26 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
       });
     } catch {}
     setConnected(false);
-    setScreenshot(null);
-    setUrl('');
+    setIframeUrl(null);
+    setInputUrl('');
     setPinnedElements([]);
     setPinnedBoxes([]);
-  }, []);
-
-  const refreshScreenshot = useCallback(async () => {
-    setLoadingScreenshot(true);
-    setScreenshotError(null);
-    try {
-      const res = await fetch(`${API}/browser/screenshot`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setScreenshot(data.screenshot);
-    } catch (e: any) {
-      setScreenshotError(e?.message || 'Failed to take screenshot');
-    } finally {
-      setLoadingScreenshot(false);
-    }
+    setPickerActive(false);
+    setReactGrabEnabled(false);
   }, []);
 
   const navigate = useCallback(async (targetUrl: string) => {
     const trimmed = targetUrl.trim();
     if (!trimmed) return;
     const normalised = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
-    setUrl(normalised);
+    setIframeError(false);
+    setIframeUrl(normalised);
     setInputUrl(normalised);
-    setScreenshotError(null);
-    setLoadingScreenshot(true);
+
+    // Keep Puppeteer in sync
     try {
-      const res = await fetch(`${API}/browser/screenshot?url=${encodeURIComponent(normalised)}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: { screenshot: string } = await res.json();
-      setScreenshot(data.screenshot);
-    } catch (e: any) {
-      setScreenshotError(e?.message || 'Failed to take screenshot');
-    } finally {
-      setLoadingScreenshot(false);
-    }
+      await fetch(`${API}/browser/screenshot?url=${encodeURIComponent(normalised)}`);
+    } catch { /* non-fatal */ }
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -149,42 +338,26 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleImageLoad = () => {
-    if (imgRef.current) {
-      setImgDims({ w: imgRef.current.offsetWidth, h: imgRef.current.offsetHeight });
-    }
-  };
-
   const handlePick = useCallback((el: PickedElement) => {
-    // Don't add duplicates
     setPinnedElements(prev => {
       if (prev.some(p => p.selector === el.selector)) return prev;
       const next = [...prev, el];
-
-      // Dispatch event for ComposerBar — send entire array
-      window.dispatchEvent(
-        new CustomEvent('queenbee:elements-pinned', { detail: next })
-      );
+      window.dispatchEvent(new CustomEvent('queenbee:elements-pinned', { detail: next }));
       return next;
     });
-
-    // Track bounding box for green overlay
     if (el.boundingBox) {
       setPinnedBoxes(prev => [
         ...prev,
         { selector: el.selector, x: el.boundingBox!.x, y: el.boundingBox!.y, width: el.boundingBox!.width, height: el.boundingBox!.height },
       ]);
     }
-
     setPickerActive(false);
   }, []);
 
   const removePin = useCallback((selector: string) => {
     setPinnedElements(prev => {
       const next = prev.filter(p => p.selector !== selector);
-      window.dispatchEvent(
-        new CustomEvent('queenbee:elements-pinned', { detail: next })
-      );
+      window.dispatchEvent(new CustomEvent('queenbee:elements-pinned', { detail: next }));
       return next;
     });
     setPinnedBoxes(prev => prev.filter(b => b.selector !== selector));
@@ -193,9 +366,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
   const clearAllPins = useCallback(() => {
     setPinnedElements([]);
     setPinnedBoxes([]);
-    window.dispatchEvent(
-      new CustomEvent('queenbee:elements-pinned', { detail: [] })
-    );
+    window.dispatchEvent(new CustomEvent('queenbee:elements-pinned', { detail: [] }));
   }, []);
 
   const toggleReactGrab = useCallback(async () => {
@@ -208,24 +379,18 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
       await fetch(`${API}/browser/grab`, { method: 'POST' });
       setReactGrabEnabled(true);
     } catch {
-      // injection failed silently — still enable UI enrichment attempt
       setReactGrabEnabled(true);
     } finally {
       setReactGrabInjecting(false);
     }
   }, [reactGrabEnabled]);
 
-  // Update image dims on resize
-  useEffect(() => {
-    if (!screenshot) return;
-    const observer = new ResizeObserver(() => {
-      if (imgRef.current) {
-        setImgDims({ w: imgRef.current.offsetWidth, h: imgRef.current.offsetHeight });
-      }
-    });
-    if (imgRef.current) observer.observe(imgRef.current);
-    return () => observer.disconnect();
-  }, [screenshot]);
+  const handleIframeLoad = () => {
+    setIframeError(false);
+  };
+
+  // Detect X-Frame-Options blocks: iframe loads but shows blank (we can't truly detect cross-origin failures)
+  // We just expose a manual "blocked?" hint button instead.
 
   return (
     <AnimatePresence>
@@ -237,14 +402,12 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
           transition={{ type: 'spring', stiffness: 300, damping: 28 }}
           className="fixed inset-4 md:inset-8 bg-white rounded-2xl shadow-2xl z-[70] flex flex-col overflow-hidden border border-zinc-200"
         >
-          {/* Header / URL bar */}
+          {/* ── Header / URL bar ─────────────────────────────────────────────── */}
           <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-100 bg-zinc-50 flex-shrink-0">
-            {/* Connection status dot */}
             <div className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 ${connected ? 'bg-green-600' : 'bg-zinc-400'}`}>
               {connected ? <Wifi size={13} className="text-white" /> : <WifiOff size={13} className="text-white" />}
             </div>
 
-            {/* URL input */}
             <div className="flex-1 flex items-center gap-2 bg-white border border-zinc-200 rounded-xl px-3 py-1.5">
               <input
                 ref={inputRef}
@@ -253,42 +416,35 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
                 onChange={e => connected ? setInputUrl(e.target.value) : setConnectUrl(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onFocus={e => e.target.select()}
-                placeholder={connected ? 'Navigate to URL...' : 'Enter your dev server URL (e.g. http://localhost:3000)'}
+                placeholder={connected ? 'Navigate to URL...' : 'Enter your dev server URL (e.g. http://localhost:5173)'}
                 className="flex-1 text-xs font-mono text-zinc-800 bg-transparent outline-none min-w-0"
               />
-              {(loadingScreenshot || connecting) && <Loader2 size={12} className="animate-spin text-zinc-400 flex-shrink-0" />}
+              {connecting && <Loader2 size={12} className="animate-spin text-zinc-400 flex-shrink-0" />}
             </div>
 
-            {/* Connect / Go button */}
             {!connected ? (
               <button
                 onClick={handleConnect}
                 disabled={connecting}
                 className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-40 transition-colors flex-shrink-0"
               >
-                Connect
+                {connecting ? 'Connecting…' : 'Connect'}
               </button>
             ) : (
               <>
                 <button
                   onClick={() => navigate(inputUrl)}
-                  disabled={loadingScreenshot}
-                  className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 disabled:opacity-40 transition-colors flex-shrink-0"
+                  className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition-colors flex-shrink-0"
                 >
                   Go
                 </button>
 
                 {/* Element picker toggle */}
                 <button
-                  onClick={() => {
-                    if (!screenshot) return;
-                    setPickerActive(v => !v);
-                    setPickerError(null);
-                  }}
+                  onClick={() => { setPickerActive(v => !v); setPickerError(null); }}
                   title={pickerActive ? 'Exit Pick Mode' : 'Pick Element'}
-                  disabled={!screenshot}
                   className={`p-2 rounded-lg transition-colors flex-shrink-0 ${
-                    pickerActive ? 'bg-indigo-100 text-indigo-600' : 'hover:bg-zinc-100 text-zinc-400 disabled:opacity-30'
+                    pickerActive ? 'bg-indigo-100 text-indigo-600' : 'hover:bg-zinc-100 text-zinc-400'
                   }`}
                 >
                   <Target size={16} />
@@ -298,35 +454,32 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
                 <button
                   onClick={toggleReactGrab}
                   disabled={reactGrabInjecting}
-                  title={reactGrabEnabled ? 'React Grab active — picks show component name' : 'Enable React Grab to see component names when picking elements'}
+                  title={reactGrabEnabled
+                    ? 'React Grab active — picks show component name + source file'
+                    : 'Enable React Grab to enrich picked elements with React component info'}
                   className={`p-2 rounded-lg transition-colors flex-shrink-0 ${
-                    reactGrabEnabled
-                      ? 'bg-violet-100 text-violet-600'
-                      : 'hover:bg-zinc-100 text-zinc-400'
+                    reactGrabEnabled ? 'bg-violet-100 text-violet-600' : 'hover:bg-zinc-100 text-zinc-400'
                   }`}
                 >
                   {reactGrabInjecting ? <Loader2 size={14} className="animate-spin" /> : <Grab size={14} />}
                 </button>
 
-                {/* Refresh */}
+                {/* Reload iframe */}
                 <button
-                  onClick={refreshScreenshot}
-                  disabled={loadingScreenshot}
+                  onClick={() => { setIframeError(false); if (iframeRef.current) iframeRef.current.src = iframeUrl ?? ''; }}
                   className="p-2 rounded-lg hover:bg-zinc-100 text-zinc-400 transition-colors flex-shrink-0"
-                  title="Refresh"
+                  title="Reload"
                 >
-                  <RefreshCw size={14} className={loadingScreenshot ? 'animate-spin' : ''} />
+                  <RefreshCw size={14} />
                 </button>
 
-                {/* Open in new tab */}
-                {url && (
-                  <a href={url} target="_blank" rel="noopener noreferrer"
+                {iframeUrl && (
+                  <a href={iframeUrl} target="_blank" rel="noopener noreferrer"
                     className="p-2 rounded-lg hover:bg-zinc-100 text-zinc-400 transition-colors flex-shrink-0" title="Open in new tab">
                     <ExternalLink size={14} />
                   </a>
                 )}
 
-                {/* Disconnect */}
                 <button
                   onClick={handleDisconnect}
                   className="p-2 rounded-lg hover:bg-red-50 text-red-400 transition-colors flex-shrink-0"
@@ -342,7 +495,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
             </button>
           </div>
 
-          {/* Pinned elements chips */}
+          {/* ── Pinned element chips ──────────────────────────────────────────── */}
           <AnimatePresence>
             {pinnedElements.length > 0 && (
               <motion.div
@@ -356,7 +509,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
                   <span className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wider flex-shrink-0">
                     Pinned ({pinnedElements.length}):
                   </span>
-                  {pinnedElements.map((el) => (
+                  {pinnedElements.map(el => (
                     <div key={el.selector} className="flex items-center gap-1 px-1.5 py-0.5 bg-indigo-100 rounded text-[10px] font-mono text-indigo-800">
                       {el.componentName ? (
                         <>
@@ -395,12 +548,13 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
             <div className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-500 text-xs border-b border-red-100">
               <AlertTriangle size={11} />
               {pickerError}
+              <button onClick={() => setPickerError(null)} className="ml-auto"><X size={11} /></button>
             </div>
           )}
 
-          {/* Screenshot area / Connection dialog */}
-          <div className="flex-1 overflow-auto bg-zinc-100 relative">
-            {/* Connection dialog when not connected */}
+          {/* ── Main content ─────────────────────────────────────────────────── */}
+          <div className="flex-1 overflow-hidden bg-zinc-100 relative" ref={containerRef}>
+            {/* Not connected: landing screen */}
             {!connected && !connecting && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
                 <div className="w-16 h-16 rounded-2xl bg-zinc-200 flex items-center justify-center">
@@ -409,13 +563,19 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
                 <div className="text-center">
                   <h3 className="text-sm font-semibold text-zinc-700 mb-1">Connect to your dev server</h3>
                   <p className="text-xs text-zinc-400 max-w-xs">
-                    Enter your local development URL above and click Connect to start visual testing.
+                    Enter your local development URL above and click Connect to browse live inside QueenBee.
                   </p>
                 </div>
                 <div className="flex gap-2 text-[10px] text-zinc-400">
-                  <span className="px-2 py-1 bg-zinc-200 rounded font-mono">localhost:3000</span>
-                  <span className="px-2 py-1 bg-zinc-200 rounded font-mono">localhost:5173</span>
-                  <span className="px-2 py-1 bg-zinc-200 rounded font-mono">localhost:8080</span>
+                  {['localhost:3000', 'localhost:5173', 'localhost:8080'].map(h => (
+                    <button
+                      key={h}
+                      onClick={() => setConnectUrl(`http://${h}`)}
+                      className="px-2 py-1 bg-zinc-200 hover:bg-zinc-300 rounded font-mono transition-colors"
+                    >
+                      {h}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -423,76 +583,65 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({ isOpen, onClose }) => {
             {connecting && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-zinc-400">
                 <Loader2 size={28} className="animate-spin" />
-                <div className="text-sm">Connecting to browser...</div>
+                <div className="text-sm">Connecting…</div>
               </div>
             )}
 
-            {connected && !screenshot && !loadingScreenshot && !screenshotError && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-300 gap-3">
-                <Globe size={40} className="opacity-30" />
-                <div className="text-sm">Navigate to a URL to see the page</div>
+            {/* Live iframe */}
+            {connected && iframeUrl && (
+              <div className="absolute inset-0">
+                <iframe
+                  ref={iframeRef}
+                  src={iframeUrl}
+                  className="w-full h-full border-none bg-white"
+                  title="Inline Browser"
+                  onLoad={handleIframeLoad}
+                  // Allow same-origin scripts; allow-popups so links work in new tabs
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+                />
+
+                {/* Pick-mode overlay — transparent, sits above iframe */}
+                <IframePicker
+                  active={pickerActive}
+                  pageWidth={pageInfo.viewportWidth}
+                  pageHeight={pageInfo.viewportHeight}
+                  reactGrabEnabled={reactGrabEnabled}
+                  onPick={handlePick}
+                  onError={msg => setPickerError(msg)}
+                  pinnedBoxes={pinnedBoxes}
+                  containerRef={containerRef}
+                />
               </div>
             )}
 
-            {loadingScreenshot && !connecting && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-zinc-400">
-                <Loader2 size={28} className="animate-spin" />
-                <div className="text-sm">Taking screenshot...</div>
-              </div>
-            )}
-
-            {screenshotError && !loadingScreenshot && !connecting && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-red-400">
-                <AlertTriangle size={28} />
-                <div className="text-sm">{screenshotError}</div>
-                <button
-                  onClick={refreshScreenshot}
-                  className="text-xs px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
-                >
-                  Retry
-                </button>
-              </div>
-            )}
-
-            {screenshot && !loadingScreenshot && (
-              <div className="relative inline-block min-w-full min-h-full flex items-start justify-center">
-                <div className="relative">
-                  <img
-                    ref={imgRef}
-                    src={`data:image/png;base64,${screenshot}`}
-                    alt="Browser screenshot"
-                    className="max-w-full block select-none"
-                    style={{ display: 'block' }}
-                    onLoad={handleImageLoad}
-                    draggable={false}
-                  />
-                  {imgDims.w > 0 && imgDims.h > 0 && (
-                    <ElementPicker
-                      active={pickerActive}
-                      imageWidth={imgDims.w}
-                      imageHeight={imgDims.h}
-                      pageWidth={pageInfo?.viewportWidth}
-                      pageHeight={pageInfo?.viewportHeight}
-                      onPick={handlePick}
-                      onError={msg => setPickerError(msg)}
-                      pinnedBoxes={pinnedBoxes}
-                      reactGrabEnabled={reactGrabEnabled}
-                    />
-                  )}
-                </div>
+            {/* X-Frame-Options hint */}
+            {iframeError && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-xs shadow-md">
+                <AlertTriangle size={13} />
+                Page blocked iframe embedding.
+                {iframeUrl && (
+                  <a href={iframeUrl} target="_blank" rel="noopener noreferrer" className="underline font-medium">
+                    Open in new tab
+                  </a>
+                )}
               </div>
             )}
           </div>
 
-          {/* Status bar */}
+          {/* ── Status bar ───────────────────────────────────────────────────── */}
           <div className="px-4 py-1.5 border-t border-zinc-100 bg-zinc-50 flex items-center gap-3 flex-shrink-0">
             <div className={`w-2 h-2 rounded-full flex-shrink-0 ${connected ? 'bg-green-400' : 'bg-zinc-300'}`} />
             <span className="text-[9px] text-zinc-400 font-mono truncate flex-1">
-              {connected ? url || 'Connected' : 'Not connected'}
+              {connected ? iframeUrl || 'Connected' : 'Not connected'}
             </span>
             {pickerActive && (
               <span className="text-[9px] text-indigo-500 flex items-center gap-1 flex-shrink-0">
                 <Target size={9} /> Pick mode active
+              </span>
+            )}
+            {reactGrabEnabled && (
+              <span className="text-[9px] text-violet-500 flex items-center gap-1 flex-shrink-0">
+                <Grab size={9} /> React Grab on
               </span>
             )}
             {pinnedElements.length > 0 && (
