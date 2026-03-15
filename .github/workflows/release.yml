@@ -46,6 +46,12 @@ jobs:
             ~/AppData/Local/electron-builder/Cache
           key: electron-builder-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
+      - name: Sync version from tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          npm pkg set version="$VERSION"
+
       - name: Install root dependencies
         run: npm ci
         env:
