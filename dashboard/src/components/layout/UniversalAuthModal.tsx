@@ -256,20 +256,28 @@ const UniversalAuthModal = ({ onComplete, onboarding = false }: UniversalAuthMod
 
 // ─── CLI Auth Flow ─────────────────────────────────────────────────────────────
 
+type AuthStatus = 'idle' | 'starting' | 'waiting' | 'success' | 'error' | 'install_needed';
+
 const CliAuthFlow: React.FC<{
   provider: AIProvider;
   onSuccess: (models?: string[]) => void;
   onDetect: () => void;
 }> = ({ provider, onSuccess, onDetect }) => {
-  const [status, setStatus] = useState<'idle' | 'connecting' | 'waiting' | 'success' | 'error' | 'install_needed'>('idle');
+  const [status, setStatus] = useState<AuthStatus>('idle');
   const [authUrl, setAuthUrl] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [installCmd, setInstallCmd] = useState('');
   const [log, setLog] = useState<string[]>([]);
-  const evtRef = useRef<EventSource | null>(null);
+  const sessionRef = useRef<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  };
+
+  useEffect(() => () => stopPolling(), []);
 
   const openUrl = (url: string) => {
-    // Electron shell or browser
     const w = window as any;
     if (w.electron?.shell?.openExternal) {
       w.electron.shell.openExternal(url);
@@ -278,80 +286,66 @@ const CliAuthFlow: React.FC<{
     }
   };
 
-  const copyText = (text: string) => { try { navigator.clipboard.writeText(text); } catch {} };
+  const copyText = (t: string) => { try { navigator.clipboard.writeText(t); } catch {} };
 
-  const startAuth = () => {
-    setStatus('connecting');
+  const startAuth = async () => {
+    stopPolling();
+    setStatus('starting');
     setAuthUrl(null);
     setLog([]);
     setMessage('');
 
-    const es = new EventSource(`${API_BASE}/api/auth/cli-login-stream?provider=${provider.id}`);
-    evtRef.current = es;
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/cli-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: provider.id, action: 'start' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Start failed');
 
-    // Use POST via fetch + ReadableStream instead of EventSource (EventSource doesn't support POST)
-    es.close();
-    evtRef.current = null;
+      sessionRef.current = data.sessionId;
+      setStatus('waiting');
 
-    fetch(`${API_BASE}/api/auth/cli-login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider: provider.id }),
-    }).then(async (res) => {
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buf = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split('\n');
-        buf = lines.pop() ?? '';
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const ev = JSON.parse(line.slice(6));
-            handleEvent(ev);
-          } catch {}
-        }
+      // If URL already available (Gemini generates it synchronously), show+open immediately
+      if (data.url) {
+        setAuthUrl(data.url);
+        openUrl(data.url);
       }
-      if (status !== 'success' && status !== 'error') setStatus('error');
-    }).catch(err => {
-      setMessage(`Connection error: ${err.message}`);
-      setStatus('error');
-    });
-  };
 
-  const handleEvent = (ev: any) => {
-    switch (ev.type) {
-      case 'status':
-        setStatus('waiting');
-        setMessage(ev.message);
-        break;
-      case 'url':
-        setAuthUrl(ev.url);
-        setStatus('waiting');
-        // Auto-open
-        openUrl(ev.url);
-        break;
-      case 'output':
-        setLog(prev => [...prev.slice(-30), ev.text.trim()].filter(Boolean));
-        break;
-      case 'install_needed':
-        setInstallCmd(ev.installCmd);
-        setStatus('install_needed');
-        setMessage(ev.message);
-        break;
-      case 'success':
-        setStatus('success');
-        setMessage(ev.message);
-        onSuccess();
-        break;
-      case 'error':
-        setStatus('error');
-        setMessage(ev.message);
-        break;
+      // Poll backend for status updates
+      pollRef.current = setInterval(async () => {
+        const sid = sessionRef.current;
+        if (!sid) return;
+        try {
+          const r = await fetch(`${API_BASE}/api/auth/cli-login?sessionId=${sid}`);
+          const s = await r.json();
+
+          if (s.log?.length) setLog(s.log);
+          if (s.message) setMessage(s.message);
+          if (s.url && !authUrl) {
+            setAuthUrl(s.url);
+            openUrl(s.url);
+          }
+
+          if (s.status === 'success') {
+            stopPolling();
+            setStatus('success');
+            onSuccess();
+          } else if (s.status === 'error') {
+            stopPolling();
+            setStatus('error');
+          } else if (s.status === 'install_needed') {
+            stopPolling();
+            setStatus('install_needed');
+            setInstallCmd(s.installCmd ?? '');
+          }
+        } catch {}
+      }, 1500);
+
+    } catch (err: any) {
+      setMessage(err.message);
+      setStatus('error');
     }
   };
 
@@ -371,11 +365,11 @@ const CliAuthFlow: React.FC<{
       <div className="space-y-3">
         <div className="flex items-start gap-2 p-3 bg-amber-50 text-amber-700 rounded-xl text-xs">
           <AlertCircle size={13} className="flex-shrink-0 mt-0.5" />
-          <p>{message} Install it first:</p>
+          <p>Claude CLI not found. Install it first:</p>
         </div>
         <div className="flex items-center gap-2 bg-zinc-900 rounded-xl px-3 py-2">
           <code className="text-[11px] text-green-400 font-mono flex-1">{installCmd}</code>
-          <button onClick={() => copyText(installCmd)} className="text-zinc-400 hover:text-zinc-200 flex-shrink-0">
+          <button onClick={() => copyText(installCmd)} title="Copy" className="text-zinc-400 hover:text-zinc-200 flex-shrink-0">
             <Copy size={11} />
           </button>
         </div>
@@ -391,63 +385,70 @@ const CliAuthFlow: React.FC<{
 
   if (status === 'success') {
     return (
-      <div className="flex items-center gap-2 p-3 bg-emerald-50 text-emerald-700 rounded-xl text-xs">
+      <div className="flex items-center gap-2 p-3 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-medium">
         <Check size={13} className="flex-shrink-0" />
-        <span>{message}</span>
+        <span>{message || 'Connected!'}</span>
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
-      {/* Auth URL */}
-      {authUrl && (
-        <div className="space-y-2">
-          <p className="text-[11px] text-zinc-500">A browser window should have opened. If not:</p>
+      {/* Auth URL — shown prominently, auto-opens but also always clickable */}
+      {authUrl ? (
+        <div className="space-y-1.5">
           <button
             onClick={() => openUrl(authUrl)}
             className="w-full flex items-center gap-2 px-3 py-2.5 bg-zinc-900 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition-colors"
           >
-            <ExternalLink size={12} /> Open authentication page
+            <ExternalLink size={12} /> Open sign-in page
           </button>
+          <p className="text-[10px] text-zinc-400 text-center">
+            A browser window should have opened. Click above if it didn't.
+          </p>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-xs text-zinc-400 py-1">
+          <Loader2 size={12} className="animate-spin flex-shrink-0" />
+          <span>{message || 'Starting…'}</span>
         </div>
       )}
 
-      {/* Status */}
-      <div className="flex items-center gap-2 text-xs text-zinc-500">
-        {status === 'connecting' || status === 'waiting' ? (
-          <Loader2 size={12} className="animate-spin flex-shrink-0 text-zinc-400" />
-        ) : status === 'error' ? (
-          <AlertCircle size={12} className="flex-shrink-0 text-red-400" />
-        ) : null}
-        <span>{message || 'Starting…'}</span>
-      </div>
+      {/* Waiting indicator */}
+      {authUrl && status === 'waiting' && (
+        <div className="flex items-center gap-2 text-xs text-zinc-500">
+          <Loader2 size={11} className="animate-spin flex-shrink-0 text-zinc-400" />
+          <span>{message || 'Waiting for sign-in…'}</span>
+        </div>
+      )}
 
-      {/* Log */}
+      {/* CLI output log (Claude only) */}
       {log.length > 0 && (
-        <div className="bg-zinc-950 rounded-xl p-3 max-h-28 overflow-y-auto">
+        <div className="bg-zinc-950 rounded-xl p-3 max-h-24 overflow-y-auto">
           {log.map((l, i) => (
             <div key={i} className="text-[10px] font-mono text-zinc-400 leading-relaxed">{l}</div>
           ))}
         </div>
       )}
 
-      {/* Error actions */}
+      {/* Error */}
       {status === 'error' && (
-        <div className="flex gap-2">
-          <button
-            onClick={startAuth}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold bg-zinc-900 text-white rounded-xl hover:bg-zinc-800"
-          >
-            <RefreshCw size={11} /> Retry
-          </button>
-          <button
-            onClick={onDetect}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold bg-zinc-100 text-zinc-700 rounded-xl hover:bg-zinc-200"
-          >
-            <Check size={11} /> Check credentials
-          </button>
-        </div>
+        <>
+          <div className="flex items-start gap-2 p-2 bg-red-50 text-red-600 rounded-lg text-xs">
+            <AlertCircle size={12} className="flex-shrink-0 mt-0.5" />
+            <span>{message}</span>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={startAuth}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold bg-zinc-900 text-white rounded-xl hover:bg-zinc-800">
+              <RefreshCw size={11} /> Retry
+            </button>
+            <button onClick={onDetect}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold bg-zinc-100 text-zinc-700 rounded-xl hover:bg-zinc-200">
+              <Check size={11} /> Check credentials
+            </button>
+          </div>
+        </>
       )}
     </div>
   );
