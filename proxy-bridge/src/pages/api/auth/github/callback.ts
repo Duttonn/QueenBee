@@ -1,4 +1,28 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import fs from 'fs';
+import { Paths } from '../../../../lib/infrastructure/Paths';
+
+/**
+ * Load GitHub OAuth credentials.
+ * Priority:
+ *   1. ~/.queenbee/github-oauth.json  (written by /api/auth/github/setup — no restart needed)
+ *   2. process.env  (baked in at build time for Electron releases)
+ */
+function loadGitHubCreds(): { clientId: string | undefined; clientSecret: string | undefined } {
+    try {
+        const credsPath = Paths.getGitHubOAuthCredsPath();
+        if (fs.existsSync(credsPath)) {
+            const saved = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+            if (saved.clientId && saved.clientSecret) {
+                return { clientId: saved.clientId, clientSecret: saved.clientSecret };
+            }
+        }
+    } catch { /* fall through to env */ }
+    return {
+        clientId: process.env.GITHUB_CLIENT_ID,
+        clientSecret: process.env.GITHUB_CLIENT_SECRET,
+    };
+}
 
 /**
  * GitHub OAuth Callback Handler - REAL Implementation
@@ -26,14 +50,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.redirect(`${frontendUrl}/auth/callback?error=${encodeURIComponent('Authorization code is missing')}`);
     }
 
-    const clientId = process.env.GITHUB_CLIENT_ID;
-    const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+    const { clientId, clientSecret } = loadGitHubCreds();
 
     if (!clientId || !clientSecret) {
       console.error('[Auth] GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET not configured');
       return res.status(500).json({
         error: 'config_error',
-        message: 'GitHub OAuth is not configured. Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET in ~/.queenbee/.env',
+        message: 'GitHub OAuth is not configured. POST to /api/auth/github/setup with { clientId, clientSecret } or set GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET env vars.',
         success: false
       });
     }
