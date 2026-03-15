@@ -379,15 +379,34 @@ async function testGemini(apiKey?: string, baseUrl?: string): Promise<TestResult
             ? data.models
                 .map((m: any) => m.name.replace('models/', ''))
                 .filter((name: string) => name.toLowerCase().includes('gemini'))
-                .slice(0, 10)
+                .sort((a: string, b: string) => {
+                    // Sort newest/best models first: 2.5 > 2.0 > 1.5 > 1.0, then pro > flash > lite
+                    const version = (s: string) => {
+                        const m = s.match(/gemini-(\d+)\.(\d+)/);
+                        return m ? parseFloat(`${m[1]}.${m[2]}`) : 0;
+                    };
+                    const vDiff = version(b) - version(a);
+                    if (vDiff !== 0) return vDiff;
+                    // Within same version: pro > flash-thinking > flash-preview > flash > lite
+                    const rank = (s: string) => {
+                        if (s.includes('thinking')) return 4;
+                        if (s.includes('pro')) return 3;
+                        if (s.includes('preview') || s.includes('exp')) return 2;
+                        if (s.includes('flash')) return 1;
+                        return 0;
+                    };
+                    return rank(b) - rank(a);
+                })
+                .slice(0, 30)
             : [];
 
-        console.log(`[Gemini Test] Found ${geminiModels.length} models`);
+        const totalCount = data.models?.filter((m: any) => m.name.toLowerCase().includes('gemini')).length ?? 0;
+        console.log(`[Gemini Test] Found ${geminiModels.length} models (showing top ${geminiModels.length} of ${totalCount})`);
 
         return {
             success: true,
             provider: 'gemini',
-            message: `Connected! Found ${geminiModels.length} Gemini models.`,
+            message: `Connected! Found ${totalCount} Gemini models.`,
             models: geminiModels
         };
     } catch (error: any) {
