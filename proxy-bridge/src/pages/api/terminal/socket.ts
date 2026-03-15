@@ -65,30 +65,62 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
     console.log(`[Terminal] Connected — cwd: ${cwd}, shell: ${shell}`);
 
-    // Build a rich env so macOS shells get correct PATH, TERM, etc.
+    // Build a minimal, clean environment for the PTY.
+    // Do NOT spread all of process.env — Electron injects variables like
+    // ELECTRON_RUN_AS_NODE, CHROME_*, etc. that can cause posix_spawnp to
+    // fail or produce unexpected shell behavior on macOS.
+    const macosExtraPaths = '/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin';
+    const basePath = process.env.PATH || '/usr/bin:/bin:/usr/sbin:/sbin';
+    const fullPath = basePath.includes('/opt/homebrew') ? basePath : `${macosExtraPaths}:${basePath}`;
+
+    const userInfo = (() => { try { return os.userInfo(); } catch { return { username: 'user' }; } })();
+
     const shellEnv: Record<string, string> = {
-      ...process.env as Record<string, string>,
-      TERM: 'xterm-256color',
-      COLORTERM: 'truecolor',
+      TERM:         'xterm-256color',
+      COLORTERM:    'truecolor',
       TERM_PROGRAM: 'QueenBee',
-      HOME: os.homedir(),
-      SHELL: shell,
+      HOME:         os.homedir(),
+      SHELL:        shell,
+      PATH:         fullPath,
+      USER:         process.env.USER || userInfo.username,
+      LOGNAME:      process.env.LOGNAME || userInfo.username,
+      LANG:         process.env.LANG || 'en_US.UTF-8',
+      TMPDIR:       process.env.TMPDIR || os.tmpdir(),
+      // Carry through SSH keys and agent socket if present (needed for git ops)
+      ...(process.env.SSH_AUTH_SOCK  ? { SSH_AUTH_SOCK:  process.env.SSH_AUTH_SOCK  } : {}),
+      ...(process.env.SSH_AGENT_PID  ? { SSH_AGENT_PID:  process.env.SSH_AGENT_PID  } : {}),
+      // Pass NVM/ASDF/mise shims if they exist in PATH
+      ...(process.env.NVM_DIR        ? { NVM_DIR:        process.env.NVM_DIR        } : {}),
+      ...(process.env.ASDF_DIR       ? { ASDF_DIR:       process.env.ASDF_DIR       } : {}),
     };
 
-    let ptyProcess: ReturnType<typeof spawn> | null = null;
-    try {
-      ptyProcess = spawn(shell, [], {
+    // Helper: attempt a single PTY spawn
+    const trySpawn = (args: string[]): ReturnType<typeof spawn> => {
+      return spawn(shell, args, {
         name: 'xterm-256color',
         cols: 80,
         rows: 24,
         cwd,
         env: shellEnv,
       });
-    } catch (err: any) {
-      console.error('[Terminal] Failed to spawn PTY:', err.message);
-      socket.emit('output', `\r\n\x1b[31m[Terminal] Failed to start shell: ${err.message}\x1b[0m\r\n`);
-      socket.disconnect();
-      return;
+    };
+
+    let ptyProcess: ReturnType<typeof spawn> | null = null;
+    try {
+      // Try login shell first — ensures .profile/.zprofile are sourced
+      ptyProcess = trySpawn(['-l']);
+    } catch (loginErr: any) {
+      console.warn('[Terminal] Login shell failed, retrying without -l:', loginErr.message);
+      try {
+        ptyProcess = trySpawn([]);
+      } catch (err: any) {
+        console.error('[Terminal] Failed to spawn PTY:', err.message);
+        socket.emit('output', `\r\n\x1b[31m[Terminal] Failed to start shell: ${err.message}\x1b[0m\r\n`);
+        socket.emit('output', `\r\n\x1b[33mShell tried: ${shell}\x1b[0m\r\n`);
+        socket.emit('output', `\r\n\x1b[33mTip: If you see this in the packaged app, try installing Node.js from https://nodejs.org\x1b[0m\r\n`);
+        socket.disconnect();
+        return;
+      }
     }
 
     // Pipe PTY output → UI

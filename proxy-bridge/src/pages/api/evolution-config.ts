@@ -38,8 +38,13 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
     if (!(await fs.pathExists(filePath))) {
       return res.status(404).json({ error: `No ${type} found for this project yet.` });
     }
-    const data = await fs.readJson(filePath);
-    return res.status(200).json(data);
+    try {
+      const data = await fs.readJson(filePath);
+      return res.status(200).json(data);
+    } catch {
+      // Malformed / empty JSON — treat as if not generated yet
+      return res.status(404).json({ error: `No ${type} found for this project yet.` });
+    }
   } catch (error: any) {
     return res.status(500).json({ error: `Failed to read ${type}`, details: error.message });
   }
