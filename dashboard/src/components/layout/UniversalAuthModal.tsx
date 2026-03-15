@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Key, Check, AlertCircle, Loader2, ChevronDown, ChevronRight,
-  ExternalLink, Terminal, Cpu, Globe, Zap, Sparkles, Shield
+  ExternalLink, Terminal, Cpu, Globe, Zap, Sparkles, Shield, LogIn, RefreshCw, Copy
 } from 'lucide-react';
 import { useAuthStore, AIProvider, ProviderGroup } from '../../store/useAuthStore';
 import { API_BASE } from '../../services/api';
@@ -223,6 +223,9 @@ const UniversalAuthModal = ({ onComplete, onboarding = false }: UniversalAuthMod
                     onDetect={() => handleDetect(provider.id)}
                     onDisconnect={() => handleDisconnect(provider.id)}
                     onUrlChange={v => updateProvider(provider.id, { baseUrl: v })}
+                    onAuthSuccess={(models) => {
+                      updateProvider(provider.id, { connected: true, ...(models ? { models } : {}) });
+                    }}
                   />
                 ))}
               </div>
@@ -251,6 +254,205 @@ const UniversalAuthModal = ({ onComplete, onboarding = false }: UniversalAuthMod
   return <AnimatePresence>{content}</AnimatePresence>;
 };
 
+// ─── CLI Auth Flow ─────────────────────────────────────────────────────────────
+
+const CliAuthFlow: React.FC<{
+  provider: AIProvider;
+  onSuccess: (models?: string[]) => void;
+  onDetect: () => void;
+}> = ({ provider, onSuccess, onDetect }) => {
+  const [status, setStatus] = useState<'idle' | 'connecting' | 'waiting' | 'success' | 'error' | 'install_needed'>('idle');
+  const [authUrl, setAuthUrl] = useState<string | null>(null);
+  const [message, setMessage] = useState('');
+  const [installCmd, setInstallCmd] = useState('');
+  const [log, setLog] = useState<string[]>([]);
+  const evtRef = useRef<EventSource | null>(null);
+
+  const openUrl = (url: string) => {
+    // Electron shell or browser
+    const w = window as any;
+    if (w.electron?.shell?.openExternal) {
+      w.electron.shell.openExternal(url);
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const copyText = (text: string) => { try { navigator.clipboard.writeText(text); } catch {} };
+
+  const startAuth = () => {
+    setStatus('connecting');
+    setAuthUrl(null);
+    setLog([]);
+    setMessage('');
+
+    const es = new EventSource(`${API_BASE}/api/auth/cli-login-stream?provider=${provider.id}`);
+    evtRef.current = es;
+
+    // Use POST via fetch + ReadableStream instead of EventSource (EventSource doesn't support POST)
+    es.close();
+    evtRef.current = null;
+
+    fetch(`${API_BASE}/api/auth/cli-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: provider.id }),
+    }).then(async (res) => {
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const ev = JSON.parse(line.slice(6));
+            handleEvent(ev);
+          } catch {}
+        }
+      }
+      if (status !== 'success' && status !== 'error') setStatus('error');
+    }).catch(err => {
+      setMessage(`Connection error: ${err.message}`);
+      setStatus('error');
+    });
+  };
+
+  const handleEvent = (ev: any) => {
+    switch (ev.type) {
+      case 'status':
+        setStatus('waiting');
+        setMessage(ev.message);
+        break;
+      case 'url':
+        setAuthUrl(ev.url);
+        setStatus('waiting');
+        // Auto-open
+        openUrl(ev.url);
+        break;
+      case 'output':
+        setLog(prev => [...prev.slice(-30), ev.text.trim()].filter(Boolean));
+        break;
+      case 'install_needed':
+        setInstallCmd(ev.installCmd);
+        setStatus('install_needed');
+        setMessage(ev.message);
+        break;
+      case 'success':
+        setStatus('success');
+        setMessage(ev.message);
+        onSuccess();
+        break;
+      case 'error':
+        setStatus('error');
+        setMessage(ev.message);
+        break;
+    }
+  };
+
+  if (status === 'idle') {
+    return (
+      <button
+        onClick={startAuth}
+        className="w-full flex items-center justify-center gap-2 py-2.5 bg-zinc-900 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition-colors"
+      >
+        <LogIn size={13} /> Connect with {provider.id === 'claude-code' ? 'Claude.ai' : 'Google'}
+      </button>
+    );
+  }
+
+  if (status === 'install_needed') {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-start gap-2 p-3 bg-amber-50 text-amber-700 rounded-xl text-xs">
+          <AlertCircle size={13} className="flex-shrink-0 mt-0.5" />
+          <p>{message} Install it first:</p>
+        </div>
+        <div className="flex items-center gap-2 bg-zinc-900 rounded-xl px-3 py-2">
+          <code className="text-[11px] text-green-400 font-mono flex-1">{installCmd}</code>
+          <button onClick={() => copyText(installCmd)} className="text-zinc-400 hover:text-zinc-200 flex-shrink-0">
+            <Copy size={11} />
+          </button>
+        </div>
+        <button
+          onClick={onDetect}
+          className="w-full flex items-center justify-center gap-2 py-2 bg-zinc-100 text-zinc-700 text-xs font-semibold rounded-xl hover:bg-zinc-200 transition-colors"
+        >
+          <RefreshCw size={12} /> Check again after installing
+        </button>
+      </div>
+    );
+  }
+
+  if (status === 'success') {
+    return (
+      <div className="flex items-center gap-2 p-3 bg-emerald-50 text-emerald-700 rounded-xl text-xs">
+        <Check size={13} className="flex-shrink-0" />
+        <span>{message}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Auth URL */}
+      {authUrl && (
+        <div className="space-y-2">
+          <p className="text-[11px] text-zinc-500">A browser window should have opened. If not:</p>
+          <button
+            onClick={() => openUrl(authUrl)}
+            className="w-full flex items-center gap-2 px-3 py-2.5 bg-zinc-900 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition-colors"
+          >
+            <ExternalLink size={12} /> Open authentication page
+          </button>
+        </div>
+      )}
+
+      {/* Status */}
+      <div className="flex items-center gap-2 text-xs text-zinc-500">
+        {status === 'connecting' || status === 'waiting' ? (
+          <Loader2 size={12} className="animate-spin flex-shrink-0 text-zinc-400" />
+        ) : status === 'error' ? (
+          <AlertCircle size={12} className="flex-shrink-0 text-red-400" />
+        ) : null}
+        <span>{message || 'Starting…'}</span>
+      </div>
+
+      {/* Log */}
+      {log.length > 0 && (
+        <div className="bg-zinc-950 rounded-xl p-3 max-h-28 overflow-y-auto">
+          {log.map((l, i) => (
+            <div key={i} className="text-[10px] font-mono text-zinc-400 leading-relaxed">{l}</div>
+          ))}
+        </div>
+      )}
+
+      {/* Error actions */}
+      {status === 'error' && (
+        <div className="flex gap-2">
+          <button
+            onClick={startAuth}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold bg-zinc-900 text-white rounded-xl hover:bg-zinc-800"
+          >
+            <RefreshCw size={11} /> Retry
+          </button>
+          <button
+            onClick={onDetect}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold bg-zinc-100 text-zinc-700 rounded-xl hover:bg-zinc-200"
+          >
+            <Check size={11} /> Check credentials
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Provider Card ─────────────────────────────────────────────────────────────
 interface ProviderCardProps {
   provider: AIProvider;
@@ -264,11 +466,12 @@ interface ProviderCardProps {
   onDetect: () => void;
   onDisconnect: () => void;
   onUrlChange: (v: string) => void;
+  onAuthSuccess: (models?: string[]) => void;
 }
 
 const ProviderCard = ({
   provider, expanded, onToggle, keyValue, onKeyChange,
-  testing, testResult, onTest, onDetect, onDisconnect, onUrlChange,
+  testing, testResult, onTest, onDetect, onDisconnect, onUrlChange, onAuthSuccess,
 }: ProviderCardProps) => {
   const isCli = provider.authType === 'cli';
   const isLocal = provider.authType === 'none';
@@ -327,22 +530,13 @@ const ProviderCard = ({
                 <p className="text-xs text-zinc-500 pt-3">{provider.description}</p>
               )}
 
-              {/* CLI providers */}
-              {isCli && (
-                <div className="bg-zinc-900 rounded-xl p-3 text-xs font-mono">
-                  <p className="text-zinc-400 mb-2">Setup (run in terminal):</p>
-                  {provider.id === 'claude-code' ? (
-                    <>
-                      <p className="text-green-400">npm install -g @anthropic-ai/claude-code</p>
-                      <p className="text-green-400">claude auth login</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-green-400">npm install -g @google/gemini-cli</p>
-                      <p className="text-green-400">gemini auth</p>
-                    </>
-                  )}
-                </div>
+              {/* CLI / subscription providers — in-app auth flow */}
+              {isCli && !provider.connected && (
+                <CliAuthFlow
+                  provider={provider}
+                  onSuccess={onAuthSuccess}
+                  onDetect={onDetect}
+                />
               )}
 
               {/* Local providers */}
@@ -398,7 +592,7 @@ const ProviderCard = ({
 
               {/* Actions */}
               <div className="flex items-center gap-2">
-                {isCli || isLocal ? (
+                {isLocal ? (
                   <button
                     onClick={onDetect}
                     disabled={testing}
@@ -407,7 +601,7 @@ const ProviderCard = ({
                     {testing ? <Loader2 size={12} className="animate-spin" /> : <Terminal size={12} />}
                     {testing ? 'Detecting…' : 'Detect'}
                   </button>
-                ) : (
+                ) : isCli ? null : (
                   <button
                     onClick={onTest}
                     disabled={testing || (!keyValue && !provider.apiKey)}

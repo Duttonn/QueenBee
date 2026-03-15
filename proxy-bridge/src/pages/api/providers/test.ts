@@ -668,11 +668,11 @@ function testClaudeCode(): TestResult {
 
     if (!hasBinary) {
         return { success: false, provider: 'claude-code', error: 'not_installed',
-            message: 'Claude CLI not found. Install it: npm install -g @anthropic-ai/claude-code, then run: claude' };
+            message: 'Claude CLI not found. Use the Connect button to authenticate.' };
     }
     if (!hasConfig) {
         return { success: false, provider: 'claude-code', error: 'not_authenticated',
-            message: 'Claude CLI found but not authenticated. Run: claude auth login' };
+            message: 'Claude CLI found but not authenticated. Use the Connect button to sign in.' };
     }
     return { success: true, provider: 'claude-code',
         message: 'Claude CLI detected and authenticated. Subscription active.',
@@ -684,7 +684,7 @@ function testGeminiCli(): TestResult {
     const credsPath = path.join(os.homedir(), '.gemini', 'oauth_creds.json');
     if (!fs.existsSync(credsPath)) {
         return { success: false, provider: 'gemini-cli', error: 'not_authenticated',
-            message: 'Gemini CLI not authenticated. Install: npm install -g @google/gemini-cli, then run: gemini auth' };
+            message: 'Not signed in. Use the Connect button to authenticate with your Google account.' };
     }
     try {
         const creds = JSON.parse(fs.readFileSync(credsPath, 'utf-8'));
