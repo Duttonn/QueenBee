@@ -1380,18 +1380,16 @@ export class ToolExecutor {
             .map(([tid, summary]) => `### ${tid}\n${summary}`)
             .join('\n\n');
 
-          if (io) {
-            io.emit('UI_UPDATE', {
-              action: 'SWARM_COMPLETE',
-              payload: {
-                swarmId,
-                completed: tracker.completed,
-                failed: tracker.failed,
-                total: tracker.total,
-                report: allSummaries
-              }
-            });
-          }
+          broadcast('UI_UPDATE', {
+            action: 'SWARM_COMPLETE',
+            payload: {
+              swarmId,
+              completed: tracker.completed,
+              failed: tracker.failed,
+              total: tracker.total,
+              report: allSummaries
+            }
+          });
 
           // Also post the aggregated report to roundtable
             try {
