@@ -5,6 +5,7 @@ import { GeminiProvider } from './providers/GeminiProvider';
 import { MistralProvider } from './providers/MistralProvider';
 import { ClaudeCodeProvider } from './providers/ClaudeCodeProvider';
 import { GeminiCliProvider } from './providers/GeminiCliProvider';
+import { GeminiAntigravityProvider } from './providers/GeminiAntigravityProvider';
 import { OpenRouterProvider } from './providers/OpenRouterProvider';
 import { OllamaProvider } from './providers/OllamaProvider';
 import { LLMMessage, LLMProviderOptions, LLMResponse } from './types/llm';
@@ -37,9 +38,10 @@ const PRICING_REGISTRY: Record<string, Record<string, { input: number; output: n
     'mistral-small-latest': { input: 0.001, output: 0.003 },
     'default': { input: 0.002, output: 0.006 }
   },
-  // CLI subscription providers — billed via subscription, token tracking approximate
-  'claude-code': { 'default': { input: 0, output: 0 } },
-  'gemini-cli':  { 'default': { input: 0, output: 0 } },
+  // CLI / free-tier subscription providers — billed via subscription or Google free quota
+  'claude-code':          { 'default': { input: 0, output: 0 } },
+  'gemini-cli':           { 'default': { input: 0, output: 0 } },
+  'gemini-antigravity':   { 'default': { input: 0, output: 0 } },
   // OpenRouter — pay-per-use, cost varies by model (approximate average)
   openrouter: {
     'openai/gpt-4o': { input: 0.005, output: 0.015 },
@@ -350,6 +352,12 @@ export class UnifiedLLMService {
       this.providers.set('gemini-cli', geminiCliProvider);
       console.log('[LLMService] Gemini CLI OAuth credentials detected — gemini-cli provider enabled');
     }
+
+    const geminiAntigravityProvider = new GeminiAntigravityProvider();
+    if (geminiAntigravityProvider.hasKey()) {
+      this.providers.set('gemini-antigravity', geminiAntigravityProvider);
+      console.log('[LLMService] Gemini Antigravity credentials detected — gemini-antigravity provider enabled');
+    }
   }
 
   private initFromProfile(profile: any) {
@@ -364,6 +372,11 @@ export class UnifiedLLMService {
     }
     if (profile.provider === 'gemini-cli') {
       const p = new GeminiCliProvider();
+      if (p.hasKey()) this.providers.set(id, p);
+      return;
+    }
+    if (profile.provider === 'gemini-antigravity') {
+      const p = new GeminiAntigravityProvider();
       if (p.hasKey()) this.providers.set(id, p);
       return;
     }
@@ -704,6 +717,10 @@ export class UnifiedLLMService {
       }
       case 'gemini-cli': {
         const p = new GeminiCliProvider();
+        return p.hasKey() ? p : undefined;
+      }
+      case 'gemini-antigravity': {
+        const p = new GeminiAntigravityProvider();
         return p.hasKey() ? p : undefined;
       }
       default:

@@ -67,7 +67,7 @@ const UniversalAuthModal = ({ onComplete, onboarding = false }: UniversalAuthMod
 
   // Auto-detect CLI providers on open
   useEffect(() => {
-    ['claude-code', 'gemini-cli', 'ollama', 'lmstudio'].forEach(id => {
+    ['claude-code', 'gemini-cli', 'gemini-antigravity', 'ollama', 'lmstudio'].forEach(id => {
       handleDetect(id);
     });
   }, []); // eslint-disable-line
@@ -270,6 +270,8 @@ const CliAuthFlow: React.FC<{
   const [log, setLog] = useState<string[]>([]);
   const sessionRef = useRef<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Track whether we've already auto-opened the URL to prevent duplicate opens
+  const urlOpenedRef = useRef(false);
 
   const stopPolling = () => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -294,6 +296,11 @@ const CliAuthFlow: React.FC<{
     setAuthUrl(null);
     setLog([]);
     setMessage('');
+    urlOpenedRef.current = false;
+
+    // claude-code opens the browser itself via the CLI — we must NOT auto-open the URL
+    // Gemini providers use our own local server and need us to open the URL
+    const autoOpen = provider.id !== 'claude-code';
 
     try {
       const res = await fetch(`${API_BASE}/api/auth/cli-login`, {
@@ -307,10 +314,13 @@ const CliAuthFlow: React.FC<{
       sessionRef.current = data.sessionId;
       setStatus('waiting');
 
-      // If URL already available (Gemini generates it synchronously), show+open immediately
+      // If URL already available on start response (Gemini), show and optionally open
       if (data.url) {
         setAuthUrl(data.url);
-        openUrl(data.url);
+        if (autoOpen && !urlOpenedRef.current) {
+          urlOpenedRef.current = true;
+          openUrl(data.url);
+        }
       }
 
       // Poll backend for status updates
@@ -323,9 +333,15 @@ const CliAuthFlow: React.FC<{
 
           if (s.log?.length) setLog(s.log);
           if (s.message) setMessage(s.message);
-          if (s.url && !authUrl) {
+          if (s.url && !urlOpenedRef.current) {
             setAuthUrl(s.url);
-            openUrl(s.url);
+            if (autoOpen) {
+              urlOpenedRef.current = true;
+              openUrl(s.url);
+            } else {
+              // For claude-code: just surface the URL without opening — CLI already opened the browser
+              setAuthUrl(s.url);
+            }
           }
 
           if (s.status === 'success') {
@@ -394,18 +410,35 @@ const CliAuthFlow: React.FC<{
 
   return (
     <div className="space-y-3">
-      {/* Auth URL — shown prominently, auto-opens but also always clickable */}
+      {/* Auth URL */}
       {authUrl ? (
         <div className="space-y-1.5">
-          <button
-            onClick={() => openUrl(authUrl)}
-            className="w-full flex items-center gap-2 px-3 py-2.5 bg-zinc-900 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition-colors"
-          >
-            <ExternalLink size={12} /> Open sign-in page
-          </button>
-          <p className="text-[10px] text-zinc-400 text-center">
-            A browser window should have opened. Click above if it didn't.
-          </p>
+          {provider.id === 'claude-code' ? (
+            /* Claude CLI opens the browser itself — just show a fallback link */
+            <div className="flex items-center gap-2 p-3 bg-zinc-900 text-zinc-300 rounded-xl text-xs">
+              <Loader2 size={12} className="animate-spin flex-shrink-0 text-zinc-400" />
+              <span>Browser sign-in opened — complete it to connect.</span>
+            </div>
+          ) : (
+            <button
+              onClick={() => openUrl(authUrl)}
+              className="w-full flex items-center gap-2 px-3 py-2.5 bg-zinc-900 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition-colors"
+            >
+              <ExternalLink size={12} /> Open sign-in page
+            </button>
+          )}
+          {provider.id === 'claude-code' ? (
+            <button
+              onClick={() => openUrl(authUrl)}
+              className="w-full text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors text-center"
+            >
+              Browser didn't open? Click here
+            </button>
+          ) : (
+            <p className="text-[10px] text-zinc-400 text-center">
+              A browser window should have opened. Click above if it didn't.
+            </p>
+          )}
         </div>
       ) : (
         <div className="flex items-center gap-2 text-xs text-zinc-400 py-1">

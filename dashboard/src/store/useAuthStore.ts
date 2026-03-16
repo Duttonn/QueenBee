@@ -87,6 +87,13 @@ const defaultProviders: AIProvider[] = [
         description: 'Use your Google AI Pro subscription. Requires the Gemini CLI.',
         docsUrl: 'https://github.com/google-gemini/gemini-cli'
     },
+    {
+        id: 'gemini-antigravity', name: 'Gemini Free (Google Account)', icon: '🆓', group: 'subscription',
+        connected: false, tier: 3, authType: 'cli',
+        models: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'],
+        description: 'Free-tier Gemini via your Google account — no API key or CLI needed.',
+        docsUrl: 'https://ai.google.dev/gemini-api/docs/oauth'
+    },
 
     // ── Multi-model hubs ───────────────────────────────────────────────────────
     {

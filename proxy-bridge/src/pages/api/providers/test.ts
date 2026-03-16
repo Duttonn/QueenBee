@@ -159,6 +159,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 result = testGeminiCli();
                 break;
 
+            case 'gemini-antigravity':
+                result = testGeminiAntigravity();
+                break;
+
             case 'custom':
                 result = await testCustom(apiKey, baseUrl, model);
                 break;
@@ -699,6 +703,29 @@ function testGeminiCli(): TestResult {
     } catch {
         return { success: false, provider: 'gemini-cli', error: 'invalid_creds',
             message: 'Could not read Gemini credentials. Run: gemini auth' };
+    }
+}
+
+/** Gemini Antigravity (free tier) — check if in-app OAuth creds file exists */
+function testGeminiAntigravity(): TestResult {
+    const credsPath = path.join(os.homedir(), '.gemini', 'queenbee_antigravity_creds.json');
+    if (!fs.existsSync(credsPath)) {
+        return { success: false, provider: 'gemini-antigravity', error: 'not_authenticated',
+            message: 'Not signed in. Use the Connect button to sign in with your Google account.' };
+    }
+    try {
+        const creds = JSON.parse(fs.readFileSync(credsPath, 'utf-8'));
+        const hasToken = !!(creds.refresh_token || creds.refreshToken);
+        if (!hasToken) {
+            return { success: false, provider: 'gemini-antigravity', error: 'invalid_creds',
+                message: 'Credentials file found but refresh token missing. Reconnect via the Connect button.' };
+        }
+        return { success: true, provider: 'gemini-antigravity',
+            message: 'Gemini Free credentials detected. Google account active.',
+            models: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'] };
+    } catch {
+        return { success: false, provider: 'gemini-antigravity', error: 'invalid_creds',
+            message: 'Could not read credentials. Reconnect via the Connect button.' };
     }
 }
 
