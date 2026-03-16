@@ -88,10 +88,10 @@ const defaultProviders: AIProvider[] = [
         docsUrl: 'https://github.com/google-gemini/gemini-cli'
     },
     {
-        id: 'gemini-antigravity', name: 'Gemini Free (Google Account)', icon: '🆓', group: 'subscription',
+        id: 'gemini-antigravity', name: 'Google Antigravity', icon: '🌐', group: 'subscription',
         connected: false, tier: 3, authType: 'cli',
         models: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'],
-        description: 'Free-tier Gemini via your Google account — no API key or CLI needed.',
+        description: 'Free-tier Gemini via Google account — no API key or CLI needed.',
         docsUrl: 'https://ai.google.dev/gemini-api/docs/oauth'
     },
 
@@ -335,7 +335,7 @@ export const useAuthStore = create<AuthState>()(
         }),
         {
             name: 'queen-bee-auth',
-            version: 7, // v7: add gemini-antigravity provider
+            version: 8, // v8: rename gemini-antigravity → Google Antigravity
             migrate: (persisted: any, version: number) => {
                 // Merge any new defaultProviders entries missing from persisted state
                 const state = persisted as any;

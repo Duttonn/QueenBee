@@ -666,11 +666,22 @@ async function testOpenRouter(apiKey?: string): Promise<TestResult> {
 /** Claude Code — check if `claude` binary is installed and authenticated */
 function testClaudeCode(): TestResult {
     const configDir = path.join(os.homedir(), '.config', 'anthropic');
-    const hasConfig = fs.existsSync(configDir);
-    const binaryCheck = spawnSync('which', ['claude'], { encoding: 'utf-8' });
+    // Check for non-empty credential files
+    const hasConfig = (() => {
+        try {
+            if (!fs.existsSync(configDir)) return false;
+            return fs.readdirSync(configDir).some(f => {
+                try { return fs.statSync(path.join(configDir, f)).size > 0; } catch { return false; }
+            });
+        } catch { return false; }
+    })();
+
+    // Check binary — search extended PATH so homebrew/npm-global are found
+    const extPath = `/opt/homebrew/bin:/usr/local/bin:/usr/bin:${process.env.PATH ?? ''}`;
+    const binaryCheck = spawnSync('which', ['claude'], { encoding: 'utf-8', env: { ...process.env, PATH: extPath } });
     const hasBinary = binaryCheck.status === 0;
 
-    if (!hasBinary) {
+    if (!hasConfig && !hasBinary) {
         return { success: false, provider: 'claude-code', error: 'not_installed',
             message: 'Claude CLI not found. Use the Connect button to authenticate.' };
     }
@@ -679,7 +690,7 @@ function testClaudeCode(): TestResult {
             message: 'Claude CLI found but not authenticated. Use the Connect button to sign in.' };
     }
     return { success: true, provider: 'claude-code',
-        message: 'Claude CLI detected and authenticated. Subscription active.',
+        message: 'Claude CLI authenticated. Subscription active.',
         models: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'] };
 }
 

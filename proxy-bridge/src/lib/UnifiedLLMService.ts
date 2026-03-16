@@ -612,7 +612,13 @@ export class UnifiedLLMService {
 
     // 1. Check existing providers
     let provider = this.providers.get(providerId);
-    if (provider) return checkKey(provider);
+    if (provider) {
+      const checked = checkKey(provider);
+      // For CLI providers: if hasKey() fails on the cached instance, fall through to re-create
+      // (creds may have been written after startup, or the cached instance may be stale)
+      if (checked) return checked;
+      if (!['claude-code', 'gemini-cli', 'gemini-antigravity'].includes(providerId)) return undefined;
+    }
 
     // 2. Try alias lookup
     const alias = this.providerAliases[providerId];

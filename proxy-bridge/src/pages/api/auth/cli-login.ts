@@ -147,40 +147,53 @@ const CODE_ASSIST_ENDPOINTS = [
 
 /** Try to extract the OAuth client ID (and secret) from the installed gemini-cli binary */
 function extractGeminiCliCredentials(): { clientId: string; clientSecret?: string } | null {
+  // Well-known install locations (covers homebrew, npm global, nvm, etc.)
+  const wellKnownBases = [
+    '/opt/homebrew/lib/node_modules/@google/gemini-cli',
+    '/usr/local/lib/node_modules/@google/gemini-cli',
+    path.join(os.homedir(), '.npm-global', 'lib', 'node_modules', '@google', 'gemini-cli'),
+    path.join(os.homedir(), '.nvm', 'versions', 'node'), // scanned below
+  ];
+
+  const dirsToSearch: string[] = [...wellKnownBases];
+
+  // Also try resolving via PATH
   try {
     const { execSync } = require('child_process');
-    const geminiPath = execSync('which gemini 2>/dev/null', { encoding: 'utf-8' }).trim();
-    if (!geminiPath) return null;
-
-    // Resolve symlinks to find the real installation directory
-    const realPath = fs.realpathSync(geminiPath);
-    const binDir   = path.dirname(geminiPath);
-    const realDir  = path.dirname(path.dirname(realPath));
-
-    const searchDirs = [
-      realDir,
-      path.join(realDir, 'node_modules', '@google', 'gemini-cli'),
-      path.join(binDir, '..', 'lib', 'node_modules', '@google', 'gemini-cli'),
-      path.join(binDir, '..', 'node_modules', '@google', 'gemini-cli'),
-    ];
-
-    for (const dir of searchDirs) {
-      const candidates = [
-        path.join(dir, 'node_modules', '@google', 'gemini-cli-core', 'dist', 'src', 'code_assist', 'oauth2.js'),
-        path.join(dir, 'node_modules', '@google', 'gemini-cli-core', 'dist', 'code_assist', 'oauth2.js'),
-      ];
-      for (const p of candidates) {
-        if (fs.existsSync(p)) {
-          const content = fs.readFileSync(p, 'utf-8');
-          const idMatch     = content.match(/(\d+-[a-z0-9]+\.apps\.googleusercontent\.com)/);
-          const secretMatch = content.match(/(GOCSPX-[A-Za-z0-9_-]+)/);
-          if (idMatch) {
-            return { clientId: idMatch[1], clientSecret: secretMatch?.[1] };
-          }
-        }
-      }
+    const fullPath = `/opt/homebrew/bin:/usr/local/bin:/usr/bin:${process.env.PATH ?? ''}`;
+    const geminiPath = execSync(`PATH="${fullPath}" which gemini 2>/dev/null`, { encoding: 'utf-8' }).trim();
+    if (geminiPath) {
+      const realPath = fs.realpathSync(geminiPath);
+      const binDir   = path.dirname(geminiPath);
+      const realDir  = path.dirname(path.dirname(realPath));
+      dirsToSearch.push(
+        realDir,
+        path.join(realDir, 'node_modules', '@google', 'gemini-cli'),
+        path.join(binDir, '..', 'lib', 'node_modules', '@google', 'gemini-cli'),
+        path.join(binDir, '..', 'node_modules', '@google', 'gemini-cli'),
+      );
     }
   } catch {}
+
+  const oauth2Paths = [
+    'node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js',
+    'node_modules/@google/gemini-cli-core/dist/code_assist/oauth2.js',
+  ];
+
+  for (const base of dirsToSearch) {
+    for (const rel of oauth2Paths) {
+      const p = path.join(base, rel);
+      try {
+        if (!fs.existsSync(p)) continue;
+        const content = fs.readFileSync(p, 'utf-8');
+        const idMatch     = content.match(/(\d+-[a-z0-9]+\.apps\.googleusercontent\.com)/);
+        const secretMatch = content.match(/(GOCSPX-[A-Za-z0-9_-]+)/);
+        if (idMatch) {
+          return { clientId: idMatch[1], clientSecret: secretMatch?.[1] };
+        }
+      } catch {}
+    }
+  }
   return null;
 }
 

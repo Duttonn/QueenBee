@@ -17,13 +17,21 @@ import * as fs from 'fs';
 export class ClaudeCodeProvider extends LLMProvider {
   id = 'claude-code';
 
-  /** Returns true if the `claude` binary is installed and accessible. */
+  /** Returns true if credentials exist OR the claude binary is findable. */
   hasKey(): boolean {
-    // Fast check: does the credentials dir exist?
+    // Credentials exist (written by auth flow) — binary check secondary
     const configDir = path.join(os.homedir(), '.config', 'anthropic');
-    if (fs.existsSync(configDir)) return true;
-    // Fallback: check PATH
-    const result = spawnSync('which', ['claude'], { encoding: 'utf-8' });
+    if (fs.existsSync(configDir)) {
+      try {
+        const files = fs.readdirSync(configDir);
+        if (files.some(f => { try { return fs.statSync(path.join(configDir, f)).size > 0; } catch { return false; } })) {
+          return true;
+        }
+      } catch {}
+    }
+    // Fallback: check binary in extended PATH (homebrew, npm-global)
+    const extPath = `/opt/homebrew/bin:/usr/local/bin:/usr/bin:${process.env.PATH ?? ''}`;
+    const result = spawnSync('which', ['claude'], { encoding: 'utf-8', env: { ...process.env, PATH: extPath } });
     return result.status === 0;
   }
 
