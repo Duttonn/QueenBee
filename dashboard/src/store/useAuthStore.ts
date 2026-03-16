@@ -335,7 +335,19 @@ export const useAuthStore = create<AuthState>()(
         }),
         {
             name: 'queen-bee-auth',
-            version: 6, // Incremented to add full provider ecosystem
+            version: 7, // v7: add gemini-antigravity provider
+            migrate: (persisted: any, version: number) => {
+                // Merge any new defaultProviders entries missing from persisted state
+                const state = persisted as any;
+                if (state?.providers) {
+                    const existingIds = new Set(state.providers.map((p: any) => p.id));
+                    const newOnes = defaultProviders.filter(p => !existingIds.has(p.id));
+                    if (newOnes.length > 0) {
+                        state.providers = [...state.providers, ...newOnes];
+                    }
+                }
+                return state;
+            },
             partialize: (state) => ({
                 user: state.user,
                 isAuthenticated: state.isAuthenticated,

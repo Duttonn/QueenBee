@@ -381,7 +381,7 @@ const CliAuthFlow: React.FC<{
       <div className="space-y-3">
         <div className="flex items-start gap-2 p-3 bg-amber-50 text-amber-700 rounded-xl text-xs">
           <AlertCircle size={13} className="flex-shrink-0 mt-0.5" />
-          <p>Claude CLI not found. Install it first:</p>
+          <p>{message || 'CLI not found. Install it first:'}</p>
         </div>
         <div className="flex items-center gap-2 bg-zinc-900 rounded-xl px-3 py-2">
           <code className="text-[11px] text-green-400 font-mono flex-1">{installCmd}</code>

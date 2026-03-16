@@ -640,7 +640,24 @@ export class UnifiedLLMService {
       }
     }
 
-    // 5. Check Environment Variables (Last Resort for lazy loading)
+    // 5. CLI subscription providers — check credentials on-demand (auth may have completed after startup)
+    if (providerId === 'claude-code') {
+      const p = new ClaudeCodeProvider();
+      if (p.hasKey()) { this.providers.set('claude-code', p); return p; }
+      return undefined;
+    }
+    if (providerId === 'gemini-cli') {
+      const p = new GeminiCliProvider();
+      if (p.hasKey()) { this.providers.set('gemini-cli', p); return p; }
+      return undefined;
+    }
+    if (providerId === 'gemini-antigravity') {
+      const p = new GeminiAntigravityProvider();
+      if (p.hasKey()) { this.providers.set('gemini-antigravity', p); return p; }
+      return undefined;
+    }
+
+    // 6. Check Environment Variables (Last Resort for lazy loading)
     if (providerId === 'gemini' || alias === 'gemini') {
         const key = process.env.GEMINI_API_KEY;
         if (key) {

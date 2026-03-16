@@ -194,16 +194,13 @@ async function startGeminiOAuth(session: Session, provider: 'gemini-cli' | 'gemi
   let clientSecret: string | undefined;
 
   if (provider === 'gemini-cli') {
+    // Try to extract real client credentials from installed binary — optional, falls back to known ID
     const extracted = extractGeminiCliCredentials();
-    if (!extracted) {
-      // gemini-cli requires the binary to be installed
-      session.status = 'install_needed';
-      session.message = 'Gemini CLI not found. Install it first, then connect.';
-      session.installCmd = 'brew install gemini-cli  # or: npm install -g @google/gemini-cli';
-      return;
+    if (extracted) {
+      clientId     = extracted.clientId;
+      clientSecret = extracted.clientSecret;
     }
-    clientId     = extracted.clientId;
-    clientSecret = extracted.clientSecret;
+    // No binary required — the fallback FALLBACK_CLIENT_ID is always sufficient for the OAuth flow
   }
   // For antigravity: no binary required — use the known client ID directly
 
