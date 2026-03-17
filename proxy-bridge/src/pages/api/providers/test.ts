@@ -714,7 +714,7 @@ function testGeminiCli(): TestResult {
         }
         return { success: true, provider: 'gemini-cli',
             message: 'Gemini CLI OAuth credentials detected. Subscription active.',
-            models: ['gemini-3.1-pro-preview', 'gemini-3.1-flash-preview', 'gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] };
+            models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] };
     } catch {
         return { success: false, provider: 'gemini-cli', error: 'invalid_creds',
             message: 'Could not read Gemini credentials. Run: gemini auth' };
@@ -737,7 +737,7 @@ function testGeminiAntigravity(): TestResult {
         }
         return { success: true, provider: 'gemini-antigravity',
             message: 'Gemini Free credentials detected. Google account active.',
-            models: ['claude-opus-4-6', 'claude-sonnet-4-6', 'gemini-3.1-pro-preview', 'gemini-3.1-flash-preview', 'gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] };
+            models: ['gemini-3.1-pro-high', 'gemini-3.1-pro-low', 'gemini-3-flash', 'claude-sonnet-4-6', 'claude-opus-4-6-thinking', 'gpt-oss-120b-medium'] };
     } catch {
         return { success: false, provider: 'gemini-antigravity', error: 'invalid_creds',
             message: 'Could not read credentials. Reconnect via the Connect button.' };
