@@ -90,8 +90,8 @@ const defaultProviders: AIProvider[] = [
     {
         id: 'gemini-antigravity', name: 'Google Antigravity', icon: '🌐', group: 'subscription',
         connected: false, tier: 3, authType: 'cli',
-        models: ['gemini-3.1-pro-preview', 'gemini-3.1-flash-preview', 'gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
-        description: 'Free-tier Gemini via Google account — no API key or CLI needed.',
+        models: ['claude-opus-4-6', 'claude-sonnet-4-6', 'gemini-3.1-pro-preview', 'gemini-3.1-flash-preview', 'gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
+        description: 'Free-tier Gemini + Claude via Google account — no API key or CLI needed.',
         docsUrl: 'https://ai.google.dev/gemini-api/docs/oauth'
     },
 
@@ -335,7 +335,7 @@ export const useAuthStore = create<AuthState>()(
         }),
         {
             name: 'queen-bee-auth',
-            version: 10, // v10: add gemini-3.1-flash-preview and gemini-3.1-flash-lite-preview to gemini-cli + antigravity
+            version: 11, // v11: add claude-opus-4-6 + claude-sonnet-4-6 to gemini-antigravity (OpenAI-compat path)
             migrate: (persisted: any, version: number) => {
                 // Merge any new defaultProviders entries missing from persisted state
                 const state = persisted as any;

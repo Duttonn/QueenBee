@@ -14,8 +14,9 @@ import * as fs from 'fs';
  * Credentials stored at: ~/.gemini/queenbee_antigravity_creds.json
  */
 
-const CREDS_PATH       = path.join(os.homedir(), '.gemini', 'queenbee_antigravity_creds.json');
-const CODE_ASSIST_BASE = 'https://cloudcode-pa.googleapis.com/v1internal';
+const CREDS_PATH              = path.join(os.homedir(), '.gemini', 'queenbee_antigravity_creds.json');
+const CODE_ASSIST_BASE        = 'https://cloudcode-pa.googleapis.com/v1internal';
+const CODE_ASSIST_OPENAI_BASE = 'https://cloudcode-pa.googleapis.com/v1';
 
 // OAuth client from the open-source google/gemini-cli npm package (public credentials)
 const GEMINI_CLIENT_ID     = process.env.GEMINI_CLI_CLIENT_ID!;
@@ -94,6 +95,88 @@ export class GeminiAntigravityProvider extends LLMProvider {
     return typeof sys.content === 'string' ? sys.content : JSON.stringify(sys.content);
   }
 
+  private isClaudeModel(model: string): boolean {
+    return model.startsWith('claude-');
+  }
+
+  /** OpenAI-compat chat request for Claude models via Code Assist */
+  private async chatClaude(messages: LLMMessage[], model: string, options?: LLMProviderOptions): Promise<LLMResponse> {
+    const token = await this.getAccessToken();
+    const openaiMessages = messages.map(m => ({
+      role: m.role as string,
+      content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+    }));
+    const body: any = { model, messages: openaiMessages, stream: false };
+    if (options?.maxTokens)      body.max_tokens = options.maxTokens;
+    if (options?.temperature != null) body.temperature = options.temperature;
+
+    console.log(`[GeminiAntigravity] claude chat model=${model}`);
+    const res = await fetch(`${CODE_ASSIST_OPENAI_BASE}/chat/completions`, {
+      method:  'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`[GeminiAntigravity] Claude API error ${res.status} (model=${model}): ${errText}`);
+    }
+    const data    = await res.json() as any;
+    const content = data.choices?.[0]?.message?.content ?? '';
+    const usage   = data.usage;
+    return {
+      id:    `gemini-antigravity-claude-${Date.now()}`,
+      model,
+      content,
+      usage: usage ? {
+        prompt_tokens:     usage.prompt_tokens     ?? 0,
+        completion_tokens: usage.completion_tokens ?? 0,
+        total_tokens:      usage.total_tokens      ?? 0,
+      } : undefined,
+    };
+  }
+
+  /** OpenAI-compat streaming for Claude models via Code Assist */
+  private async *chatStreamClaude(messages: LLMMessage[], model: string, options?: LLMProviderOptions): AsyncGenerator<LLMResponse> {
+    const token = await this.getAccessToken();
+    const openaiMessages = messages.map(m => ({
+      role: m.role as string,
+      content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+    }));
+    const body: any = { model, messages: openaiMessages, stream: true };
+    if (options?.maxTokens)      body.max_tokens = options.maxTokens;
+    if (options?.temperature != null) body.temperature = options.temperature;
+
+    const res = await fetch(`${CODE_ASSIST_OPENAI_BASE}/chat/completions`, {
+      method:  'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body),
+    });
+    if (!res.ok || !res.body) {
+      const errText = await res.text();
+      throw new Error(`[GeminiAntigravity] Claude stream error ${res.status}: ${errText}`);
+    }
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer    = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line || line === 'data: [DONE]') continue;
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const chunk = JSON.parse(line.slice(6)) as any;
+          const text  = chunk.choices?.[0]?.delta?.content ?? '';
+          if (text) yield { id: `gemini-antigravity-claude-stream-${Date.now()}`, model, content: text };
+        } catch { /* skip malformed */ }
+      }
+    }
+  }
+
   private buildRequest(messages: LLMMessage[], options?: LLMProviderOptions): any {
     const req: any = {
       contents:         this.toContents(messages),
@@ -108,9 +191,11 @@ export class GeminiAntigravityProvider extends LLMProvider {
   }
 
   async chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
+    const model = options?.model || 'gemini-2.5-flash';
+    if (this.isClaudeModel(model)) return this.chatClaude(messages, model, options);
+
     const token   = await this.getAccessToken();
     const project = await this.getProjectId(token);
-    const model   = options?.model || 'gemini-2.5-flash';
 
     console.log(`[GeminiAntigravity] chat model=${model} project=${project}`);
     const res = await fetch(`${CODE_ASSIST_BASE}:generateContent`, {
@@ -145,9 +230,12 @@ export class GeminiAntigravityProvider extends LLMProvider {
   }
 
   async *chatStream(messages: LLMMessage[], options?: LLMProviderOptions): AsyncGenerator<LLMResponse> {
+    const model = options?.model || 'gemini-2.5-flash';
+    if (this.isClaudeModel(model)) { yield* this.chatStreamClaude(messages, model, options); return; }
+
     const token   = await this.getAccessToken();
     const project = await this.getProjectId(token);
-    const model   = options?.model || 'gemini-2.5-flash';
+
 
     const res = await fetch(`${CODE_ASSIST_BASE}:streamGenerateContent`, {
       method:  'POST',
