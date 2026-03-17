@@ -172,45 +172,41 @@ function b64url(buf: Buffer) {
   return buf.toString('base64url');
 }
 
-// Singleton callback server — reused across auth sessions so there's never a stale
-// server with a mismatched verifier holding port 8085.
-let _callbackServer: http.Server | null = null;
+// Per-port server singletons — tracked separately so closing one port
+// doesn't interfere with the other.
+const _portServers = new Map<number, http.Server>();
+
+async function closeServerOnPort(port: number): Promise<void> {
+  const existing = _portServers.get(port);
+  if (!existing) return;
+  _portServers.delete(port);
+  await new Promise<void>(resolve => {
+    try {
+      (existing as any).closeAllConnections?.();
+      existing.close(() => resolve());
+    } catch { resolve(); }
+  });
+}
 
 async function acquireCallbackServer(): Promise<http.Server> {
-  // Close and destroy any existing server so the new session owns the port
-  if (_callbackServer) {
-    await new Promise<void>(resolve => {
-      try {
-        (_callbackServer as any).closeAllConnections?.();
-        _callbackServer!.close(() => resolve());
-      } catch { resolve(); }
-    });
-    _callbackServer = null;
-  }
-
+  await closeServerOnPort(8085);
   const server = http.createServer();
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(8085, 'localhost', () => resolve());
   });
-  _callbackServer = server;
+  _portServers.set(8085, server);
   return server;
 }
 
-async function acquireCallbackServerOnPort(port: number, _path: string): Promise<http.Server> {
-  if (_callbackServer) {
-    await new Promise<void>(resolve => {
-      try { (_callbackServer as any).closeAllConnections?.(); _callbackServer!.close(() => resolve()); }
-      catch { resolve(); }
-    });
-    _callbackServer = null;
-  }
+async function acquireCallbackServerOnPort(port: number): Promise<http.Server> {
+  await closeServerOnPort(port);
   const server = http.createServer();
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(port, 'localhost', () => resolve());
   });
-  _callbackServer = server;
+  _portServers.set(port, server);
   return server;
 }
 
@@ -227,16 +223,10 @@ async function startGeminiOAuth(session: Session, provider: 'gemini-cli' | 'gemi
   const challenge  = b64url(crypto.createHash('sha256').update(verifier).digest());
 
   const server = isAntigravity
-    ? await acquireCallbackServerOnPort(callbackPort, callbackPath)
+    ? await acquireCallbackServerOnPort(callbackPort)
     : await acquireCallbackServer();
 
-  session.cleanup = () => {
-    try {
-      (server as any).closeAllConnections?.();
-      server.close();
-    } catch {}
-    if (_callbackServer === server) _callbackServer = null;
-  };
+  session.cleanup = () => { closeServerOnPort(callbackPort); };
 
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   authUrl.searchParams.set('client_id',             clientId);
@@ -255,7 +245,7 @@ async function startGeminiOAuth(session: Session, provider: 'gemini-cli' | 'gemi
   // Wait for OAuth callback
   const { code } = await new Promise<{ code: string }>((resolve, reject) => {
     const timeout = setTimeout(() => {
-      server.close();
+      closeServerOnPort(callbackPort);
       reject(new Error('Timed out (5 min). Try again.'));
     }, 5 * 60 * 1000);
 
@@ -269,7 +259,7 @@ async function startGeminiOAuth(session: Session, provider: 'gemini-cli' | 'gemi
       if (error) {
         res.writeHead(400, { 'Content-Type': 'text/plain' });
         res.end(`Authentication failed: ${error}`);
-        clearTimeout(timeout); server.close();
+        clearTimeout(timeout); closeServerOnPort(callbackPort);
         reject(new Error(`OAuth error: ${error}`));
         return;
       }
@@ -289,7 +279,7 @@ async function startGeminiOAuth(session: Session, provider: 'gemini-cli' | 'gemi
       </body></html>`);
 
       clearTimeout(timeout);
-      server.close();
+      closeServerOnPort(callbackPort);
       resolve({ code });
     });
   });
