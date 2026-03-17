@@ -2,7 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+// In the packaged Electron app, process.cwd() points inside the read-only
+// Resources bundle. Use QUEENBEE_CONFIG_DIR (set by main.ts to userData) so
+// the DB survives app updates. Fall back to cwd/data for dev.
+const DATA_DIR = process.env.QUEENBEE_CONFIG_DIR
+  ? path.join(process.env.QUEENBEE_CONFIG_DIR, 'data')
+  : path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DATA_DIR, 'queenbee.json');
 
 console.log('Database path:', DB_PATH);

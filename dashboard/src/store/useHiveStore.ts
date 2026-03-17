@@ -109,16 +109,22 @@ export const useHiveStore = create<HiveState>()(
             console.log(`[HiveStore] Projects loaded from backend: ${fetchedProjects.length}`);
             
             set((state) => {
-              const mergedProjects = fetchedProjects.map((fp: any) => {
+              const fetchedIds = new Set(fetchedProjects.map((fp: any) => fp.id));
+
+              // Merge backend projects (preserving local threads)
+              const mergedFromBackend = fetchedProjects.map((fp: any) => {
                 const existing = state.projects.find(p => p.id === fp.id);
-                // Preserve local threads if backend threads are empty but local ones exist
-                const threads = (fp.threads && fp.threads.length > 0) 
-                  ? fp.threads 
+                const threads = (fp.threads && fp.threads.length > 0)
+                  ? fp.threads
                   : (existing?.threads || []);
-                
                 return { ...fp, threads };
               });
-              
+
+              // Keep local-only projects (imported but not yet known to backend)
+              const localOnly = state.projects.filter(p => !fetchedIds.has(p.id));
+
+              const mergedProjects = [...mergedFromBackend, ...localOnly];
+
               const newState: any = { projects: mergedProjects };
               
               if (!state.selectedProjectId && mergedProjects.length > 0) {
