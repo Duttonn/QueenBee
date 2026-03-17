@@ -665,16 +665,20 @@ async function testOpenRouter(apiKey?: string): Promise<TestResult> {
 
 /** Claude Code — check if `claude` binary is installed and authenticated */
 function testClaudeCode(): TestResult {
-    const configDir = path.join(os.homedir(), '.config', 'anthropic');
-    // Check for non-empty credential files
-    const hasConfig = (() => {
+    // Claude Code stores credentials in ~/.config/claude/ (config.json with OAuth tokens)
+    // Older versions / API-key flow used ~/.config/anthropic/
+    const configDirs = [
+        path.join(os.homedir(), '.config', 'claude'),
+        path.join(os.homedir(), '.config', 'anthropic'),
+    ];
+    const hasConfig = configDirs.some(dir => {
         try {
-            if (!fs.existsSync(configDir)) return false;
-            return fs.readdirSync(configDir).some(f => {
-                try { return fs.statSync(path.join(configDir, f)).size > 0; } catch { return false; }
+            if (!fs.existsSync(dir)) return false;
+            return fs.readdirSync(dir).some(f => {
+                try { return fs.statSync(path.join(dir, f)).size > 0; } catch { return false; }
             });
         } catch { return false; }
-    })();
+    });
 
     // Check binary — search extended PATH so homebrew/npm-global are found
     const extPath = `/opt/homebrew/bin:/usr/local/bin:/usr/bin:${process.env.PATH ?? ''}`;
@@ -710,7 +714,7 @@ function testGeminiCli(): TestResult {
         }
         return { success: true, provider: 'gemini-cli',
             message: 'Gemini CLI OAuth credentials detected. Subscription active.',
-            models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'] };
+            models: ['gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] };
     } catch {
         return { success: false, provider: 'gemini-cli', error: 'invalid_creds',
             message: 'Could not read Gemini credentials. Run: gemini auth' };
@@ -733,7 +737,7 @@ function testGeminiAntigravity(): TestResult {
         }
         return { success: true, provider: 'gemini-antigravity',
             message: 'Gemini Free credentials detected. Google account active.',
-            models: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'] };
+            models: ['gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] };
     } catch {
         return { success: false, provider: 'gemini-antigravity', error: 'invalid_creds',
             message: 'Could not read credentials. Reconnect via the Connect button.' };

@@ -39,10 +39,12 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
                 return res.status(400).json({ error: 'thread.id is required' });
             }
 
-            const projectIndex = db.projects.findIndex(p => p.id === projectId);
+            let projectIndex = db.projects.findIndex(p => p.id === projectId);
             if (projectIndex === -1) {
-                console.warn(`[Threads API] POST - Project not found: ${projectId}. Available projects: ${db.projects.map(p => p.id).join(', ') || '(none)'}`);
-                return res.status(404).json({ error: 'Project not found', projectId });
+                // Auto-create project — frontend may have created it locally before backend knew about it
+                console.log(`[Threads API] POST - Auto-creating project: ${projectId}`);
+                db.projects.push({ id: projectId, name: 'Default Project', threads: [], agents: [], createdAt: new Date().toISOString() } as any);
+                projectIndex = db.projects.length - 1;
             }
 
             // Update or add thread

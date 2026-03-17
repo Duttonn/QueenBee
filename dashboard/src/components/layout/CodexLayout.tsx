@@ -552,7 +552,7 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
                     onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-500 bg-zinc-100 hover:bg-zinc-200 rounded-xl transition-all"
                   >
-                    <span>{selectedModel || 'Select Model'}</span>
+                    <span>{selectedModel ? selectedModel.split(':').slice(1).join(':') : 'Select Model'}</span>
                     <ChevronDown size={10} className="text-zinc-400" />
                   </button>
                   <AnimatePresence>
@@ -580,7 +580,7 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
                                   )}
                                   <button
                                     onClick={() => { onModelSelect(m.name, m.provider); setIsModelMenuOpen(false); }}
-                                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition-all ${m.name === selectedModel
+                                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition-all ${(m.provider + ':' + m.name) === selectedModel
                                       ? 'bg-zinc-900 text-white shadow-lg'
                                       : 'text-zinc-600 hover:bg-zinc-50'
                                       }`}
@@ -743,17 +743,17 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
 
   useEffect(() => {
     if (availableModels.length > 0) {
-      const isCurrentModelValid = selectedModel && availableModels.some(m => m.name === selectedModel);
+      const isCurrentModelValid = selectedModel && availableModels.some(m => (m.provider + ':' + m.name) === selectedModel);
       if (!isCurrentModelValid) {
         const geminiFlash = availableModels.find(m => m.name.includes('flash'));
-        const nextModel = geminiFlash?.name || availableModels[0].name;
-        const nextProvider = geminiFlash?.provider || availableModels[0].provider;
+        const next = geminiFlash || availableModels[0];
+        const nextKey = next.provider + ':' + next.name;
 
-        if (selectedModel !== nextModel) {
-          setSelectedModel(nextModel);
+        if (selectedModel !== nextKey) {
+          setSelectedModel(nextKey);
         }
-        if (activeProviderId !== nextProvider) {
-          setActiveProvider(nextProvider);
+        if (activeProviderId !== next.provider) {
+          setActiveProvider(next.provider);
         }
       }
     } else if (selectedModel !== '') {
@@ -844,7 +844,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
           setPendingFiles([]); // Clear on send
     const activeProvider = providers.find(p => p.id === activeProviderId);
     const providerToUse = activeProvider?.id || 'mock';
-    const modelToUse = selectedModel || availableModels[0]?.name || 'mock-model';
+    const modelToUse = (selectedModel ? selectedModel.split(':').slice(1).join(':') : null) || availableModels[0]?.name || 'mock-model';
     const apiKey = activeProvider?.apiKey;
     const thread = activeProject?.threads?.find((t: any) => t.id === currentThreadId);
     const agentId = thread?.agentId || (isSwarmCommand ? 'architect' : undefined);
@@ -1300,7 +1300,7 @@ const CodexLayout = ({ children }: { children?: React.ReactNode }) => {
                     onModeChange={setExecutionMode}
                     availableModels={availableModels}
                     selectedModel={selectedModel}
-                    onModelSelect={(model, provider) => { setSelectedModel(model); setActiveProvider(provider); }}
+                    onModelSelect={(model, provider) => { setSelectedModel(provider + ':' + model); setActiveProvider(provider); }}
                     composerMode={composerMode}
                     onComposerModeChange={setComposerMode}
                     projectFiles={projectFiles}

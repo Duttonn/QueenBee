@@ -19,15 +19,21 @@ export class ClaudeCodeProvider extends LLMProvider {
 
   /** Returns true if credentials exist OR the claude binary is findable. */
   hasKey(): boolean {
-    // Credentials exist (written by auth flow) — binary check secondary
-    const configDir = path.join(os.homedir(), '.config', 'anthropic');
-    if (fs.existsSync(configDir)) {
-      try {
-        const files = fs.readdirSync(configDir);
-        if (files.some(f => { try { return fs.statSync(path.join(configDir, f)).size > 0; } catch { return false; } })) {
-          return true;
-        }
-      } catch {}
+    // Claude Code stores credentials in ~/.config/claude/ (OAuth login)
+    // Older API-key flow used ~/.config/anthropic/
+    const configDirs = [
+      path.join(os.homedir(), '.config', 'claude'),
+      path.join(os.homedir(), '.config', 'anthropic'),
+    ];
+    for (const configDir of configDirs) {
+      if (fs.existsSync(configDir)) {
+        try {
+          const files = fs.readdirSync(configDir);
+          if (files.some(f => { try { return fs.statSync(path.join(configDir, f)).size > 0; } catch { return false; } })) {
+            return true;
+          }
+        } catch {}
+      }
     }
     // Fallback: check binary in extended PATH (homebrew, npm-global)
     const extPath = `/opt/homebrew/bin:/usr/local/bin:/usr/bin:${process.env.PATH ?? ''}`;
@@ -37,19 +43,24 @@ export class ClaudeCodeProvider extends LLMProvider {
 
   /** Locate the `claude` binary (PATH or common install locations). */
   private findClaudeBinary(): string | undefined {
-    const candidates = [
-      'claude', // PATH
+    // Check absolute paths directly (which only works for bare names in PATH)
+    const absoluteCandidates = [
       path.join(os.homedir(), '.npm-global', 'bin', 'claude'),
+      '/opt/homebrew/bin/claude',
       '/usr/local/bin/claude',
       '/usr/bin/claude',
       path.join(os.homedir(), '.local', 'bin', 'claude'),
     ];
-    for (const c of candidates) {
+    for (const c of absoluteCandidates) {
       try {
-        const r = spawnSync('which', [c], { encoding: 'utf-8' });
-        if (r.status === 0 && r.stdout?.trim()) return r.stdout.trim();
+        fs.accessSync(c, fs.constants.X_OK);
+        return c;
       } catch {}
     }
+    // Fall back to PATH resolution
+    const extPath = `/opt/homebrew/bin:/usr/local/bin:/usr/bin:${process.env.PATH ?? ''}`;
+    const r = spawnSync('which', ['claude'], { encoding: 'utf-8', env: { ...process.env, PATH: extPath } });
+    if (r.status === 0 && r.stdout?.trim()) return r.stdout.trim();
     return 'claude'; // let the SDK resolve via PATH
   }
 

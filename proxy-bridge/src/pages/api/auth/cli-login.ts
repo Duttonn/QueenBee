@@ -53,7 +53,12 @@ function evictProviderSession(provider: string) {
 }
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin || 'http://localhost:5173';
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.status(204).end();
 
   if (req.method === 'GET') {
     const id = req.query.sessionId as string;
@@ -122,11 +127,16 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
 // ── Gemini PKCE OAuth ─────────────────────────────────────────────────────────
 
-// Known client ID for the google/gemini-cli open-source project
-const FALLBACK_CLIENT_ID =
-  '681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com';
+// OAuth client shipped by Google in the open-source google/gemini-cli npm package.
+// Both the client_id and client_secret are public — they're in the @google/gemini-cli-core
+// source and distributed unobfuscated in the npm tarball. Using them here lets QueenBee
+// authenticate with Google using the same app identity as gemini-cli, without requiring
+// the CLI to be installed.
+const GEMINI_CLIENT_ID =
+  process.env.GEMINI_CLI_CLIENT_ID!;
+const GEMINI_CLIENT_SECRET =
+  process.env.GEMINI_CLI_OAUTH_CLIENT_SECRET!;
 
-// gemini-cli uses cloud-platform scope (NOT generative-language — that one is restricted)
 const GEMINI_SCOPES = [
   'https://www.googleapis.com/auth/cloud-platform',
   'https://www.googleapis.com/auth/userinfo.email',
@@ -145,97 +155,52 @@ const CODE_ASSIST_ENDPOINTS = [
   'https://daily-cloudcode-pa.sandbox.googleapis.com',
 ];
 
-/** Try to extract the OAuth client ID (and secret) from the installed gemini-cli binary */
-function extractGeminiCliCredentials(): { clientId: string; clientSecret?: string } | null {
-  // Well-known install locations (covers homebrew, npm global, nvm, etc.)
-  const wellKnownBases = [
-    '/opt/homebrew/lib/node_modules/@google/gemini-cli',
-    '/usr/local/lib/node_modules/@google/gemini-cli',
-    path.join(os.homedir(), '.npm-global', 'lib', 'node_modules', '@google', 'gemini-cli'),
-    path.join(os.homedir(), '.nvm', 'versions', 'node'), // scanned below
-  ];
-
-  const dirsToSearch: string[] = [...wellKnownBases];
-
-  // Also try resolving via PATH
-  try {
-    const { execSync } = require('child_process');
-    const fullPath = `/opt/homebrew/bin:/usr/local/bin:/usr/bin:${process.env.PATH ?? ''}`;
-    const geminiPath = execSync(`PATH="${fullPath}" which gemini 2>/dev/null`, { encoding: 'utf-8' }).trim();
-    if (geminiPath) {
-      const realPath = fs.realpathSync(geminiPath);
-      const binDir   = path.dirname(geminiPath);
-      const realDir  = path.dirname(path.dirname(realPath));
-      dirsToSearch.push(
-        realDir,
-        path.join(realDir, 'node_modules', '@google', 'gemini-cli'),
-        path.join(binDir, '..', 'lib', 'node_modules', '@google', 'gemini-cli'),
-        path.join(binDir, '..', 'node_modules', '@google', 'gemini-cli'),
-      );
-    }
-  } catch {}
-
-  const oauth2Paths = [
-    'node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js',
-    'node_modules/@google/gemini-cli-core/dist/code_assist/oauth2.js',
-  ];
-
-  for (const base of dirsToSearch) {
-    for (const rel of oauth2Paths) {
-      const p = path.join(base, rel);
-      try {
-        if (!fs.existsSync(p)) continue;
-        const content = fs.readFileSync(p, 'utf-8');
-        const idMatch     = content.match(/(\d+-[a-z0-9]+\.apps\.googleusercontent\.com)/);
-        const secretMatch = content.match(/(GOCSPX-[A-Za-z0-9_-]+)/);
-        if (idMatch) {
-          return { clientId: idMatch[1], clientSecret: secretMatch?.[1] };
-        }
-      } catch {}
-    }
-  }
-  return null;
-}
 
 function b64url(buf: Buffer) {
   return buf.toString('base64url');
 }
 
-async function startGeminiOAuth(session: Session, provider: 'gemini-cli' | 'gemini-antigravity') {
-  // Resolve client ID: try to extract from installed CLI (for gemini-cli), else use known fallback
-  let clientId   = FALLBACK_CLIENT_ID;
-  let clientSecret: string | undefined;
+// Singleton callback server — reused across auth sessions so there's never a stale
+// server with a mismatched verifier holding port 8085.
+let _callbackServer: http.Server | null = null;
 
-  if (provider === 'gemini-cli') {
-    // Try to extract real client credentials from installed binary — optional, falls back to known ID
-    const extracted = extractGeminiCliCredentials();
-    if (extracted) {
-      clientId     = extracted.clientId;
-      clientSecret = extracted.clientSecret;
-    }
-    // No binary required — the fallback FALLBACK_CLIENT_ID is always sufficient for the OAuth flow
+async function acquireCallbackServer(): Promise<http.Server> {
+  // Close and destroy any existing server so the new session owns the port
+  if (_callbackServer) {
+    await new Promise<void>(resolve => {
+      try {
+        (_callbackServer as any).closeAllConnections?.();
+        _callbackServer!.close(() => resolve());
+      } catch { resolve(); }
+    });
+    _callbackServer = null;
   }
-  // For antigravity: no binary required — use the known client ID directly
+
+  const server = http.createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(8085, 'localhost', () => resolve());
+  });
+  _callbackServer = server;
+  return server;
+}
+
+async function startGeminiOAuth(session: Session, provider: 'gemini-cli' | 'gemini-antigravity') {
+  const clientId     = GEMINI_CLIENT_ID;
+  const clientSecret = GEMINI_CLIENT_SECRET;
 
   const verifier   = b64url(crypto.randomBytes(32));
   const challenge  = b64url(crypto.createHash('sha256').update(verifier).digest());
 
-  // Start local callback server on fixed port 8085 (matches Google's redirect URI allowlist)
-  const server = http.createServer();
+  const server = await acquireCallbackServer();
 
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', (err: NodeJS.ErrnoException) => {
-      if (err.code === 'EADDRINUSE') {
-        // Port in use — still proceed; the existing listener may be from a previous flow
-        resolve();
-      } else {
-        reject(err);
-      }
-    });
-    server.listen(8085, 'localhost', () => resolve());
-  });
-
-  session.cleanup = () => { try { server.close(); } catch {} };
+  session.cleanup = () => {
+    try {
+      (server as any).closeAllConnections?.();
+      server.close();
+    } catch {}
+    if (_callbackServer === server) _callbackServer = null;
+  };
 
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   authUrl.searchParams.set('client_id',             clientId);
@@ -343,12 +308,16 @@ async function startGeminiOAuth(session: Session, provider: 'gemini-cli' | 'gemi
   const credDir = path.dirname(OAUTH_CREDS_PATH);
   if (!fs.existsSync(credDir)) fs.mkdirSync(credDir, { recursive: true });
 
+  // Save client_id + client_secret alongside tokens so GeminiCliProvider
+  // can refresh using the SAME client that obtained the token (critical — mismatch = invalid_request)
   const creds = {
-    refresh_token: tokens.refresh_token,
-    access_token:  tokens.access_token,
-    token_type:    tokens.token_type ?? 'Bearer',
-    expiry_date:   Date.now() + (tokens.expires_in ?? 3600) * 1000,
-    ...(projectId ? { project_id: projectId } : {}),
+    refresh_token:  tokens.refresh_token,
+    access_token:   tokens.access_token,
+    token_type:     tokens.token_type ?? 'Bearer',
+    expiry_date:    Date.now() + (tokens.expires_in ?? 3600) * 1000,
+    client_id:      clientId,
+    ...(clientSecret ? { client_secret: clientSecret } : {}),
+    ...(projectId   ? { project_id:    projectId }    : {}),
   };
 
   if (provider === 'gemini-cli') {
@@ -367,15 +336,9 @@ async function startGeminiOAuth(session: Session, provider: 'gemini-cli' | 'gemi
 
 // ── Google Code Assist project provisioning ───────────────────────────────────
 
-function resolvePlatform(): 'WINDOWS' | 'MACOS' | 'PLATFORM_UNSPECIFIED' {
-  if (process.platform === 'win32') return 'WINDOWS';
-  if (process.platform === 'darwin') return 'MACOS';
-  return 'PLATFORM_UNSPECIFIED';
-}
-
 async function discoverProject(accessToken: string): Promise<string> {
-  const platform = resolvePlatform();
-  const metadata = { ideType: 'ANTIGRAVITY', platform, pluginType: 'GEMINI' };
+  // platform field must be omitted — 'MACOS' is an invalid enum value for this API
+  const metadata = { ideType: 'GEMINI_CLI', pluginType: 'GEMINI' };
   const headers: Record<string, string> = {
     Authorization:    `Bearer ${accessToken}`,
     'Content-Type':   'application/json',

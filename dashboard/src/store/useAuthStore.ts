@@ -83,14 +83,14 @@ const defaultProviders: AIProvider[] = [
     {
         id: 'gemini-cli', name: 'Gemini (Subscription)', icon: '🔵', group: 'subscription',
         connected: false, tier: 2, authType: 'cli',
-        models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'],
+        models: ['gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
         description: 'Use your Google AI Pro subscription. Requires the Gemini CLI.',
         docsUrl: 'https://github.com/google-gemini/gemini-cli'
     },
     {
         id: 'gemini-antigravity', name: 'Google Antigravity', icon: '🌐', group: 'subscription',
         connected: false, tier: 3, authType: 'cli',
-        models: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'],
+        models: ['gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
         description: 'Free-tier Gemini via Google account — no API key or CLI needed.',
         docsUrl: 'https://ai.google.dev/gemini-api/docs/oauth'
     },
@@ -335,7 +335,7 @@ export const useAuthStore = create<AuthState>()(
         }),
         {
             name: 'queen-bee-auth',
-            version: 8, // v8: rename gemini-antigravity → Google Antigravity
+            version: 9, // v9: expand gemini-antigravity model list (claude + gpt-oss models)
             migrate: (persisted: any, version: number) => {
                 // Merge any new defaultProviders entries missing from persisted state
                 const state = persisted as any;
@@ -345,6 +345,16 @@ export const useAuthStore = create<AuthState>()(
                     if (newOnes.length > 0) {
                         state.providers = [...state.providers, ...newOnes];
                     }
+                    // Update model lists for existing providers to pick up new models
+                    state.providers = state.providers.map((p: any) => {
+                        const def = defaultProviders.find(d => d.id === p.id);
+                        if (def && def.models) {
+                            const existing = new Set(p.models || []);
+                            const merged = [...(p.models || []), ...def.models.filter((m: string) => !existing.has(m))];
+                            return { ...p, models: merged };
+                        }
+                        return p;
+                    });
                 }
                 return state;
             },
