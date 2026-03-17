@@ -68,7 +68,7 @@ export class GeminiAntigravityProvider extends LLMProvider {
     const res  = await fetch(`${CODE_ASSIST_BASE}:loadCodeAssist`, {
       method:  'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ metadata: { ideType: 'GEMINI_CLI', pluginType: 'GEMINI' } }),
+      body:    JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY', pluginType: 'GEMINI' } }),
     });
     if (!res.ok) throw new Error(`[GeminiAntigravity] loadCodeAssist failed: ${res.status}`);
     const data = await res.json() as any;
