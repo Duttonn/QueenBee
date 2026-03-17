@@ -517,19 +517,20 @@ ipcMain.handle('auth:get-cached', () => {
 ipcMain.handle('open-in-terminal', async (_event: any, dirPath: string) => {
   try {
     if (process.platform === 'darwin') {
-      // macOS: use AppleScript to open Terminal.app at the given path
+      // macOS: pass dirPath as a separate osascript argument to avoid injection
       const { execFile } = require('child_process');
-      const script = `tell application "Terminal"
-  activate
-  do script "cd \\"${dirPath.replace(/"/g, '\\"')}\\" && clear"
-end tell`;
       await new Promise<void>((resolve, reject) => {
-        execFile('osascript', ['-e', script], (err: any) => {
-          if (err) reject(err); else resolve();
-        });
+        execFile('osascript', [
+          '-e', 'on run argv',
+          '-e', 'tell application "Terminal" to activate',
+          '-e', 'tell application "Terminal" to do script ("cd " & quoted form of item 1 of argv & " && clear")',
+          '-e', 'end run',
+          '--', dirPath,
+        ], (err: any) => { if (err) reject(err); else resolve(); });
       });
     } else if (process.platform === 'win32') {
-      spawn('cmd.exe', ['/c', 'start', 'cmd.exe', '/K', `cd /d "${dirPath}"`], { detached: true, stdio: 'ignore' }).unref();
+      // Windows: use /d switch with path as a discrete argument via pushd to avoid injection
+      spawn('cmd.exe', ['/c', 'start', 'cmd.exe', '/K', 'pushd', dirPath], { detached: true, stdio: 'ignore' }).unref();
     } else {
       // Linux: try common terminal emulators
       const terminals = ['gnome-terminal', 'xterm', 'konsole', 'xfce4-terminal'];
