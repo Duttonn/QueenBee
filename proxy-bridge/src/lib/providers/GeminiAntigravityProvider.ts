@@ -124,19 +124,60 @@ export class GeminiAntigravityProvider extends LLMProvider {
 
   private toContents(messages: LLMMessage[]): any[] {
     const contents: any[] = [];
+
     for (const m of messages) {
       if (m.role === 'system') continue;
+
+      // ── Tool result (role: 'tool') → Gemini functionResponse in a 'user' turn ──
+      if (m.role === 'tool') {
+        let responseObj: any;
+        try { responseObj = JSON.parse(m.content as string); } catch { responseObj = { output: m.content }; }
+        const part = {
+          functionResponse: {
+            name: (m as any).name || 'tool',
+            response: responseObj,
+          },
+        };
+        // Merge into previous user turn if possible, otherwise new turn
+        const last = contents[contents.length - 1];
+        if (last && last.role === 'user') {
+          last.parts.push(part);
+        } else {
+          contents.push({ role: 'user', parts: [part] });
+        }
+        continue;
+      }
+
+      // ── Assistant turn ───────────────────────────────────────────────────────
+      if (m.role === 'assistant') {
+        const parts: any[] = [];
+        // Text content (may be null for pure tool-call turns)
+        const text = typeof m.content === 'string' ? m.content.trim() : '';
+        if (text) parts.push({ text });
+        // Function calls
+        if (m.tool_calls && m.tool_calls.length > 0) {
+          for (const tc of m.tool_calls) {
+            let args: any = {};
+            try { args = JSON.parse(tc.function.arguments); } catch { args = {}; }
+            parts.push({ functionCall: { name: tc.function.name, args } });
+          }
+        }
+        if (parts.length === 0) continue; // truly empty assistant message
+        contents.push({ role: 'model', parts });
+        continue;
+      }
+
+      // ── User turn ────────────────────────────────────────────────────────────
       const text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-      if (!text.trim()) continue; // skip empty messages — they cause validation errors
-      const role = m.role === 'assistant' ? 'model' : 'user';
-      // Merge consecutive same-role turns (some APIs reject them)
+      if (!text.trim()) continue;
       const last = contents[contents.length - 1];
-      if (last && last.role === role) {
+      if (last && last.role === 'user') {
         last.parts.push({ text });
       } else {
-        contents.push({ role, parts: [{ text }] });
+        contents.push({ role: 'user', parts: [{ text }] });
       }
     }
+
     return contents;
   }
 

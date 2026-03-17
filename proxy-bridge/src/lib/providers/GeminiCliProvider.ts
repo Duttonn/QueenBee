@@ -82,12 +82,43 @@ export class GeminiCliProvider extends LLMProvider {
   }
 
   private toContents(messages: LLMMessage[]): any[] {
-    return messages
-      .filter(m => m.role !== 'system')
-      .map(m => ({
-        role:  m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }],
-      }));
+    const contents: any[] = [];
+    for (const m of messages) {
+      if (m.role === 'system') continue;
+
+      if (m.role === 'tool') {
+        let responseObj: any;
+        try { responseObj = JSON.parse(m.content as string); } catch { responseObj = { output: m.content }; }
+        const part = { functionResponse: { name: (m as any).name || 'tool', response: responseObj } };
+        const last = contents[contents.length - 1];
+        if (last && last.role === 'user') { last.parts.push(part); }
+        else { contents.push({ role: 'user', parts: [part] }); }
+        continue;
+      }
+
+      if (m.role === 'assistant') {
+        const parts: any[] = [];
+        const text = typeof m.content === 'string' ? m.content.trim() : '';
+        if (text) parts.push({ text });
+        if (m.tool_calls?.length) {
+          for (const tc of m.tool_calls) {
+            let args: any = {};
+            try { args = JSON.parse(tc.function.arguments); } catch {}
+            parts.push({ functionCall: { name: tc.function.name, args } });
+          }
+        }
+        if (parts.length === 0) continue;
+        contents.push({ role: 'model', parts });
+        continue;
+      }
+
+      const text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+      if (!text.trim()) continue;
+      const last = contents[contents.length - 1];
+      if (last && last.role === 'user') { last.parts.push({ text }); }
+      else { contents.push({ role: 'user', parts: [{ text }] }); }
+    }
+    return contents;
   }
 
   private extractSystemInstruction(messages: LLMMessage[]): string | undefined {
