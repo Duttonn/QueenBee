@@ -90,7 +90,7 @@ const defaultProviders: AIProvider[] = [
     {
         id: 'gemini-antigravity', name: 'Google Antigravity', icon: '🌐', group: 'subscription',
         connected: false, tier: 3, authType: 'cli',
-        models: ['gemini-3.1-pro-high', 'gemini-3.1-pro-low', 'gemini-3-flash', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'claude-sonnet-4-6', 'claude-opus-4-6-thinking', 'gpt-oss-120b-medium'],
+        models: ['gemini-3.1-pro-high', 'gemini-3.1-pro-low', 'gemini-3-flash', 'gemini-2.5-flash-lite', 'claude-sonnet-4-6', 'claude-opus-4-6-thinking'],
         description: 'Free-tier Gemini + Claude via Google account — no API key or CLI needed.',
         docsUrl: 'https://ai.google.dev/gemini-api/docs/oauth'
     },
@@ -335,7 +335,7 @@ export const useAuthStore = create<AuthState>()(
         }),
         {
             name: 'queen-bee-auth',
-            version: 14, // v14: restore gemini-2.5-{pro,flash,lite} to antigravity model list
+            version: 15, // v15: remove non-working gemini-2.5-{pro,flash} + gpt-oss from antigravity
             migrate: (persisted: any, version: number) => {
                 const state = persisted as any;
                 if (state?.providers) {
