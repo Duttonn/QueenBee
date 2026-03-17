@@ -75,9 +75,13 @@ jobs:
       - name: Write proxy-bridge .env.local
         shell: bash
         run: |
-          printf 'GITHUB_CLIENT_ID=%s\nGITHUB_CLIENT_SECRET=%s\n' \
+          printf 'GITHUB_CLIENT_ID=%s\nGITHUB_CLIENT_SECRET=%s\nFRONTEND_URL=http://localhost:5173\nALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173\nGEMINI_CLI_CLIENT_ID=%s\nGEMINI_CLI_OAUTH_CLIENT_SECRET=%s\nANTIGRAVITY_CLIENT_ID=%s\nANTIGRAVITY_CLIENT_SECRET=%s\n' \
             "${{ secrets.GH_OAUTH_CLIENT_ID }}" \
             "${{ secrets.GH_OAUTH_CLIENT_SECRET }}" \
+            "${{ secrets.GEMINI_CLI_CLIENT_ID }}" \
+            "${{ secrets.GEMINI_CLI_OAUTH_CLIENT_SECRET }}" \
+            "${{ secrets.ANTIGRAVITY_CLIENT_ID }}" \
+            "${{ secrets.ANTIGRAVITY_CLIENT_SECRET }}" \
             > proxy-bridge/.env.local
 
       - name: Build proxy-bridge

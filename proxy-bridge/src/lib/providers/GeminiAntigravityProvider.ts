@@ -24,11 +24,11 @@ const CREDS_PATH = path.join(os.homedir(), '.gemini', 'queenbee_antigravity_cred
 const ANTIGRAVITY_CLIENT_ID     = process.env.ANTIGRAVITY_CLIENT_ID!;
 const ANTIGRAVITY_CLIENT_SECRET = process.env.ANTIGRAVITY_CLIENT_SECRET!;
 
-// Endpoint fallback order for antigravity (sandbox first, prod last)
+// Endpoint fallback order: prod first (most reliable), sandbox as fallbacks
 const ANTIGRAVITY_ENDPOINTS = [
+  'https://cloudcode-pa.googleapis.com',
   'https://daily-cloudcode-pa.sandbox.googleapis.com',
   'https://autopush-cloudcode-pa.sandbox.googleapis.com',
-  'https://cloudcode-pa.googleapis.com',
 ];
 
 // Antigravity-specific headers (different from Gemini CLI)
