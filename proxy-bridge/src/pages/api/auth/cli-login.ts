@@ -143,6 +143,18 @@ const GEMINI_SCOPES = [
   'https://www.googleapis.com/auth/userinfo.profile',
 ].join(' ');
 
+// Antigravity OAuth credentials (from @mariozechner/pi-ai package, publicly distributed)
+const ANTIGRAVITY_CLIENT_ID     = process.env.ANTIGRAVITY_CLIENT_ID!;
+const ANTIGRAVITY_CLIENT_SECRET = process.env.ANTIGRAVITY_CLIENT_SECRET!;
+const ANTIGRAVITY_REDIRECT_URI  = 'http://localhost:51121/oauth-callback';
+const ANTIGRAVITY_SCOPES = [
+  'https://www.googleapis.com/auth/cloud-platform',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
+  'https://www.googleapis.com/auth/cclog',
+  'https://www.googleapis.com/auth/experimentsandconfigs',
+].join(' ');
+
 // Fixed redirect URI on port 8085 — matches what the gemini-cli OAuth client is registered for
 const REDIRECT_URI = 'http://localhost:8085/oauth2callback';
 
@@ -185,14 +197,38 @@ async function acquireCallbackServer(): Promise<http.Server> {
   return server;
 }
 
+async function acquireCallbackServerOnPort(port: number, _path: string): Promise<http.Server> {
+  if (_callbackServer) {
+    await new Promise<void>(resolve => {
+      try { (_callbackServer as any).closeAllConnections?.(); _callbackServer!.close(() => resolve()); }
+      catch { resolve(); }
+    });
+    _callbackServer = null;
+  }
+  const server = http.createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, 'localhost', () => resolve());
+  });
+  _callbackServer = server;
+  return server;
+}
+
 async function startGeminiOAuth(session: Session, provider: 'gemini-cli' | 'gemini-antigravity') {
-  const clientId     = GEMINI_CLIENT_ID;
-  const clientSecret = GEMINI_CLIENT_SECRET;
+  const isAntigravity = provider === 'gemini-antigravity';
+  const clientId      = isAntigravity ? ANTIGRAVITY_CLIENT_ID     : GEMINI_CLIENT_ID;
+  const clientSecret  = isAntigravity ? ANTIGRAVITY_CLIENT_SECRET : GEMINI_CLIENT_SECRET;
+  const redirectUri   = isAntigravity ? ANTIGRAVITY_REDIRECT_URI  : REDIRECT_URI;
+  const scopes        = isAntigravity ? ANTIGRAVITY_SCOPES        : GEMINI_SCOPES;
+  const callbackPort  = isAntigravity ? 51121 : 8085;
+  const callbackPath  = isAntigravity ? '/oauth-callback' : '/oauth2callback';
 
   const verifier   = b64url(crypto.randomBytes(32));
   const challenge  = b64url(crypto.createHash('sha256').update(verifier).digest());
 
-  const server = await acquireCallbackServer();
+  const server = isAntigravity
+    ? await acquireCallbackServerOnPort(callbackPort, callbackPath)
+    : await acquireCallbackServer();
 
   session.cleanup = () => {
     try {
@@ -204,9 +240,9 @@ async function startGeminiOAuth(session: Session, provider: 'gemini-cli' | 'gemi
 
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   authUrl.searchParams.set('client_id',             clientId);
-  authUrl.searchParams.set('redirect_uri',          REDIRECT_URI);
+  authUrl.searchParams.set('redirect_uri',          redirectUri);
   authUrl.searchParams.set('response_type',         'code');
-  authUrl.searchParams.set('scope',                 GEMINI_SCOPES);
+  authUrl.searchParams.set('scope',                 scopes);
   authUrl.searchParams.set('code_challenge',        challenge);
   authUrl.searchParams.set('code_challenge_method', 'S256');
   authUrl.searchParams.set('state',                 verifier);   // state = verifier (openclaw pattern)
@@ -224,8 +260,8 @@ async function startGeminiOAuth(session: Session, provider: 'gemini-cli' | 'gemi
     }, 5 * 60 * 1000);
 
     server.on('request', (req: http.IncomingMessage, res: http.ServerResponse) => {
-      const u = new URL(req.url!, `http://localhost:8085`);
-      if (u.pathname !== '/oauth2callback') {
+      const u = new URL(req.url!, `http://localhost:${callbackPort}`);
+      if (u.pathname !== callbackPath) {
         res.writeHead(404); res.end(); return;
       }
 
@@ -269,7 +305,7 @@ async function startGeminiOAuth(session: Session, provider: 'gemini-cli' | 'gemi
   const tokenParams: Record<string, string> = {
     code,
     client_id:     clientId,
-    redirect_uri:  REDIRECT_URI,
+    redirect_uri:  redirectUri,
     grant_type:    'authorization_code',
     code_verifier: verifier,
   };

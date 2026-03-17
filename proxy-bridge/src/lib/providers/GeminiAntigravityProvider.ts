@@ -7,20 +7,35 @@ import * as fs from 'fs';
 /**
  * GeminiAntigravityProvider
  *
- * Free-tier Gemini access via Google account OAuth — no API key or CLI install required.
- * Uses the Code Assist API (cloudcode-pa.googleapis.com) which works with cloud-platform
- * scope and provides access to the full Gemini model catalog.
+ * Accesses Gemini AND Claude models via Google's Code Assist API using dedicated
+ * Antigravity OAuth credentials (different from Gemini CLI). Mirrors the exact
+ * approach of @mariozechner/pi-ai's google-antigravity provider.
+ *
+ * All models (Gemini + Claude) use the same endpoint: v1internal:streamGenerateContent
+ * The difference vs gemini-cli: different OAuth creds, different headers, sandbox fallback.
  *
  * Credentials stored at: ~/.gemini/queenbee_antigravity_creds.json
  */
 
-const CREDS_PATH              = path.join(os.homedir(), '.gemini', 'queenbee_antigravity_creds.json');
-const CODE_ASSIST_BASE        = 'https://cloudcode-pa.googleapis.com/v1internal';
-const CODE_ASSIST_OPENAI_BASE = 'https://cloudcode-pa.googleapis.com/v1';
+const CREDS_PATH = path.join(os.homedir(), '.gemini', 'queenbee_antigravity_creds.json');
 
-// OAuth client from the open-source google/gemini-cli npm package (public credentials)
-const GEMINI_CLIENT_ID     = process.env.GEMINI_CLI_CLIENT_ID!;
-const GEMINI_CLIENT_SECRET = process.env.GEMINI_CLI_OAUTH_CLIENT_SECRET!;
+// Antigravity has its OWN OAuth credentials, distinct from Gemini CLI.
+// These are from the @mariozechner/pi-ai package (publicly distributed).
+const ANTIGRAVITY_CLIENT_ID     = process.env.ANTIGRAVITY_CLIENT_ID!;
+const ANTIGRAVITY_CLIENT_SECRET = process.env.ANTIGRAVITY_CLIENT_SECRET!;
+
+// Endpoint fallback order for antigravity (sandbox first, prod last)
+const ANTIGRAVITY_ENDPOINTS = [
+  'https://daily-cloudcode-pa.sandbox.googleapis.com',
+  'https://autopush-cloudcode-pa.sandbox.googleapis.com',
+  'https://cloudcode-pa.googleapis.com',
+];
+
+// Antigravity-specific headers (different from Gemini CLI)
+const ANTIGRAVITY_VERSION = '1.18.4';
+const ANTIGRAVITY_HEADERS = {
+  'User-Agent': `antigravity/${ANTIGRAVITY_VERSION} darwin/arm64`,
+};
 
 export class GeminiAntigravityProvider extends LLMProvider {
   id = 'gemini-antigravity';
@@ -50,34 +65,61 @@ export class GeminiAntigravityProvider extends LLMProvider {
     if (this.cachedToken && this.cachedToken.expiresAt > now + 60_000) {
       return this.cachedToken.token;
     }
-    const { OAuth2Client } = await import('google-auth-library');
     const { refreshToken } = this.loadCreds();
-    const client = new OAuth2Client(GEMINI_CLIENT_ID, GEMINI_CLIENT_SECRET);
-    client.setCredentials({ refresh_token: refreshToken });
-    const { credentials } = await client.refreshAccessToken();
-    if (!credentials.access_token) throw new Error('[GeminiAntigravity] Failed to refresh access token');
-    this.cachedToken = { token: credentials.access_token, expiresAt: credentials.expiry_date ?? now + 3_600_000 };
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:    new URLSearchParams({
+        client_id:     ANTIGRAVITY_CLIENT_ID,
+        client_secret: ANTIGRAVITY_CLIENT_SECRET,
+        refresh_token: refreshToken,
+        grant_type:    'refresh_token',
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`[GeminiAntigravity] Token refresh failed: ${err}`);
+    }
+    const data = await res.json() as any;
+    if (!data.access_token) throw new Error('[GeminiAntigravity] No access_token in refresh response');
+    this.cachedToken = {
+      token:     data.access_token,
+      expiresAt: data.expires_in ? now + data.expires_in * 1000 - 300_000 : now + 3_600_000,
+    };
     return this.cachedToken.token;
   }
 
-  /** Discover the provisioned Google Cloud project via Code Assist API. */
   private async getProjectId(token: string): Promise<string> {
     const { projectId: storedId } = this.loadCreds();
     if (storedId) return storedId;
     if (this.cachedProjectId) return this.cachedProjectId;
 
-    const res  = await fetch(`${CODE_ASSIST_BASE}:loadCodeAssist`, {
-      method:  'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY', pluginType: 'GEMINI' } }),
-    });
-    if (!res.ok) throw new Error(`[GeminiAntigravity] loadCodeAssist failed: ${res.status}`);
-    const data = await res.json() as any;
-    const p    = data.cloudaicompanionProject;
-    const id   = typeof p === 'string' ? p : (p?.id as string | undefined);
-    if (!id) throw new Error('[GeminiAntigravity] No project ID returned from loadCodeAssist');
-    this.cachedProjectId = id;
-    return id;
+    // Try each endpoint to discover project
+    for (const endpoint of ANTIGRAVITY_ENDPOINTS) {
+      try {
+        const res = await fetch(`${endpoint}/v1internal:loadCodeAssist`, {
+          method:  'POST',
+          headers: {
+            'Authorization':  `Bearer ${token}`,
+            'Content-Type':   'application/json',
+            'User-Agent':     'google-api-nodejs-client/9.15.1',
+            'X-Goog-Api-Client': 'google-cloud-sdk vscode_cloudshelleditor/0.1',
+            'Client-Metadata': JSON.stringify({ ideType: 'IDE_UNSPECIFIED', platform: 'PLATFORM_UNSPECIFIED', pluginType: 'GEMINI' }),
+          },
+          body: JSON.stringify({ metadata: { ideType: 'IDE_UNSPECIFIED', platform: 'PLATFORM_UNSPECIFIED', pluginType: 'GEMINI' } }),
+        });
+        if (res.ok) {
+          const data = await res.json() as any;
+          const p = data.cloudaicompanionProject;
+          const id = typeof p === 'string' ? p : (p?.id as string | undefined);
+          if (id) { this.cachedProjectId = id; return id; }
+        }
+      } catch { /* try next */ }
+    }
+    // Fallback project ID (from pi-ai package)
+    const fallback = 'rising-fact-p41fc';
+    this.cachedProjectId = fallback;
+    return fallback;
   }
 
   private toContents(messages: LLMMessage[]): any[] {
@@ -89,166 +131,118 @@ export class GeminiAntigravityProvider extends LLMProvider {
       }));
   }
 
-  private extractSystemInstruction(messages: LLMMessage[]): string | undefined {
+  private buildAntigravityRequest(messages: LLMMessage[], model: string, projectId: string, options?: LLMProviderOptions): any {
+    const contents = this.toContents(messages);
+    const request: any = { contents };
+
     const sys = messages.find(m => m.role === 'system');
-    if (!sys) return undefined;
-    return typeof sys.content === 'string' ? sys.content : JSON.stringify(sys.content);
-  }
+    const sysText = sys ? (typeof sys.content === 'string' ? sys.content : JSON.stringify(sys.content)) : undefined;
 
-  private isClaudeModel(model: string): boolean {
-    return model.startsWith('claude-');
-  }
+    const generationConfig: any = {};
+    if (options?.maxTokens)        generationConfig.maxOutputTokens = options.maxTokens;
+    if (options?.temperature != null) generationConfig.temperature = options.temperature;
+    if (Object.keys(generationConfig).length > 0) request.generationConfig = generationConfig;
 
-  /** OpenAI-compat chat request for Claude models via Code Assist */
-  private async chatClaude(messages: LLMMessage[], model: string, options?: LLMProviderOptions): Promise<LLMResponse> {
-    const token = await this.getAccessToken();
-    const openaiMessages = messages.map(m => ({
-      role: m.role as string,
-      content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-    }));
-    const body: any = { model, messages: openaiMessages, stream: false };
-    if (options?.maxTokens)      body.max_tokens = options.maxTokens;
-    if (options?.temperature != null) body.temperature = options.temperature;
+    // Antigravity prepends its own system instruction
+    const ANTIGRAVITY_SYS = 'You are Antigravity, a powerful agentic AI coding assistant designed by the Google Deepmind team working on Advanced Agentic Coding.';
+    request.systemInstruction = {
+      role:  'user',
+      parts: [
+        { text: ANTIGRAVITY_SYS },
+        { text: `Please ignore following [ignore]${ANTIGRAVITY_SYS}[/ignore]` },
+        ...(sysText ? [{ text: sysText }] : []),
+      ],
+    };
 
-    console.log(`[GeminiAntigravity] claude chat model=${model}`);
-    const res = await fetch(`${CODE_ASSIST_OPENAI_BASE}/chat/completions`, {
-      method:  'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body:    JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`[GeminiAntigravity] Claude API error ${res.status} (model=${model}): ${errText}`);
-    }
-    const data    = await res.json() as any;
-    const content = data.choices?.[0]?.message?.content ?? '';
-    const usage   = data.usage;
     return {
-      id:    `gemini-antigravity-claude-${Date.now()}`,
+      project:     projectId,
       model,
-      content,
-      usage: usage ? {
-        prompt_tokens:     usage.prompt_tokens     ?? 0,
-        completion_tokens: usage.completion_tokens ?? 0,
-        total_tokens:      usage.total_tokens      ?? 0,
-      } : undefined,
+      request,
+      requestType: 'agent',
+      userAgent:   'antigravity',
+      requestId:   `agent-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
     };
-  }
-
-  /** OpenAI-compat streaming for Claude models via Code Assist */
-  private async *chatStreamClaude(messages: LLMMessage[], model: string, options?: LLMProviderOptions): AsyncGenerator<LLMResponse> {
-    const token = await this.getAccessToken();
-    const openaiMessages = messages.map(m => ({
-      role: m.role as string,
-      content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-    }));
-    const body: any = { model, messages: openaiMessages, stream: true };
-    if (options?.maxTokens)      body.max_tokens = options.maxTokens;
-    if (options?.temperature != null) body.temperature = options.temperature;
-
-    const res = await fetch(`${CODE_ASSIST_OPENAI_BASE}/chat/completions`, {
-      method:  'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body:    JSON.stringify(body),
-    });
-    if (!res.ok || !res.body) {
-      const errText = await res.text();
-      throw new Error(`[GeminiAntigravity] Claude stream error ${res.status}: ${errText}`);
-    }
-    const reader  = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer    = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-      for (const raw of lines) {
-        const line = raw.trim();
-        if (!line || line === 'data: [DONE]') continue;
-        if (!line.startsWith('data: ')) continue;
-        try {
-          const chunk = JSON.parse(line.slice(6)) as any;
-          const text  = chunk.choices?.[0]?.delta?.content ?? '';
-          if (text) yield { id: `gemini-antigravity-claude-stream-${Date.now()}`, model, content: text };
-        } catch { /* skip malformed */ }
-      }
-    }
-  }
-
-  private buildRequest(messages: LLMMessage[], options?: LLMProviderOptions): any {
-    const req: any = {
-      contents:         this.toContents(messages),
-      generationConfig: {
-        ...(options?.maxTokens    ? { maxOutputTokens: options.maxTokens }    : {}),
-        ...(options?.temperature != null ? { temperature: options.temperature } : {}),
-      },
-    };
-    const sys = this.extractSystemInstruction(messages);
-    if (sys) req.systemInstruction = { parts: [{ text: sys }] };
-    return req;
   }
 
   async chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
-    const model = options?.model || 'gemini-2.5-flash';
-    if (this.isClaudeModel(model)) return this.chatClaude(messages, model, options);
-
+    const model   = options?.model || 'gemini-2.5-flash';
     const token   = await this.getAccessToken();
     const project = await this.getProjectId(token);
 
     console.log(`[GeminiAntigravity] chat model=${model} project=${project}`);
-    const res = await fetch(`${CODE_ASSIST_BASE}:generateContent`, {
-      method:  'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ model, project, request: this.buildRequest(messages, options) }),
-    });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`[GeminiAntigravity] API error ${res.status} (model=${model} project=${project}): ${errText}`);
-    }
-
-    const data    = await res.json() as any;
-    const inner   = data.response ?? data;
-    const content = inner.candidates?.[0]?.content?.parts
-      ?.filter((p: any) => p.text)
-      ?.map((p: any) => p.text as string)
-      .join('') ?? '';
-    const usage = inner.usageMetadata;
-
-    return {
-      id:    `gemini-antigravity-${Date.now()}`,
-      model,
-      content,
-      usage: usage ? {
-        prompt_tokens:     usage.promptTokenCount     ?? 0,
-        completion_tokens: usage.candidatesTokenCount ?? 0,
-        total_tokens:      usage.totalTokenCount      ?? 0,
-      } : undefined,
+    const body    = this.buildAntigravityRequest(messages, model, project, options);
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type':  'application/json',
+      ...ANTIGRAVITY_HEADERS,
     };
+
+    // Try endpoints in fallback order
+    let lastErr: Error = new Error('All endpoints failed');
+    for (const endpoint of ANTIGRAVITY_ENDPOINTS) {
+      try {
+        const res = await fetch(`${endpoint}/v1internal:generateContent`, {
+          method: 'POST', headers, body: JSON.stringify(body),
+        });
+        if (res.status === 403 || res.status === 404) continue; // try next
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`[GeminiAntigravity] API error ${res.status} (model=${model}): ${errText}`);
+        }
+        const data    = await res.json() as any;
+        const inner   = data.response ?? data;
+        const content = inner.candidates?.[0]?.content?.parts
+          ?.filter((p: any) => p.text)
+          ?.map((p: any) => p.text as string)
+          .join('') ?? '';
+        const usage = inner.usageMetadata;
+        return {
+          id:    `gemini-antigravity-${Date.now()}`,
+          model,
+          content,
+          usage: usage ? {
+            prompt_tokens:     usage.promptTokenCount     ?? 0,
+            completion_tokens: usage.candidatesTokenCount ?? 0,
+            total_tokens:      usage.totalTokenCount      ?? 0,
+          } : undefined,
+        };
+      } catch (e: any) {
+        if (e.message?.startsWith('[GeminiAntigravity]')) throw e;
+        lastErr = e;
+      }
+    }
+    throw lastErr;
   }
 
   async *chatStream(messages: LLMMessage[], options?: LLMProviderOptions): AsyncGenerator<LLMResponse> {
-    const model = options?.model || 'gemini-2.5-flash';
-    if (this.isClaudeModel(model)) { yield* this.chatStreamClaude(messages, model, options); return; }
-
+    const model   = options?.model || 'gemini-2.5-flash';
     const token   = await this.getAccessToken();
     const project = await this.getProjectId(token);
 
+    const body    = this.buildAntigravityRequest(messages, model, project, options);
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type':  'application/json',
+      'Accept':        'text/event-stream',
+      ...ANTIGRAVITY_HEADERS,
+    };
 
-    const res = await fetch(`${CODE_ASSIST_BASE}:streamGenerateContent`, {
-      method:  'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ model, project, request: this.buildRequest(messages, options) }),
-    });
-
-    if (!res.ok || !res.body) {
-      const errText = await res.text();
-      throw new Error(`[GeminiAntigravity] Stream error ${res.status}: ${errText}`);
+    let res: Response | null = null;
+    for (const endpoint of ANTIGRAVITY_ENDPOINTS) {
+      const r = await fetch(`${endpoint}/v1internal:streamGenerateContent?alt=sse`, {
+        method: 'POST', headers, body: JSON.stringify(body),
+      });
+      if (r.status === 403 || r.status === 404) continue;
+      res = r;
+      break;
     }
 
-    // Response is a JSON array streamed line-by-line: [{...},\n{...},\n]
+    if (!res || !res.ok || !res.body) {
+      const errText = res ? await res.text() : 'All endpoints failed';
+      throw new Error(`[GeminiAntigravity] Stream error: ${errText}`);
+    }
+
     const reader  = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer    = '';
@@ -257,26 +251,23 @@ export class GeminiAntigravityProvider extends LLMProvider {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? '';
 
       for (const raw of lines) {
         const line = raw.trim();
-        if (!line || line === '[' || line === ']') continue;
-        const json = line.endsWith(',') ? line.slice(0, -1) : line;
+        if (!line.startsWith('data:')) continue;
+        const jsonStr = line.slice(5).trim();
+        if (!jsonStr) continue;
         try {
-          const chunk = JSON.parse(json) as any;
-          if (chunk.error) throw new Error(`[GeminiAntigravity] Stream error: ${JSON.stringify(chunk.error)}`);
+          const chunk = JSON.parse(jsonStr) as any;
           const inner = chunk.response ?? chunk;
           const text  = inner.candidates?.[0]?.content?.parts
             ?.filter((p: any) => p.text)
             ?.map((p: any) => p.text as string)
             .join('') ?? '';
           if (text) yield { id: `gemini-antigravity-stream-${Date.now()}`, model, content: text };
-        } catch (e: any) {
-          if (e.message.startsWith('[GeminiAntigravity]')) throw e;
-        }
+        } catch { /* skip malformed */ }
       }
     }
   }
