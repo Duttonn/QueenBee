@@ -105,22 +105,35 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       });
     };
 
+    // Spawn attempts in order: login shell → interactive → /bin/sh fallback
+    const spawnAttempts: Array<{ shell: string; args: string[] }> = [
+      { shell, args: ['-l'] },
+      { shell, args: [] },
+      { shell: '/bin/sh', args: [] },
+    ];
+
     let ptyProcess: ReturnType<typeof spawn> | null = null;
-    try {
-      // Try login shell first — ensures .profile/.zprofile are sourced
-      ptyProcess = trySpawn(['-l']);
-    } catch (loginErr: any) {
-      console.warn('[Terminal] Login shell failed, retrying without -l:', loginErr.message);
+    let lastErr: Error = new Error('Unknown error');
+    for (const attempt of spawnAttempts) {
       try {
-        ptyProcess = trySpawn([]);
+        ptyProcess = spawn(attempt.shell, attempt.args, {
+          name: 'xterm-256color', cols: 80, rows: 24, cwd, env: shellEnv,
+        });
+        break;
       } catch (err: any) {
-        console.error('[Terminal] Failed to spawn PTY:', err.message);
-        socket.emit('output', `\r\n\x1b[31m[Terminal] Failed to start shell: ${err.message}\x1b[0m\r\n`);
-        socket.emit('output', `\r\n\x1b[33mShell tried: ${shell}\x1b[0m\r\n`);
-        socket.emit('output', `\r\n\x1b[33mTip: If you see this in the packaged app, try installing Node.js from https://nodejs.org\x1b[0m\r\n`);
-        socket.disconnect();
-        return;
+        lastErr = err;
+        console.warn(`[Terminal] Spawn failed (${attempt.shell} ${attempt.args.join(' ')}): ${err.message}`);
       }
+    }
+
+    if (!ptyProcess) {
+      const errCode = (lastErr as any).code ?? (lastErr as any).errno ?? '';
+      console.error('[Terminal] All spawn attempts failed:', lastErr.message);
+      socket.emit('output', `\r\n\x1b[31m[Terminal] Failed to start shell: ${lastErr.message}${errCode ? ` (${errCode})` : ''}\x1b[0m\r\n`);
+      socket.emit('output', `\r\n\x1b[33mShell tried: ${shell}\x1b[0m\r\n`);
+      socket.emit('output', `\r\n\x1b[33mTip: If you see this in the packaged app, try installing Node.js from https://nodejs.org\x1b[0m\r\n`);
+      socket.disconnect();
+      return;
     }
 
     // Pipe PTY output → UI
