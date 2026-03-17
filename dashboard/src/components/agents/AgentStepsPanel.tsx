@@ -468,7 +468,7 @@ const AgentStepsPanel = ({ messages = [] }: AgentStepsPanelProps) => {
             </div>
 
             {/* Main content area */}
-            <div className="flex-1 overflow-y-auto scrollbar-none">
+            <div className="flex-1 overflow-y-auto scrollbar-none pb-56">
               {/* Worker thread view: show assigned tasks */}
               {isWorkerThread && workerTasks.length > 0 ? (
                 <div className="p-3">
