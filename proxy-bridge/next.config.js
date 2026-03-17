@@ -12,6 +12,10 @@ const nextConfig = {
     // for `output: 'standalone'` deployments — we ship via `next start`
     // inside Electron, so they are not required.
     outputFileTracing: false,
+
+    // Prevent Next.js from bundling native modules — they must be loaded
+    // directly from node_modules at runtime, not inlined by webpack.
+    serverExternalPackages: ['node-pty'],
 };
 
 export default nextConfig;

@@ -66,6 +66,13 @@ jobs:
         working-directory: proxy-bridge
         run: npm ci
 
+      - name: Rebuild node-pty for Electron
+        working-directory: proxy-bridge
+        run: npx electron-rebuild --version 29.2.0 --module-dir . --which-module node-pty
+        env:
+          ELECTRON_CACHE: ~/.cache/electron
+          ELECTRON_BUILDER_CACHE: ~/.cache/electron-builder
+
       - name: Build dashboard
         working-directory: dashboard
         run: npm run build
