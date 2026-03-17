@@ -83,14 +83,14 @@ const defaultProviders: AIProvider[] = [
     {
         id: 'gemini-cli', name: 'Gemini (Subscription)', icon: '🔵', group: 'subscription',
         connected: false, tier: 2, authType: 'cli',
-        models: ['gemini-3.1-pro-preview', 'gemini-3.1-flash-preview', 'gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
+        models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
         description: 'Use your Google AI Pro subscription. Requires the Gemini CLI.',
         docsUrl: 'https://github.com/google-gemini/gemini-cli'
     },
     {
         id: 'gemini-antigravity', name: 'Google Antigravity', icon: '🌐', group: 'subscription',
         connected: false, tier: 3, authType: 'cli',
-        models: ['claude-opus-4-6', 'claude-sonnet-4-6', 'gemini-3.1-pro-preview', 'gemini-3.1-flash-preview', 'gemini-3.1-flash-lite-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
+        models: ['gemini-3.1-pro-high', 'gemini-3.1-pro-low', 'gemini-3-flash', 'claude-sonnet-4-6', 'claude-opus-4-6-thinking', 'gpt-oss-120b-medium'],
         description: 'Free-tier Gemini + Claude via Google account — no API key or CLI needed.',
         docsUrl: 'https://ai.google.dev/gemini-api/docs/oauth'
     },
@@ -335,7 +335,7 @@ export const useAuthStore = create<AuthState>()(
         }),
         {
             name: 'queen-bee-auth',
-            version: 11, // v11: add claude-opus-4-6 + claude-sonnet-4-6 to gemini-antigravity (OpenAI-compat path)
+            version: 12, // v12: fix gemini-antigravity model IDs (correct tier suffixes + gpt-oss-120b-medium)
             migrate: (persisted: any, version: number) => {
                 // Merge any new defaultProviders entries missing from persisted state
                 const state = persisted as any;

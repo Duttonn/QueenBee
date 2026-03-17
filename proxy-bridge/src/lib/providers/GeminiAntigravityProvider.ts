@@ -165,7 +165,7 @@ export class GeminiAntigravityProvider extends LLMProvider {
   }
 
   async chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
-    const model   = options?.model || 'gemini-2.5-flash';
+    const model   = options?.model || 'gemini-3-flash';
     const token   = await this.getAccessToken();
     const project = await this.getProjectId(token);
 
@@ -216,7 +216,7 @@ export class GeminiAntigravityProvider extends LLMProvider {
   }
 
   async *chatStream(messages: LLMMessage[], options?: LLMProviderOptions): AsyncGenerator<LLMResponse> {
-    const model   = options?.model || 'gemini-2.5-flash';
+    const model   = options?.model || 'gemini-3-flash';
     const token   = await this.getAccessToken();
     const project = await this.getProjectId(token);
 
