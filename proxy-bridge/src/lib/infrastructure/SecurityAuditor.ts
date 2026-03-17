@@ -15,6 +15,8 @@ export class SecurityAuditor {
     { pattern: /curl.*\|\s*bash/, message: 'Piping remote content directly to bash is highly risky.', level: 'high' },
     { pattern: /wget.*\|\s*bash/, message: 'Piping remote content directly to bash is highly risky.', level: 'high' },
     { pattern: /:\(\)\{.*:\|:&\};:/, message: 'Fork bomb pattern detected.', level: 'critical' },
+    { pattern: /chmod\s+.*777\s+\//, message: 'Recursive chmod 777 on root filesystem.', level: 'critical' },
+    { pattern: /dd\s+if=\/dev\/zero/, message: 'Disk wipe via dd detected.', level: 'critical' },
   ];
 
   private static SECRET_PATTERNS = [

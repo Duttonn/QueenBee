@@ -1652,12 +1652,11 @@ export class ToolExecutor {
       throw new Error(`SECURITY_BLOCK: ${audit.findings.join(' ')} ${audit.remediation}`);
     }
 
-    let isAllowed = this.validateCommand(command, context.allowedCommands);
-    
-    // Note: restrict_shell_commands policy removed — ALLOWED_COMMANDS whitelist +
-    // SecurityAuditor (above) already block genuinely dangerous commands.
-    // Blanket-blocking all commands caused safe tools like grep/find to halt agents.
-    
+    // Whitelist check removed: SecurityAuditor above blocks genuinely dangerous
+    // commands. Whitelist was blocking legitimate tools (curl, tar, brew, docker…).
+    // Only require approval if SecurityAuditor explicitly marks medium-risk.
+    const isAllowed = audit.riskLevel === 'low';
+
     if (!isAllowed) {
       if (!context.toolCallId) {
         throw new Error(`BLOCKED_COMMAND: '${command}' is restricted and cannot be confirmed without a toolCallId.`);
