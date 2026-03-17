@@ -335,7 +335,7 @@ export const useAuthStore = create<AuthState>()(
         }),
         {
             name: 'queen-bee-auth',
-            version: 12, // v12: fix gemini-antigravity model IDs (correct tier suffixes + gpt-oss-120b-medium)
+            version: 13, // v13: hard-replace gemini-antigravity + gemini-cli models (correct IDs)
             migrate: (persisted: any, version: number) => {
                 const state = persisted as any;
                 if (state?.providers) {
@@ -345,13 +345,12 @@ export const useAuthStore = create<AuthState>()(
                     if (newOnes.length > 0) {
                         state.providers = [...state.providers, ...newOnes];
                     }
-                    // v12: fully replace model lists for providers whose IDs changed
-                    const REPLACE_MODELS_FROM_V12 = new Set(['gemini-antigravity', 'gemini-cli']);
+                    // Always sync models for these providers from defaultProviders (IDs were wrong before v13)
+                    const ALWAYS_SYNC = new Set(['gemini-antigravity', 'gemini-cli']);
                     state.providers = state.providers.map((p: any) => {
                         const def = defaultProviders.find(d => d.id === p.id);
                         if (!def?.models) return p;
-                        if (version < 12 && REPLACE_MODELS_FROM_V12.has(p.id)) {
-                            // Hard-replace: old IDs were wrong
+                        if (ALWAYS_SYNC.has(p.id)) {
                             return { ...p, models: def.models };
                         }
                         // For other providers: merge (add new, keep existing)
