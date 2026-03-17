@@ -83,7 +83,7 @@ const defaultProviders: AIProvider[] = [
     {
         id: 'gemini-cli', name: 'Gemini (Subscription)', icon: '🔵', group: 'subscription',
         connected: false, tier: 2, authType: 'cli',
-        models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
+        models: ['gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
         description: 'Use your Google AI Pro subscription. Requires the Gemini CLI.',
         docsUrl: 'https://github.com/google-gemini/gemini-cli'
     },
@@ -335,7 +335,7 @@ export const useAuthStore = create<AuthState>()(
         }),
         {
             name: 'queen-bee-auth',
-            version: 15, // v15: remove non-working gemini-2.5-{pro,flash} + gpt-oss from antigravity
+            version: 16, // v16: fix gemini-cli model list (live-tested: 3.1-pro-preview, 3-flash-preview, 3.1-flash-lite-preview + 2.5)
             migrate: (persisted: any, version: number) => {
                 const state = persisted as any;
                 if (state?.providers) {

@@ -714,7 +714,7 @@ function testGeminiCli(): TestResult {
         }
         return { success: true, provider: 'gemini-cli',
             message: 'Gemini CLI OAuth credentials detected. Subscription active.',
-            models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] };
+            models: ['gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] };
     } catch {
         return { success: false, provider: 'gemini-cli', error: 'invalid_creds',
             message: 'Could not read Gemini credentials. Run: gemini auth' };
