@@ -737,7 +737,7 @@ function testGeminiAntigravity(): TestResult {
         }
         return { success: true, provider: 'gemini-antigravity',
             message: 'Gemini Free credentials detected. Google account active.',
-            models: ['gemini-3.1-pro-high', 'gemini-3.1-pro-low', 'gemini-3-flash', 'claude-sonnet-4-6', 'claude-opus-4-6-thinking', 'gpt-oss-120b-medium'] };
+            models: ['gemini-3.1-pro-high', 'gemini-3.1-pro-low', 'gemini-3-flash', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'claude-sonnet-4-6', 'claude-opus-4-6-thinking', 'gpt-oss-120b-medium'] };
     } catch {
         return { success: false, provider: 'gemini-antigravity', error: 'invalid_creds',
             message: 'Could not read credentials. Reconnect via the Connect button.' };

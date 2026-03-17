@@ -123,12 +123,21 @@ export class GeminiAntigravityProvider extends LLMProvider {
   }
 
   private toContents(messages: LLMMessage[]): any[] {
-    return messages
-      .filter(m => m.role !== 'system')
-      .map(m => ({
-        role:  m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }],
-      }));
+    const contents: any[] = [];
+    for (const m of messages) {
+      if (m.role === 'system') continue;
+      const text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+      if (!text.trim()) continue; // skip empty messages — they cause validation errors
+      const role = m.role === 'assistant' ? 'model' : 'user';
+      // Merge consecutive same-role turns (some APIs reject them)
+      const last = contents[contents.length - 1];
+      if (last && last.role === role) {
+        last.parts.push({ text });
+      } else {
+        contents.push({ role, parts: [{ text }] });
+      }
+    }
+    return contents;
   }
 
   private buildAntigravityRequest(messages: LLMMessage[], model: string, projectId: string, options?: LLMProviderOptions): any {
