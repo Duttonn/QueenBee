@@ -337,23 +337,27 @@ export const useAuthStore = create<AuthState>()(
             name: 'queen-bee-auth',
             version: 12, // v12: fix gemini-antigravity model IDs (correct tier suffixes + gpt-oss-120b-medium)
             migrate: (persisted: any, version: number) => {
-                // Merge any new defaultProviders entries missing from persisted state
                 const state = persisted as any;
                 if (state?.providers) {
+                    // Add any new providers missing from persisted state
                     const existingIds = new Set(state.providers.map((p: any) => p.id));
                     const newOnes = defaultProviders.filter(p => !existingIds.has(p.id));
                     if (newOnes.length > 0) {
                         state.providers = [...state.providers, ...newOnes];
                     }
-                    // Update model lists for existing providers to pick up new models
+                    // v12: fully replace model lists for providers whose IDs changed
+                    const REPLACE_MODELS_FROM_V12 = new Set(['gemini-antigravity', 'gemini-cli']);
                     state.providers = state.providers.map((p: any) => {
                         const def = defaultProviders.find(d => d.id === p.id);
-                        if (def && def.models) {
-                            const existing = new Set(p.models || []);
-                            const merged = [...(p.models || []), ...def.models.filter((m: string) => !existing.has(m))];
-                            return { ...p, models: merged };
+                        if (!def?.models) return p;
+                        if (version < 12 && REPLACE_MODELS_FROM_V12.has(p.id)) {
+                            // Hard-replace: old IDs were wrong
+                            return { ...p, models: def.models };
                         }
-                        return p;
+                        // For other providers: merge (add new, keep existing)
+                        const existing = new Set(p.models || []);
+                        const merged = [...(p.models || []), ...def.models.filter((m: string) => !existing.has(m))];
+                        return { ...p, models: merged };
                     });
                 }
                 return state;

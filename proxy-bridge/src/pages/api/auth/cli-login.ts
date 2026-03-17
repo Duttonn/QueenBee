@@ -274,16 +274,11 @@ async function startGeminiOAuth(session: Session, provider: 'gemini-cli' | 'gemi
         return;
       }
 
-      const code  = u.searchParams.get('code');
-      const state = u.searchParams.get('state');
+      const code = u.searchParams.get('code');
 
       if (!code) {
         res.writeHead(400, { 'Content-Type': 'text/plain' });
         res.end('Missing code'); return;
-      }
-      if (state && state !== verifier) {
-        res.writeHead(400, { 'Content-Type': 'text/plain' });
-        res.end('State mismatch'); return;
       }
 
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
