@@ -67,6 +67,34 @@ import DeepInspector from '../inspector/DeepInspector';
 import BrowserPanel from '../navigator/BrowserPanel';
 import CodeGraphPanel from '../navigator/CodeGraphPanel';
 
+const MODEL_DISPLAY_NAMES: Record<string, string> = {
+  // Gemini Antigravity
+  'gemini-3.1-pro-high':       'Gemini 3.1 Pro (High)',
+  'gemini-3.1-pro-low':        'Gemini 3.1 Pro (Low)',
+  'gemini-3-flash':             'Gemini 3 Flash',
+  'claude-opus-4-6-thinking':  'Claude Opus 4.6 (Thinking)',
+  'gpt-oss-120b-medium':       'GPT-OSS 120B (Medium)',
+  // Claude
+  'claude-opus-4-6':           'Claude Opus 4.6',
+  'claude-sonnet-4-6':         'Claude Sonnet 4.6',
+  'claude-haiku-4-5-20251001': 'Claude Haiku 4.5',
+  // Gemini
+  'gemini-2.5-pro':            'Gemini 2.5 Pro',
+  'gemini-2.5-flash':          'Gemini 2.5 Flash',
+  'gemini-2.5-flash-lite':     'Gemini 2.5 Flash Lite',
+  'gemini-2.0-flash':          'Gemini 2.0 Flash',
+  'gemini-2.0-flash-lite':     'Gemini 2.0 Flash Lite',
+  // OpenAI
+  'gpt-4o':    'GPT-4o',
+  'gpt-4o-mini': 'GPT-4o Mini',
+  'o3-mini':   'o3 Mini',
+  'o1':        'o1',
+  'o3':        'o3',
+};
+
+const getModelDisplayName = (modelId: string): string =>
+  MODEL_DISPLAY_NAMES[modelId] ?? modelId;
+
 const MentionDropdown = ({ files, selectedIndex, onSelect }: { files: string[], selectedIndex: number, onSelect: (f: string) => void }) => {
   // QB-02: Include system commands in the dropdown
   const showQB = "qb".includes(files[0]?.toLowerCase() || "");
@@ -552,7 +580,7 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
                     onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-500 bg-zinc-100 hover:bg-zinc-200 rounded-xl transition-all"
                   >
-                    <span>{selectedModel ? selectedModel.split(':').slice(1).join(':') : 'Select Model'}</span>
+                    <span>{selectedModel ? getModelDisplayName(selectedModel.split(':').slice(1).join(':')) : 'Select Model'}</span>
                     <ChevronDown size={10} className="text-zinc-400" />
                   </button>
                   <AnimatePresence>
@@ -585,7 +613,7 @@ const ComposerBar = ({ value, onChange, onSubmit, onStop, isLoading, mode, onMod
                                       : 'text-zinc-600 hover:bg-zinc-50'
                                       }`}
                                   >
-                                    {m.name}
+                                    {getModelDisplayName(m.name)}
                                   </button>
                                 </React.Fragment>
                               );
