@@ -1,5 +1,5 @@
 import { LLMProvider } from '../LLMProvider';
-import { LLMMessage, LLMProviderOptions, LLMResponse } from '../types/llm';
+import { LLMMessage, LLMProviderOptions, LLMResponse, LLMToolCall } from '../types/llm';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
@@ -148,7 +148,7 @@ export class GeminiAntigravityProvider extends LLMProvider {
     const sysText = sys ? (typeof sys.content === 'string' ? sys.content : JSON.stringify(sys.content)) : undefined;
 
     const generationConfig: any = {};
-    if (options?.maxTokens)        generationConfig.maxOutputTokens = options.maxTokens;
+    if (options?.maxTokens)           generationConfig.maxOutputTokens = options.maxTokens;
     if (options?.temperature != null) generationConfig.temperature = options.temperature;
     if (Object.keys(generationConfig).length > 0) request.generationConfig = generationConfig;
 
@@ -163,6 +163,17 @@ export class GeminiAntigravityProvider extends LLMProvider {
       ],
     };
 
+    // Pass tools in Gemini functionDeclarations format
+    if (options?.tools && options.tools.length > 0) {
+      request.tools = [{
+        functionDeclarations: options.tools.map((t: any) => ({
+          name:        t.function.name,
+          description: t.function.description,
+          parameters:  t.function.parameters,
+        })),
+      }];
+    }
+
     return {
       project:     projectId,
       model,
@@ -171,6 +182,28 @@ export class GeminiAntigravityProvider extends LLMProvider {
       userAgent:   'antigravity',
       requestId:   `agent-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
     };
+  }
+
+  /** Parse <tool_call>{"name":…,"arguments":{…}}</tool_call> blocks from text */
+  private parseTextToolCalls(text: string): LLMToolCall[] {
+    const calls: LLMToolCall[] = [];
+    const re = /<tool_call>\s*(\{[\s\S]*?\})\s*<\/tool_call>/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      try {
+        const obj = JSON.parse(m[1]);
+        const name = obj.name || obj.function;
+        const args = obj.arguments ?? obj.args ?? obj.parameters ?? {};
+        if (name) {
+          calls.push({
+            id: `call_${Math.random().toString(36).slice(2, 9)}`,
+            type: 'function',
+            function: { name, arguments: typeof args === 'string' ? args : JSON.stringify(args) },
+          });
+        }
+      } catch { /* malformed block, skip */ }
+    }
+    return calls;
   }
 
   async chat(messages: LLMMessage[], options?: LLMProviderOptions): Promise<LLMResponse> {
@@ -201,15 +234,39 @@ export class GeminiAntigravityProvider extends LLMProvider {
         }
         const data    = await res.json() as any;
         const inner   = data.response ?? data;
-        const content = inner.candidates?.[0]?.content?.parts
-          ?.filter((p: any) => p.text)
-          ?.map((p: any) => p.text as string)
-          .join('') ?? '';
+        const parts: any[] = inner.candidates?.[0]?.content?.parts ?? [];
+
+        let content = '';
+        const toolCalls: LLMToolCall[] = [];
+
+        for (const part of parts) {
+          if (part.text)         content += part.text;
+          if (part.functionCall) {
+            toolCalls.push({
+              id:   `call_${Math.random().toString(36).slice(2, 9)}`,
+              type: 'function',
+              function: {
+                name:      part.functionCall.name,
+                arguments: JSON.stringify(part.functionCall.args ?? {}),
+              },
+            });
+          }
+        }
+
+        // Fallback: if no native function calls, parse <tool_call> blocks from text
+        const parsedFromText = toolCalls.length === 0 ? this.parseTextToolCalls(content) : [];
+        const finalToolCalls = toolCalls.length > 0 ? toolCalls : parsedFromText;
+        // Strip <tool_call> blocks from displayed content when parsed from text
+        const finalContent = parsedFromText.length > 0
+          ? content.replace(/<tool_call>[\s\S]*?<\/tool_call>/g, '').trim()
+          : content;
+
         const usage = inner.usageMetadata;
         return {
-          id:    `gemini-antigravity-${Date.now()}`,
+          id:         `gemini-antigravity-${Date.now()}`,
           model,
-          content,
+          content:    finalContent || null,
+          tool_calls: finalToolCalls.length > 0 ? finalToolCalls : undefined,
           usage: usage ? {
             prompt_tokens:     usage.promptTokenCount     ?? 0,
             completion_tokens: usage.candidatesTokenCount ?? 0,
