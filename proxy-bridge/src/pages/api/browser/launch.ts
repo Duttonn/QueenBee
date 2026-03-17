@@ -29,6 +29,18 @@ let runState: {
 
 const MAX_LOG_LINES = 200;
 
+/** Extract the first balanced {...} object from a string (handles nested braces). */
+function extractFirstJsonObject(text: string): string | null {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}') { depth--; if (depth === 0) return text.slice(start, i + 1); }
+  }
+  return null;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method === 'GET') {
     return res.status(200).json({
@@ -101,8 +113,11 @@ Rules:
 
       let parsed: { commands: string[]; ports: number[]; notes: string };
       try {
-        const jsonMatch = reply.match(/\{[\s\S]*\}/);
-        parsed = JSON.parse(jsonMatch ? jsonMatch[0] : reply);
+        // 1. Try ```json ... ``` code fence
+        const fenceMatch = reply?.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+        // 2. Try first balanced { ... } block
+        const jsonStr = fenceMatch ? fenceMatch[1] : extractFirstJsonObject(reply ?? '');
+        parsed = JSON.parse(jsonStr ?? reply ?? '');
       } catch {
         return res.status(200).json({
           commands: [],

@@ -76,7 +76,9 @@ export class ToolExecutor {
   }
 
   private validateCommand(command: string, allowedCommands: string[] = []): boolean {
-    const subCommands = command.split(/[|;&]+/).map(s => s.trim()).filter(Boolean);
+    // Split on actual shell operators: bare |, ;, &, &&, || but NOT \| (escaped pipe
+    // used in grep BRE patterns like: grep -rl "foo\|bar")
+    const subCommands = command.split(/(?<!\\)[|;&]+/).map(s => s.trim()).filter(Boolean);
     for (const sub of subCommands) {
       const baseCmd = sub.split(/\s+/)[0].replace(/^.*\//, '');
       if (!ToolExecutor.ALLOWED_COMMANDS.has(baseCmd) && !allowedCommands.includes(baseCmd)) {
